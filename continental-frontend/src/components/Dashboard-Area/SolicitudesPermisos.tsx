@@ -114,7 +114,7 @@ export const SolicitudesPermisos = () => {
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b">
                             <tr>
-                                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Nómina</th>
+                                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Nomina</th>
                                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Empleado</th>
                                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Tipo</th>
                                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Periodo</th>
@@ -137,9 +137,9 @@ export const SolicitudesPermisos = () => {
                                         </div>
                                     </td>
                                     <td className="px-4 py-3 text-sm">
-                                        <div>{format(new Date(solicitud.fechaInicio), 'dd/MM/yyyy')}</div>
+                                        <div>{format(new Date(solicitud.fechaInicio + 'T00:00:00'), 'dd/MM/yyyy')}</div>
                                         <div className="text-xs text-gray-600">
-                                            al {format(new Date(solicitud.fechaFin), 'dd/MM/yyyy')}
+                                            al {format(new Date(solicitud.fechaFin + 'T00:00:00'), 'dd/MM/yyyy')}
                                         </div>
                                     </td>
                                     <td className="px-4 py-3 text-sm">

@@ -158,7 +158,7 @@ export function TablaSolicitudes() {
             sortable: true,
             render: (value) => (
                 <div className="text-sm text-gray-900">
-                    {new Date(String(value)).toLocaleDateString()}
+                    {new Date(String(value) + 'T00:00:00').toLocaleDateString()}
                 </div>
             )
         },
@@ -168,7 +168,7 @@ export function TablaSolicitudes() {
             sortable: true,
             render: (value) => (
                 <div className="text-sm text-gray-900">
-                    {new Date(String(value)).toLocaleDateString()}
+                    {new Date(String(value) + 'T00:00:00').toLocaleDateString()}
                 </div>
             )
         },
