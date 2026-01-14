@@ -154,6 +154,9 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 setRealAssignedDays(automaticas);
                 setWorkedHoliday(festivosTrabajados);
                 setSelectedDays(reprogramacionesYAnuales);
+                console.log('📊 Todas las vacaciones:', resp.vacaciones);
+                console.log('🎉 Festivos trabajados filtrados:', festivosTrabajados);
+                console.log('📅 Tipos de vacación únicos:', [...new Set(resp.vacaciones.map(v => v.tipoVacacion))]);
 
             } catch (error) {
                 console.error('Error fetching vacaciones:', error);
@@ -670,7 +673,7 @@ export const RequestModal = ({
                 const response = await festivosTrabajadosService.getFestivosDisponibles(
                     empleadoId,
                     undefined,
-                    anioVigente - 1,
+                    anioVigente ,
                     true // Solo disponibles
                 );
                 console.log("Festivos disponibles:")

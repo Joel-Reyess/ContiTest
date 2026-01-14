@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
 using tiempo_libre.Models;
+using tiempo_libre.Controllers;
 
 namespace tiempo_libre.Services
 {
@@ -22,7 +23,7 @@ namespace tiempo_libre.Services
         }
 
         public async Task<ApiResponse<SolicitudPermutaResponse>> SolicitarPermutaAsync(
-            SolicitudPermutaRequest request, int usuarioSolicitanteId)
+    SolicitudPermutaRequest request, int usuarioSolicitanteId)
         {
             try
             {
@@ -40,24 +41,6 @@ namespace tiempo_libre.Services
                     .Include(u => u.Area)
                     .FirstOrDefaultAsync(u => u.Id == request.EmpleadoOrigenId);
 
-                var empleadoDestino = await _db.Users
-                    .Include(u => u.Grupo)
-                    .Include(u => u.Area)
-                    .FirstOrDefaultAsync(u => u.Id == request.EmpleadoDestinoId);
-
-                if (empleadoOrigen == null || empleadoDestino == null)
-                {
-                    return new ApiResponse<SolicitudPermutaResponse>(false, null,
-                        "Uno o ambos empleados no fueron encontrados");
-                }
-
-                if (empleadoOrigen.GrupoId != empleadoDestino.GrupoId)
-                {
-                    return new ApiResponse<SolicitudPermutaResponse>(false, null,
-                        "Los empleados deben pertenecer al mismo grupo");
-                }
-
-                // Después de validar empleadoOrigen
                 if (empleadoOrigen == null)
                 {
                     return new ApiResponse<SolicitudPermutaResponse>(false, null,
@@ -65,7 +48,7 @@ namespace tiempo_libre.Services
                 }
 
                 // Validación condicional de empleado destino
-                //User? empleadoDestino = null;
+                User? empleadoDestino = null;
                 bool esCambioIndividual = !request.EmpleadoDestinoId.HasValue || request.EmpleadoDestinoId.Value == 0;
 
                 if (!esCambioIndividual)
@@ -81,14 +64,13 @@ namespace tiempo_libre.Services
                             "Empleado destino no encontrado");
                     }
 
-                    if (empleadoOrigen.GrupoId != empleadoDestino.GrupoId)
+                    if (empleadoOrigen.AreaId != empleadoDestino.AreaId)
                     {
                         return new ApiResponse<SolicitudPermutaResponse>(false, null,
-                            "Los empleados deben pertenecer al mismo grupo");
+                            "Los empleados deben pertenecer a la misma área");
                     }
                 }
 
-                // Al crear la permuta
                 var permuta = new Permuta
                 {
                     EmpleadoOrigenId = request.EmpleadoOrigenId,
@@ -101,7 +83,9 @@ namespace tiempo_libre.Services
                     FechaSolicitud = DateTime.UtcNow
                 };
 
-                // Al crear la respuesta
+                _db.Permutas.Add(permuta);
+                await _db.SaveChangesAsync();
+
                 var response = new SolicitudPermutaResponse
                 {
                     Exitoso = true,
@@ -124,7 +108,6 @@ namespace tiempo_libre.Services
                     FechaPermuta = fechaPermuta
                 };
 
-                // Actualizar log
                 _logger.LogInformation(esCambioIndividual
                     ? "Cambio de turno registrado: {Origen} - {Fecha}"
                     : "Permuta registrada: {Origen} ⇄ {Destino} - {Fecha}",
@@ -191,10 +174,10 @@ namespace tiempo_libre.Services
                 {
                     Id = p.Id,
                     EmpleadoOrigenNombre = p.EmpleadoOrigen.FullName,
-                    EmpleadoDestinoNombre = p.EmpleadoDestino.FullName,
+                    EmpleadoDestinoNombre = p.EmpleadoDestino != null ? p.EmpleadoDestino.FullName : "N/A",
                     FechaPermuta = p.FechaPermuta,
                     TurnoEmpleadoOrigen = p.TurnoEmpleadoOrigen,
-                    TurnoEmpleadoDestino = p.TurnoEmpleadoDestino,
+                    TurnoEmpleadoDestino = p.TurnoEmpleadoDestino ?? "N/A",
                     Motivo = p.Motivo,
                     SolicitadoPorNombre = p.SolicitadoPor.FullName,
                     FechaSolicitud = p.FechaSolicitud

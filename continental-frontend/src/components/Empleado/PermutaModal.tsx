@@ -39,11 +39,11 @@ export const PermutaModal = ({
     // Buscar empleados del mismo grupo
     useEffect(() => {
         const fetchEmpleados = async () => {
-            if (!showSearch || !empleadoOrigen.grupo?.grupoId) return;
+            if (!showSearch || !empleadoOrigen.area?.areaId) return;
 
             try {
                 const resp = await empleadosService.getEmpleadosSindicalizados({
-                    GrupoId: empleadoOrigen.grupo.grupoId,
+                    AreaId: empleadoOrigen.area?.areaId,
                     PageSize: 100,
                 });
 
@@ -71,10 +71,6 @@ export const PermutaModal = ({
     });
 
     const handleSubmit = async () => {
-        if (!empleadoDestino || !fechaPermuta || !motivo.trim() || !turnoOrigen || !turnoDestino) {
-            toast.error("Por favor completa todos los campos");
-            return;
-        }
 
         if (!fechaPermuta || !motivo.trim() || !turnoOrigen) {
             toast.error("Por favor completa todos los campos obligatorios");
@@ -97,8 +93,8 @@ export const PermutaModal = ({
                 turnoEmpleadoOrigen: turnoOrigen,
                 turnoEmpleadoDestino: esCambioIndividual ? null : turnoDestino,
             };
-            console.log("🚀 Payload a enviar:", payload);
-            console.log("📋 JSON:", JSON.stringify(payload, null, 2));
+            //console.log("🚀 Payload a enviar:", payload);
+            //console.log("📋 JSON:", JSON.stringify(payload, null, 2));
             const response = await permutasService.solicitarPermuta(payload);
 
             if (response.exitoso) {
@@ -162,8 +158,9 @@ export const PermutaModal = ({
                                 Cambio individual (sin intercambio con otro empleado)
                             </label>
                         </div>
+
                         <p className="text-sm text-gray-600 mb-6">
-                            Intercambia el turno entre dos empleados del mismo grupo
+                            Intercambia el turno entre dos empleados de la misma área
                         </p>
 
                         {/* Empleado Origen */}
@@ -176,6 +173,7 @@ export const PermutaModal = ({
                         </div>
 
                         {/* Selección de Empleado Destino */}
+                        {!esCambioIndividual && (
                         <div className="mb-4">
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Empleado Destino *
@@ -250,6 +248,7 @@ export const PermutaModal = ({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/* Fecha de Permuta */}
                         <div className="mb-4">
@@ -335,7 +334,8 @@ export const PermutaModal = ({
                         <Button
                             variant="continental"
                             onClick={handleSubmit}
-                            disabled={loading || !empleadoDestino || !fechaPermuta || !motivo.trim() || !turnoOrigen || !turnoDestino}
+                            disabled={loading || !fechaPermuta || !motivo.trim() || !turnoOrigen ||
+                                (!esCambioIndividual && (!empleadoDestino || !turnoDestino))}
                         >
                             {loading ? "Procesando..." : "Solicitar Permuta"}
                         </Button>
