@@ -13,7 +13,7 @@ import { Badge } from "../ui/badge";
 import { toast } from "sonner";
 import { exportWeeklyRolesExcel } from "@/utils/weeklyRolesExcel";
 import { UserRole } from "@/interfaces/User.interface";
-
+import { httpClient } from '@/services/httpClient'; // ✅ AGREGAR ESTE IMPORT
 const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
 const buildWeekDays = (weekStart: Date): Date[] =>
@@ -51,6 +51,8 @@ const WeeklyRoles = () => {
         hasRole(UserRole.UNION_REPRESENTATIVE) ||
         (user as any)?.isUnionCommittee ||
         user?.area?.nombreGeneral === "Sindicato";
+    const isIndustrial = hasRole(UserRole.INDUSTRIAL);
+    const isBoss = hasRole(UserRole.AREA_ADMIN);
 
     // Cargar areas y grupos (si es jefe de área solo ve sus áreas)
     useEffect(() => {
@@ -72,9 +74,9 @@ const WeeklyRoles = () => {
                 setAreaNames(map);
 
                 const jefeId = user?.id;
-                const isBoss = hasRole(UserRole.AREA_ADMIN);
 
                 let allowedAreas: Area[];
+
                 if (isBoss) {
                     allowedAreas = allAreas.filter(
                         (a) =>
@@ -84,6 +86,22 @@ const WeeklyRoles = () => {
                     if (allowedAreas.length === 0 && user?.area?.areaId) {
                         const fallback = allAreas.find((a) => a.areaId === user.area.areaId);
                         allowedAreas = fallback ? [fallback] : [];
+                    }
+                } else if (isIndustrial && user?.id) {
+                    // ✅ USAR ENDPOINT ESPECÍFICO DEL BACKEND para ingenieros
+                    console.log('🔧 Es ingeniero industrial, obteniendo áreas asignadas...');
+                    try {
+                        const ingenierosAreasResp = await httpClient.get(`/api/Area/by-ingeniero/${user.id}`, { activo: true });
+                        const ingenierosAreas = Array.isArray(ingenierosAreasResp?.data) ? ingenierosAreasResp.data : [];
+                        console.log('✅ Áreas del ingeniero desde backend:', ingenierosAreas);
+
+                        const areaIds = ingenierosAreas.map((a: any) => a.areaId);
+                        allowedAreas = allAreas.filter((a) => areaIds.includes(a.areaId));
+                        console.log('✅ Áreas filtradas:', allowedAreas);
+                    } catch (error) {
+                        console.error('❌ Error obteniendo áreas del ingeniero:', error);
+                        // Fallback al área del usuario si falla
+                        allowedAreas = allAreas.filter((a) => a.areaId === user?.area?.areaId);
                     }
                 } else {
                     allowedAreas = allAreas;
@@ -98,9 +116,9 @@ const WeeklyRoles = () => {
                 setAreas(allowedAreas);
                 setGroups(filteredGroups);
 
-                if (isBoss && allowedAreaIds.length > 0) {
+                if ((isBoss || isIndustrial) && allowedAreaIds.length > 0) {  // ✅ AGREGAR isIndustrial
                     setSelectedArea(allowedAreaIds[0] as number);
-                } else if (!isBoss && filteredGroups.length > 0) {
+                } else if (!isBoss && !isIndustrial && filteredGroups.length > 0) {  // ✅ AGREGAR !isIndustrial
                     setSelectedArea("all");
                 }
 
@@ -399,7 +417,6 @@ const WeeklyRoles = () => {
         );
     }
 
-    const isBoss = hasRole(UserRole.AREA_ADMIN);
     const uniqueAreas = areas
         .map((a) => ({
             id: a.areaId,
@@ -456,7 +473,7 @@ const WeeklyRoles = () => {
                         onChange={(e) => setSelectedArea(e.target.value === "all" ? "all" : parseInt(e.target.value, 10))}
                         disabled={loadingGroups}
                     >
-                        {!isBoss && <option value="all">Todas</option>}
+                        {!isBoss && !isIndustrial && <option value="all">Todas</option>}
                         {uniqueAreas.map((a) => (
                             <option key={a.id ?? "na"} value={a.id ?? ""}>
                                 {a.name}

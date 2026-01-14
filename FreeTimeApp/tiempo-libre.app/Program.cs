@@ -62,6 +62,8 @@ builder.Services.AddHostedService<tiempo_libre.Services.ActualizacionEstadosBack
 
 //Background para actualizar roles automaticamente
 builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionRolesBackgroundService>();
+// Background service para sincronizar permisos desde tabla de staging
+builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionPermisosBackgroundService>();
 
 // Configuración CORS para permitir peticiones desde el frontend
 var allowedOrigins = new[] {

@@ -36,7 +36,7 @@ namespace tiempo_libre.Controllers
         /// <param name="grupoId">ID del grupo</param>
         /// <param name="fechaInicio">Fecha de inicio de la semana (yyyy-MM-dd). Se ajusta a lunes.</param>
         [HttpGet("grupo/{grupoId}/semana")]
-        [Authorize(Roles = "EmpleadoSindicalizado,Empleado Sindicalizado,DelegadoSindical,Delegado Sindical,JefeArea,Jefe De Area,SuperUsuario, Lider De Grupo,IngenieroIndustrial, Ingeniero Industrial")]
+        [Authorize(Roles = "EmpleadoSindicalizado,Empleado Sindicalizado,DelegadoSindical,Delegado Sindical,JefeArea,Jefe De Area,SuperUsuario, Lider De Grupo,IngenieroIndustrial, Ingeniero Industrial, Super Usuario")]
         public async Task<IActionResult> ObtenerRolesSemanales(
     [FromRoute] int grupoId,
     [FromQuery] DateTime fechaInicio)

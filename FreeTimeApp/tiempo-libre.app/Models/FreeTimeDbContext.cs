@@ -62,6 +62,8 @@ public partial class FreeTimeDbContext : DbContext
     //public DbSet<SolicitudPermiso> SolicitudesPermisos { get; set; }
     public virtual DbSet<RolEmpleadoSAP> RolesEmpleadosSAP { get; set; }
 
+    public virtual DbSet<PermisosEIncapacidadesSAPActualizar> PermisosEIncapacidadesSAPActualizar { get; set; }
+
     // Sistema de bloques de reservación
     public virtual DbSet<BloquesReservacion> BloquesReservacion { get; set; }
     public virtual DbSet<AsignacionesBloque> AsignacionesBloque { get; set; }
@@ -1010,6 +1012,22 @@ public partial class FreeTimeDbContext : DbContext
             entity.Property(e => e.Nombre).HasMaxLength(200);
             entity.Property(e => e.Regla).HasMaxLength(50);
             entity.HasIndex(e => e.Nomina);
+        });
+
+        // Configuración para PermisosEIncapacidadesSAPActualizar (sin clave primaria)
+        modelBuilder.Entity<PermisosEIncapacidadesSAPActualizar>(entity =>
+        {
+            entity.HasNoKey(); // ⭐ IMPORTANTE: Indica que no tiene clave primaria
+            entity.ToTable("PermisosEIncapacidadesSAP_Actualizar");
+            entity.Property(e => e.Nomina).HasMaxLength(100);
+            entity.Property(e => e.Nombre).HasMaxLength(100);
+            entity.Property(e => e.Posicion).HasMaxLength(100);
+            entity.Property(e => e.Desde).HasMaxLength(100);
+            entity.Property(e => e.Hasta).HasMaxLength(100);
+            entity.Property(e => e.ClAbPre).HasMaxLength(100);
+            entity.Property(e => e.ClaseAbsentismo).HasMaxLength(150);
+            entity.Property(e => e.Dias).HasMaxLength(100);
+            entity.Property(e => e.DiaNat).HasMaxLength(100);
         });
         //// Configuración para SolicitudesPermisos
         //modelBuilder.Entity<SolicitudPermiso>(entity =>
