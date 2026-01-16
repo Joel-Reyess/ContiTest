@@ -1,6 +1,6 @@
 ﻿import { httpClient } from './httpClient';
 import { logger } from '@/utils/logger';
-import type { ApiResponse } from '@/interfaces/Api.interface';
+import type { ApiResponse, ConsultarSolicitudesPermisosResponse } from '@/interfaces/Api.interface';
 import type { TipoPermiso } from './permisosService';
 
 export interface CrearSolicitudPermisoRequest {
@@ -223,6 +223,28 @@ class SolicitudesPermisosService {
             logger.apiResponse('POST', '/api/solicitudes-permisos/responder', 200, null);
         } catch (error) {
             logger.error('Error responding to solicitud', error, 'SOLICITUDES_PERMISOS_SERVICE');
+            throw error;
+        }
+    }
+
+    async obtenerHistorialPorNomina(nomina: number, anio?: number): Promise<ConsultarSolicitudesPermisosResponse> {
+        try {
+            const params: Record<string, string> = {};
+            if (anio) params.anio = anio.toString();
+
+            logger.apiRequest('GET', `/api/solicitudes-permisos/historial/${nomina}`, params);
+
+            const response: ApiResponse<ConsultarSolicitudesPermisosResponse> =
+                await httpClient.get(`/api/solicitudes-permisos/historial/${nomina}`, params);
+
+            if (!response.success || !response.data) {
+                throw new Error(response.errorMsg || 'Error al obtener historial');
+            }
+
+            logger.apiResponse('GET', `/api/solicitudes-permisos/historial/${nomina}`, 200, response.data);
+            return response.data;
+        } catch (error) {
+            logger.error('Error fetching historial permisos', error, 'SOLICITUDES_PERMISOS_SERVICE');
             throw error;
         }
     }

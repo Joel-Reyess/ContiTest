@@ -113,7 +113,7 @@ const AreaDashboard = (): JSX.Element => {
                         <>
                             <Route path="solicitudes" element={<SolicitudesComponent />} />
                             <Route path="solicitudes/:id" element={<SolicitudDetallePage />} />
-                            <Route path="/area/solicitudes-permisos/:id" element={<SolicitudPermisoDetalle />} />
+                            <Route path="solicitudes-permisos/:id" element={<SolicitudPermisoDetalle />} />
                         </>
                     )}
 

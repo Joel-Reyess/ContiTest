@@ -75,175 +75,183 @@ namespace tiempo_libre.Services
                     int registrosOmitidos = 0;
                     int erroresConversion = 0;
 
-                    // Obtener todos los registros de la tabla de staging
+                    // Obtener registros con READ UNCOMMITTED para evitar bloqueos
                     var registrosActualizar = await context.PermisosEIncapacidadesSAPActualizar
-                        .AsNoTracking()
+                        .FromSqlRaw("SELECT * FROM PermisosEIncapacidadesSAP_Actualizar WITH (NOLOCK)")
                         .ToListAsync();
 
                     _logger.LogInformation($"Se encontraron {registrosActualizar.Count} registros en PermisosEIncapacidadesSAP_Actualizar");
 
-                    foreach (var registro in registrosActualizar)
+                    if (registrosActualizar.Count == 0)
                     {
-                        try
+                        _logger.LogInformation("No hay registros nuevos para procesar");
+                        return;
+                    }
+
+                    // Procesar en lotes para evitar problemas de memoria
+                    var lotes = registrosActualizar.Chunk(100);
+
+                    foreach (var lote in lotes)
+                    {
+                        foreach (var registro in lote)
                         {
-                            // VALIDACIÓN 1: Verificar que campos obligatorios no sean null o vacíos
-                            if (string.IsNullOrWhiteSpace(registro.Nomina))
+                            try
                             {
-                                _logger.LogWarning($"Registro con Nómina vacía o null");
-                                erroresConversion++;
-                                continue;
-                            }
-
-                            if (string.IsNullOrWhiteSpace(registro.Desde))
-                            {
-                                _logger.LogWarning($"Fecha Desde vacía para nómina {registro.Nomina}");
-                                erroresConversion++;
-                                continue;
-                            }
-
-                            if (string.IsNullOrWhiteSpace(registro.Hasta))
-                            {
-                                _logger.LogWarning($"Fecha Hasta vacía para nómina {registro.Nomina}");
-                                erroresConversion++;
-                                continue;
-                            }
-
-                            if (string.IsNullOrWhiteSpace(registro.ClAbPre))
-                            {
-                                _logger.LogWarning($"ClAbPre vacío para nómina {registro.Nomina}");
-                                erroresConversion++;
-                                continue;
-                            }
-
-                            // CONVERSIÓN: Nomina a int
-                            if (!int.TryParse(registro.Nomina.Trim(), out int nomina))
-                            {
-                                _logger.LogWarning($"Nómina inválida: {registro.Nomina}");
-                                erroresConversion++;
-                                continue;
-                            }
-
-                            // CONVERSIÓN: Desde a DateOnly (soportar múltiples formatos)
-                            DateOnly desde;
-                            if (!DateOnly.TryParseExact(registro.Desde.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out desde))
-                            {
-                                if (!DateOnly.TryParse(registro.Desde.Trim(), out desde))
+                                // Validaciones
+                                if (string.IsNullOrWhiteSpace(registro.Nomina) ||
+                                    string.IsNullOrWhiteSpace(registro.Desde) ||
+                                    string.IsNullOrWhiteSpace(registro.Hasta) ||
+                                    string.IsNullOrWhiteSpace(registro.ClAbPre))
                                 {
-                                    _logger.LogWarning($"Fecha Desde inválida para nómina {nomina}: {registro.Desde}");
                                     erroresConversion++;
                                     continue;
                                 }
-                            }
 
-                            // CONVERSIÓN: Hasta a DateOnly (soportar múltiples formatos)
-                            DateOnly hasta;
-                            if (!DateOnly.TryParseExact(registro.Hasta.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out hasta))
-                            {
-                                if (!DateOnly.TryParse(registro.Hasta.Trim(), out hasta))
+                                // Conversiones
+                                if (!int.TryParse(registro.Nomina.Trim(), out int nomina))
                                 {
-                                    _logger.LogWarning($"Fecha Hasta inválida para nómina {nomina}: {registro.Hasta}");
+                                    _logger.LogWarning($"Nómina inválida: {registro.Nomina}");
                                     erroresConversion++;
                                     continue;
                                 }
-                            }
 
-                            // CONVERSIÓN: ClAbPre a int
-                            if (!int.TryParse(registro.ClAbPre.Trim(), out int clAbPre))
-                            {
-                                _logger.LogWarning($"ClAbPre inválido para nómina {nomina}: {registro.ClAbPre}");
-                                erroresConversion++;
-                                continue;
-                            }
-
-                            // VERIFICAR DUPLICADOS: Combinación única
-                            var existente = await context.PermisosEIncapacidadesSAP
-                                .AsNoTracking()
-                                .AnyAsync(p =>
-                                    p.Nomina == nomina &&
-                                    p.Desde == desde &&
-                                    p.Hasta == hasta &&
-                                    p.ClAbPre == clAbPre &&
-                                    p.EsRegistroManual == false); // Solo verificar contra registros de SAP
-
-                            if (existente)
-                            {
-                                registrosOmitidos++;
-                                continue;
-                            }
-
-                            // VERIFICAR: Que el empleado exista en Users
-                            var empleadoExiste = await context.Users
-                                .AsNoTracking()
-                                .AnyAsync(u => u.Nomina == nomina);
-
-                            if (!empleadoExiste)
-                            {
-                                _logger.LogWarning($"Empleado con nómina {nomina} no encontrado en Users");
-                                erroresConversion++;
-                                continue;
-                            }
-
-                            // CONVERSIÓN: Dias (remover decimales, convertir a int)
-                            double? dias = null;
-                            if (!string.IsNullOrWhiteSpace(registro.Dias))
-                            {
-                                // Remover ".00" y convertir
-                                string diasLimpio = registro.Dias.Trim().Replace(".00", "").Replace(",00", "");
-                                if (double.TryParse(diasLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diasParsed))
+                                DateOnly desde;
+                                if (!DateOnly.TryParseExact(registro.Desde.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out desde))
                                 {
-                                    dias = Math.Floor(diasParsed); // Convertir a entero (quitar decimales)
+                                    if (!DateOnly.TryParse(registro.Desde.Trim(), out desde))
+                                    {
+                                        erroresConversion++;
+                                        continue;
+                                    }
                                 }
-                            }
 
-                            // CONVERSIÓN: DiaNat (remover decimales, convertir a int)
-                            double? diaNat = null;
-                            if (!string.IsNullOrWhiteSpace(registro.DiaNat))
-                            {
-                                string diaNatLimpio = registro.DiaNat.Trim().Replace(".00", "").Replace(",00", "");
-                                if (double.TryParse(diaNatLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diaNatParsed))
+                                DateOnly hasta;
+                                if (!DateOnly.TryParseExact(registro.Hasta.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out hasta))
                                 {
-                                    diaNat = Math.Floor(diaNatParsed); // Convertir a entero
+                                    if (!DateOnly.TryParse(registro.Hasta.Trim(), out hasta))
+                                    {
+                                        erroresConversion++;
+                                        continue;
+                                    }
                                 }
+
+                                if (!int.TryParse(registro.ClAbPre.Trim(), out int clAbPre))
+                                {
+                                    erroresConversion++;
+                                    continue;
+                                }
+
+                                // Verificar duplicado
+                                var existente = await context.PermisosEIncapacidadesSAP
+                                    .AsNoTracking()
+                                    .AnyAsync(p =>
+                                        p.Nomina == nomina &&
+                                        p.Desde == desde &&
+                                        p.Hasta == hasta &&
+                                        p.ClAbPre == clAbPre &&
+                                        p.EsRegistroManual == false);
+
+                                if (existente)
+                                {
+                                    registrosOmitidos++;
+                                    continue;
+                                }
+
+                                // Verificar que el empleado exista
+                                var empleadoExiste = await context.Users
+                                    .AsNoTracking()
+                                    .AnyAsync(u => u.Nomina == nomina);
+
+                                if (!empleadoExiste)
+                                {
+                                    _logger.LogWarning($"Empleado con nómina {nomina} no encontrado en Users");
+                                    erroresConversion++;
+                                    continue;
+                                }
+
+                                // Convertir Dias y DiaNat
+                                double? dias = null;
+                                if (!string.IsNullOrWhiteSpace(registro.Dias))
+                                {
+                                    string diasLimpio = registro.Dias.Trim().Replace(".00", "").Replace(",00", "");
+                                    if (double.TryParse(diasLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diasParsed))
+                                    {
+                                        dias = Math.Floor(diasParsed);
+                                    }
+                                }
+
+                                double? diaNat = null;
+                                if (!string.IsNullOrWhiteSpace(registro.DiaNat))
+                                {
+                                    string diaNatLimpio = registro.DiaNat.Trim().Replace(".00", "").Replace(",00", "");
+                                    if (double.TryParse(diaNatLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diaNatParsed))
+                                    {
+                                        diaNat = Math.Floor(diaNatParsed);
+                                    }
+                                }
+
+                                // Crear nuevo registro
+                                var nuevoPermiso = new PermisosEIncapacidadesSAP
+                                {
+                                    Nomina = nomina,
+                                    Nombre = !string.IsNullOrWhiteSpace(registro.Nombre) ? registro.Nombre.Trim() : string.Empty,
+                                    Posicion = !string.IsNullOrWhiteSpace(registro.Posicion) ? registro.Posicion.Trim() : null,
+                                    Desde = desde,
+                                    Hasta = hasta,
+                                    ClAbPre = clAbPre,
+                                    ClaseAbsentismo = !string.IsNullOrWhiteSpace(registro.ClaseAbsentismo) ? registro.ClaseAbsentismo.Trim() : null,
+                                    Dias = dias,
+                                    DiaNat = diaNat,
+                                    Observaciones = null,
+                                    EsRegistroManual = false,
+                                    FechaRegistro = DateTime.Now,
+                                    UsuarioRegistraId = null,
+                                    EstadoSolicitud = "Aprobado",
+                                    DelegadoSolicitanteId = null,
+                                    JefeAprobadorId = null,
+                                    MotivoRechazo = null,
+                                    FechaSolicitud = null,
+                                    FechaRespuesta = null
+                                };
+
+                                context.PermisosEIncapacidadesSAP.Add(nuevoPermiso);
+                                registrosInsertados++;
                             }
-
-                            // CREAR NUEVO REGISTRO en PermisosEIncapacidadesSAP
-                            var nuevoPermiso = new PermisosEIncapacidadesSAP
+                            catch (Exception ex)
                             {
-                                Nomina = nomina,
-                                Nombre = !string.IsNullOrWhiteSpace(registro.Nombre) ? registro.Nombre.Trim() : string.Empty,
-                                Posicion = !string.IsNullOrWhiteSpace(registro.Posicion) ? registro.Posicion.Trim() : null,
-                                Desde = desde,
-                                Hasta = hasta,
-                                ClAbPre = clAbPre,
-                                ClaseAbsentismo = !string.IsNullOrWhiteSpace(registro.ClaseAbsentismo) ? registro.ClaseAbsentismo.Trim() : null,
-                                Dias = dias,
-                                DiaNat = diaNat,
-                                Observaciones = null,
-                                EsRegistroManual = false, // Viene de SAP
-                                FechaRegistro = DateTime.Now,
-                                UsuarioRegistraId = null,
-                                EstadoSolicitud = "Aprobado", // Pre-aprobado
-                                DelegadoSolicitanteId = null,
-                                JefeAprobadorId = null,
-                                MotivoRechazo = null,
-                                FechaSolicitud = null,
-                                FechaRespuesta = null
-                            };
-
-                            context.PermisosEIncapacidadesSAP.Add(nuevoPermiso);
-                            registrosInsertados++;
+                                _logger.LogError(ex, $"Error procesando registro Nómina: {registro.Nomina ?? "NULL"}");
+                                erroresConversion++;
+                            }
                         }
-                        catch (Exception ex)
+
+                        // Guardar cada lote
+                        if (registrosInsertados > 0)
                         {
-                            _logger.LogError(ex, $"Error procesando registro Nómina: {registro.Nomina ?? "NULL"}");
-                            erroresConversion++;
+                            try
+                            {
+                                await context.SaveChangesAsync();
+                                _logger.LogInformation($"Lote guardado con {registrosInsertados} registros");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Error al guardar lote en PermisosEIncapacidadesSAP");
+                                throw;
+                            }
                         }
                     }
 
-                    // GUARDAR CAMBIOS si hay registros nuevos
+                    // Limpiar tabla SOLO si se insertaron registros exitosamente
                     if (registrosInsertados > 0)
                     {
-                        await context.SaveChangesAsync();
+                        try
+                        {
+                            var filasAfectadas = await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE PermisosEIncapacidadesSAP_Actualizar");
+                            _logger.LogInformation($"Tabla PermisosEIncapacidadesSAP_Actualizar limpiada. Filas afectadas: {filasAfectadas}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error al limpiar tabla PermisosEIncapacidadesSAP_Actualizar - los registros se procesarán nuevamente en la próxima ejecución");
+                        }
                     }
 
                     _logger.LogInformation(
@@ -254,7 +262,8 @@ namespace tiempo_libre.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error al sincronizar permisos desde PermisosEIncapacidadesSAP_Actualizar");
+                    _logger.LogError(ex, "Error crítico al sincronizar permisos desde PermisosEIncapacidadesSAP_Actualizar");
+                    throw;
                 }
             }
         }

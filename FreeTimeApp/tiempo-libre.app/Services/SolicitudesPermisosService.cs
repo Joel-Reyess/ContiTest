@@ -517,5 +517,36 @@ namespace tiempo_libre.Services
                 return new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}");
             }
         }
+
+        public async Task<ApiResponse<ConsultarSolicitudesResponse>> ObtenerHistorialPorEmpleadoAsync(
+    int nominaEmpleado,
+    int? anio = null)
+        {
+            try
+            {
+                var request = new ConsultarSolicitudesRequest
+                {
+                    NominaEmpleado = nominaEmpleado,
+                    Estado = null // Traer todas (pendientes, aprobadas, rechazadas)
+                };
+
+                if (anio.HasValue)
+                {
+                    var fechaInicio = new DateOnly(anio.Value, 1, 1).ToString("yyyy-MM-dd");
+                    var fechaFin = new DateOnly(anio.Value, 12, 31).ToString("yyyy-MM-dd");
+                    request.FechaInicio = fechaInicio;
+                    request.FechaFin = fechaFin;
+                }
+
+                return await ConsultarSolicitudesAsync(request);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener historial de permisos");
+                return new ApiResponse<ConsultarSolicitudesResponse>(
+                    false, null, $"Error inesperado: {ex.Message}");
+            }
+        }
+
     }
 }

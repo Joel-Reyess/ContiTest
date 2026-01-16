@@ -16,15 +16,16 @@ import { Button } from "../ui/button";
 import { ReprogramacionService } from "@/services/reprogramacionService";
 import { festivosTrabajadosService, type SolicitudFestivoTrabajado } from "@/services/festivosTrabajadosService";
 import { useAuth } from "@/hooks/useAuth";
-import type { SolicitudReprogramacion, UsuarioInfoDto } from "@/interfaces/Api.interface";
+import type { SolicitudReprogramacion, UsuarioInfoDto, SolicitudPermisoDto } from "@/interfaces/Api.interface";
 import { exportarSolicitudesExcel, exportarSolicitudesCSV } from "@/utils/solicitudesExport";
 import { SolicitudesPDFDownloadLink } from "./SolicitudesPDF";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { PeriodOptions } from "@/interfaces/Calendar.interface";
 import { UserRole } from "@/interfaces/User.interface";
+import { solicitudesPermisosService } from "@/services/solicitudesPermisosService";
 
 export type RequestStatus = "approved" | "rejected" | "pending";
-export type RequestType = "day_exchange" | "holiday_worked";
+export type RequestType = "day_exchange" | "holiday_worked" | "permission_request";
 
 export interface VacationRequest {
     id: string;
@@ -97,6 +98,28 @@ const mapFestivoToRequest = (
     };
 };
 
+const mapPermisoToRequest = (solicitud: SolicitudPermisoDto): VacationRequest => {
+    const status: RequestStatus =
+        solicitud.estado === 'Aprobada' ? 'approved' :
+            solicitud.estado === 'Rechazada' ? 'rejected' : 'pending';
+
+    return {
+        id: solicitud.id.toString(),
+        type: "permission_request",
+        requestDate: solicitud.fechaSolicitud.toString(),
+        responseDate: solicitud.fechaRespuesta?.toString(),
+        status,
+        rejectionReason: solicitud.motivoRechazo,
+        requestedDay: solicitud.fechaInicio,
+        dayToGive: solicitud.fechaFin,
+        employeeName: solicitud.nombreEmpleado,
+        employeeArea: undefined,
+        employeeGroup: undefined,
+        requester: solicitud.delegadoNombre,
+        reviewer: solicitud.jefeAreaNombre || null
+    };
+};
+
 const MyRequests = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -134,6 +157,13 @@ const MyRequests = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const [permisosStats, setPermisosStats] = useState<{
+        total: number;
+        pendientes: number;
+        aprobadas: number;
+        rechazadas: number;
+    }>({ total: 0, pendientes: 0, aprobadas: 0, rechazadas: 0 });
+
     // Estados existentes
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
@@ -156,6 +186,7 @@ const MyRequests = () => {
 
                 let reprogramacionesRequests: VacationRequest[] = [];
                 let festivosRequests: VacationRequest[] = [];
+                let permisosRequests: VacationRequest[] = [];
 
                 // Cargar reprogramaciones
                 try {
@@ -194,8 +225,23 @@ const MyRequests = () => {
                     // No hacer throw, continuar con lo que tengamos
                 }
 
+                // Cargar solicitudes de permisos
+                try {
+                    const targetNomina = currentEmployee?.nomina || user?.nomina;
+                    if (targetNomina) {
+                        const historialPermisos = await solicitudesPermisosService.obtenerHistorialPorNomina(
+                            parseInt(targetNomina, 10),
+                            yearFilter
+                        );
+                        permisosRequests = (historialPermisos?.solicitudes ?? []).map(mapPermisoToRequest);
+                        console.log('✅ Historial permisos:', historialPermisos);
+                    }
+                } catch (err) {
+                    console.error('Error al cargar historial de permisos:', err);
+                }
+
                 // Combinar y ordenar todas las solicitudes
-                const allRequests = [...reprogramacionesRequests, ...festivosRequests];
+                const allRequests = [...reprogramacionesRequests, ...festivosRequests, ...permisosRequests];
                 allRequests.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
                 console.log('✅ Total solicitudes cargadas:', allRequests.length);
@@ -261,7 +307,7 @@ const MyRequests = () => {
         // El componente PDFDownloadLink maneja la descarga automáticamente
         setExportOpen(false);
     };
-
+    
     return (
         <div className="flex flex-col min-h-screen w-full bg-white p-12 max-w-[2000px] mx-auto">
             <header className="flex justify-between">
@@ -319,6 +365,7 @@ const MyRequests = () => {
                                     <option value="all">Todos</option>
                                     <option value="day_exchange">Reprogramación de Vacaciones</option>
                                     <option value="holiday_worked">Festivo Trabajado</option>
+                                    <option value="permission_request">Permiso/Incapacidad</option>
                                 </select>
                             </div>
 
@@ -523,6 +570,30 @@ const MyRequests = () => {
                                                     </div>
                                                 </div>
                                             )}
+                                        {request.type === "permission_request" &&
+                                            request.requestedDay &&
+                                            request.dayToGive && (
+                                                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div>
+                                                            <p className="text-xs font-medium text-purple-800 mb-1">
+                                                                Fecha Inicio:
+                                                            </p>
+                                                            <p className="text-sm text-purple-700 font-medium">
+                                                                {formatDateOnly(request.requestedDay)}
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-medium text-purple-800 mb-1">
+                                                                Fecha Fin:
+                                                            </p>
+                                                            <p className="text-sm text-purple-700 font-medium">
+                                                                {formatDateOnly(request.dayToGive)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                     </div>
 
                                     {/* Motivo de rechazo */}
@@ -659,5 +730,7 @@ export const getRequestTypeText = (type: RequestType) => {
             return "Reprogramación de Vacaciones";
         case "holiday_worked":
             return "Festivo Trabajado";
+        case "permission_request":
+            return "Permiso/Incapacidad";
     }
 };

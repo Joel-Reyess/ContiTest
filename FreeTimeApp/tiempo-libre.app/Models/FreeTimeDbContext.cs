@@ -1011,6 +1011,8 @@ public partial class FreeTimeDbContext : DbContext
                 .IsRequired();
             entity.Property(e => e.Nombre).HasMaxLength(200);
             entity.Property(e => e.Regla).HasMaxLength(50);
+            entity.Property(e => e.UnidadOrganizativa).HasMaxLength(150);  // ← Agregar
+            entity.Property(e => e.EncargadoRegistro).HasMaxLength(100);
             entity.HasIndex(e => e.Nomina);
         });
 

@@ -1036,3 +1036,30 @@ export interface SolicitudPermutaResponse {
     empleadoDestino: EmpleadoPermutaInfo;
     fechaPermuta: string;
 }
+
+// ============================================================================
+// PERMISOS E INCAPACIDADES INTERFACES
+// ============================================================================
+
+export interface SolicitudPermisoDto {
+    id: number;
+    nominaEmpleado: number;
+    nombreEmpleado: string;
+    clAbPre: string;
+    claveVisualizacion: string;
+    descripcionPermiso: string;
+    fechaInicio: string;
+    fechaFin: string;
+    observaciones?: string;
+    estado: 'Pendiente' | 'Aprobada' | 'Rechazada';
+    motivoRechazo?: string;
+    fechaSolicitud: Date;
+    fechaRespuesta?: Date;
+    delegadoNombre: string;
+    jefeAreaNombre?: string;
+}
+
+export interface ConsultarSolicitudesPermisosResponse {
+    totalRegistros: number;
+    solicitudes: SolicitudPermisoDto[];
+}

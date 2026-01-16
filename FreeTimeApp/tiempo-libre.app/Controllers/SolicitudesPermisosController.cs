@@ -311,5 +311,29 @@ namespace tiempo_libre.Controllers
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }
+
+        [HttpGet("historial/{nomina}")]
+        [Authorize]
+        public async Task<IActionResult> ObtenerHistorialEmpleado(
+        [FromRoute] int nomina,
+        [FromQuery] int? anio = null)
+        {
+            try
+            {
+                var response = await _solicitudesService.ObtenerHistorialPorEmpleadoAsync(nomina, anio);
+
+                if (!response.Success)
+                {
+                    return BadRequest(response);
+                }
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener historial de nómina {Nomina}", nomina);
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
     }
 }

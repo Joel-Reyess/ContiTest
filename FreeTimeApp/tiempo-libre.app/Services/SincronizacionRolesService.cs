@@ -31,12 +31,36 @@ namespace tiempo_libre.Services
             foreach (var rolSAP in rolesEmpleadosSAP)
             {
                 // Actualizar Empleados
+                // Actualizar Empleados
                 var empleado = await _context.Empleados
                     .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
-                if (empleado != null && empleado.Rol != rolSAP.Regla)
+
+                if (empleado != null)
                 {
-                    empleado.Rol = rolSAP.Regla;
-                    registrosActualizados++;
+                    bool cambios = false;
+
+                    if (empleado.Rol != rolSAP.Regla)
+                    {
+                        empleado.Rol = rolSAP.Regla;
+                        cambios = true;
+                    }
+
+                    if (empleado.UnidadOrganizativa != rolSAP.UnidadOrganizativa)
+                    {
+                        empleado.UnidadOrganizativa = rolSAP.UnidadOrganizativa;
+                        cambios = true;
+                    }
+
+                    if (empleado.EncargadoRegistro != rolSAP.EncargadoRegistro)
+                    {
+                        empleado.EncargadoRegistro = rolSAP.EncargadoRegistro;
+                        cambios = true;
+                    }
+
+                    if (cambios)
+                    {
+                        registrosActualizados++;
+                    }
                 }
 
                 // Actualizar Users
