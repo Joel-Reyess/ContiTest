@@ -15,7 +15,7 @@ namespace tiempo_libre.Services
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<SincronizacionRolesBackgroundService> _logger;
-        private readonly TimeSpan _intervalo = TimeSpan.FromMinutes(6); // Se ejecuta cada 6 horas
+        private readonly TimeSpan _intervalo = TimeSpan.FromMinutes(6);
 
         public SincronizacionRolesBackgroundService(
             IServiceProvider serviceProvider,
@@ -83,10 +83,32 @@ namespace tiempo_libre.Services
                         var empleado = await context.Empleados
                             .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
 
-                        if (empleado != null && empleado.Rol != rolSAP.Regla)
+                        if (empleado != null)
                         {
-                            empleado.Rol = rolSAP.Regla;
-                            registrosActualizados++;
+                            bool cambios = false;
+
+                            if (empleado.Rol != rolSAP.Regla && !string.IsNullOrEmpty(rolSAP.Regla))
+                            {
+                                empleado.Rol = rolSAP.Regla;
+                                cambios = true;
+                            }
+
+                            if (empleado.UnidadOrganizativa != rolSAP.UnidadOrganizativa && !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
+                            {
+                                empleado.UnidadOrganizativa = rolSAP.UnidadOrganizativa;
+                                cambios = true;
+                            }
+
+                            if (empleado.EncargadoRegistro != rolSAP.EncargadoRegistro && !string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
+                            {
+                                empleado.EncargadoRegistro = rolSAP.EncargadoRegistro;
+                                cambios = true;
+                            }
+
+                            if (cambios)
+                            {
+                                registrosActualizados++;
+                            }
                         }
 
                         // AGREGAR ESTO: Actualizar también en Users
@@ -96,11 +118,12 @@ namespace tiempo_libre.Services
                         if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
                         {
                             var grupo = await context.Grupos
-                                .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla && g.AreaId == user.AreaId);
+                                .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla);
 
-                            if (grupo != null && user.GrupoId != grupo.GrupoId)
+                            if (grupo != null && (user.GrupoId != grupo.GrupoId || user.AreaId != grupo.AreaId))
                             {
                                 user.GrupoId = grupo.GrupoId;
+                                user.AreaId = grupo.AreaId;
                                 user.UpdatedAt = DateTime.UtcNow;
                                 registrosActualizados++;
                             }

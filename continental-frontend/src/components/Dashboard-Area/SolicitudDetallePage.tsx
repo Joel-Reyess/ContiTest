@@ -43,6 +43,8 @@ import type { Solicitud } from '../../interfaces/Solicitudes.interface'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import RejectModal from './RejectModal'
+import ApproveModal from './ApproveModal'
 
 type AreaOption = { id: string; name: string; grupos?: any[]; jefeFullName?: string };
 
@@ -56,6 +58,10 @@ export default function SolicitudDetallePage() {
     const [processingAction, setProcessingAction] = useState(false)
     const [selectedAreaId, setSelectedAreaId] = useState<string>('') // para calendario por Área
     const [areaOptions, setAreaOptions] = useState<AreaOption[]>([])
+    const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<Solicitud | null>(null)
+    const [selectedSolicitudForApprove, setSelectedSolicitudForApprove] = useState<Solicitud | null>(null)
+    const [showRejectModal, setShowRejectModal] = useState(false)
+    const [showApproveModal, setShowApproveModal] = useState(false)
 
     // Opciones de Área base desde el usuario o desde la solicitud
     useEffect(() => {
@@ -167,12 +173,12 @@ export default function SolicitudDetallePage() {
         }
     }, [solicitud, areaOptions, selectedAreaId])
 
-    const handleAprobar = async () => {
-        if (!solicitud) return
+    const handleApproveConfirm = async () => {
+        if (!selectedSolicitudForApprove) return
 
         setProcessingAction(true)
         try {
-            await solicitudesService.aprobarSolicitud(solicitud.id)
+            await solicitudesService.aprobarSolicitud(selectedSolicitudForApprove.id)
             toast.success('Solicitud aprobada correctamente')
             navigate(-1)
         } catch (error) {
@@ -180,15 +186,17 @@ export default function SolicitudDetallePage() {
             toast.error('Error al aprobar la solicitud')
         } finally {
             setProcessingAction(false)
+            setShowApproveModal(false)
+            setSelectedSolicitudForApprove(null)
         }
     }
 
-    const handleRechazar = async (motivo: string) => {
-        if (!solicitud) return
+    const handleRejectConfirm = async (motivo: string) => {
+        if (!selectedSolicitudForReject) return
 
         setProcessingAction(true)
         try {
-            await solicitudesService.rechazarSolicitud(solicitud.id, motivo)
+            await solicitudesService.rechazarSolicitud(selectedSolicitudForReject.id, motivo)
             toast.success('Solicitud rechazada correctamente')
             navigate(-1)
         } catch (error) {
@@ -196,6 +204,8 @@ export default function SolicitudDetallePage() {
             toast.error('Error al rechazar la solicitud')
         } finally {
             setProcessingAction(false)
+            setShowRejectModal(false)
+            setSelectedSolicitudForReject(null)
         }
     }
 
@@ -280,6 +290,34 @@ export default function SolicitudDetallePage() {
 
                 {/* Información de la solicitud */}
                 <div className="bg-white rounded-lg shadow-sm border p-6">
+                    {/* Botones de acción */}
+                    {solicitud.estadoSolicitud === 'Pendiente' && (
+                        <div className="mt-6 pt-6 border-t flex gap-4">
+                            <Button
+                                onClick={() => {
+                                    setSelectedSolicitudForApprove(solicitud)
+                                    setShowApproveModal(true)
+                                }}
+                                disabled={processingAction}
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                                <CheckCircle className="w-4 h-4 mr-2" />
+                                Aprobar Solicitud
+                            </Button>
+                            <Button
+                                onClick={() => {
+                                    setSelectedSolicitudForReject(solicitud)
+                                    setShowRejectModal(true)
+                                }}
+                                disabled={processingAction}
+                                variant="outline"
+                                className="border-red-600 text-red-600 hover:bg-red-50"
+                            >
+                                <XCircle className="w-4 h-4 mr-2" />
+                                Rechazar Solicitud
+                            </Button>
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {/* Información del empleado */}
                         <div className="space-y-4">
@@ -383,30 +421,30 @@ export default function SolicitudDetallePage() {
                     </div>
 
                     {/* Botones de acción */}
-                    {solicitud.estadoSolicitud === 'Pendiente' && solicitud.puedeAprobar && (
-                        <div className="mt-6 pt-6 border-t flex gap-4">
-                            <Button
-                                onClick={handleAprobar}
-                                disabled={processingAction}
-                                className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                                <CheckCircle className="w-4 h-4 mr-2" />
-                                {processingAction ? 'Aprobando...' : 'Aprobar Solicitud'}
-                            </Button>
-                            <Button
-                                onClick={() => {
-                                    const motivo = prompt('Ingrese el motivo del rechazo:')
-                                    if (motivo) handleRechazar(motivo)
-                                }}
-                                disabled={processingAction}
-                                variant="outline"
-                                className="border-red-600 text-red-600 hover:bg-red-50"
-                            >
-                                <XCircle className="w-4 h-4 mr-2" />
-                                {processingAction ? 'Rechazando...' : 'Rechazar Solicitud'}
-                            </Button>
-                        </div>
-                    )}
+                    {/*{solicitud.estadoSolicitud === 'Pendiente' && solicitud.puedeAprobar && (*/}
+                    {/*    <div className="mt-6 pt-6 border-t flex gap-4">*/}
+                    {/*        <Button*/}
+                    {/*            onClick={handleAprobar}*/}
+                    {/*            disabled={processingAction}*/}
+                    {/*            className="bg-green-600 hover:bg-green-700 text-white"*/}
+                    {/*        >*/}
+                    {/*            <CheckCircle className="w-4 h-4 mr-2" />*/}
+                    {/*            {processingAction ? 'Aprobando...' : 'Aprobar Solicitud'}*/}
+                    {/*        </Button>*/}
+                    {/*        <Button*/}
+                    {/*            onClick={() => {*/}
+                    {/*                const motivo = prompt('Ingrese el motivo del rechazo:')*/}
+                    {/*                if (motivo) handleRechazar(motivo)*/}
+                    {/*            }}*/}
+                    {/*            disabled={processingAction}*/}
+                    {/*            variant="outline"*/}
+                    {/*            className="border-red-600 text-red-600 hover:bg-red-50"*/}
+                    {/*        >*/}
+                    {/*            <XCircle className="w-4 h-4 mr-2" />*/}
+                    {/*            {processingAction ? 'Rechazando...' : 'Rechazar Solicitud'}*/}
+                    {/*        </Button>*/}
+                    {/*    </div>*/}
+                    {/*)}*/}
                 </div>
 
                 {/* Calendario de Área (mensual/semanal/diario) para evaluar factibilidad */}
@@ -435,6 +473,34 @@ export default function SolicitudDetallePage() {
                     </div>
                 )}
             </div>
+            {selectedSolicitudForReject && (
+                <RejectModal
+                    show={showRejectModal}
+                    onClose={() => {
+                        setShowRejectModal(false)
+                        setSelectedSolicitudForReject(null)
+                    }}
+                    onConfirm={handleRejectConfirm}
+                    solicitudId={selectedSolicitudForReject.id.toString()}
+                    nombreEmpleado={selectedSolicitudForReject.nombreEmpleado}
+                />
+            )}
+
+            {selectedSolicitudForApprove && (
+                <ApproveModal
+                    show={showApproveModal}
+                    onClose={() => {
+                        setShowApproveModal(false)
+                        setSelectedSolicitudForApprove(null)
+                    }}
+                    onConfirm={handleApproveConfirm}
+                    solicitudId={selectedSolicitudForApprove.id.toString()}
+                    nombreEmpleado={selectedSolicitudForApprove.nombreEmpleado}
+                    tipoSolicitud="Reprogramación"
+                    fechaActual={selectedSolicitudForApprove.fechaOriginal}
+                    fechaReprogramacion={selectedSolicitudForApprove.fechaNueva}
+                />
+            )}
         </div>
     )
 }

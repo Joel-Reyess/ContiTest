@@ -213,27 +213,7 @@ export function TablaSolicitudes() {
                     {/* Solo mostrar botones de aprobar/rechazar si la solicitud está pendiente */}
                     {row.estadoSolicitud === 'Pendiente' && (
                         <div className="flex items-center gap-2 mb-2">
-                            <button
-                                type="button"
-                                onClick={() => handleAprobar(row.id)}
-                                className="inline-flex h-7 max-w-[60px] items-center justify-center
-                                    rounded-lg bg-emerald-500 px-3 text-xs font-semibold text-white
-                                    shadow-sm hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-300 cursor-pointer
-                                "
-                            >
-                                Aprobar
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => handleRechazar(row.id)}
-                                className="inline-flex h-7 max-w-[60px] items-center justify-center
-                                    rounded-lg border border-rose-500 bg-white px-3 text-xs font-semibold text-rose-600
-                                    hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-200 cursor-pointer
-                                "
-                            >
-                                Rechazar
-                            </button>
+                            
                         </div>
                     )}
 

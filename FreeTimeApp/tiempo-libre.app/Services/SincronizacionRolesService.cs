@@ -70,12 +70,13 @@ namespace tiempo_libre.Services
                 if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
                 {
                     var grupo = await _context.Grupos
-                        .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla && g.AreaId == user.AreaId);
+                        .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla);
 
-                    if (grupo != null && user.GrupoId != grupo.GrupoId)
+                    if (grupo != null && (user.GrupoId != grupo.GrupoId || user.AreaId != grupo.AreaId))
                     {
                         var grupoAnterior = user.GrupoId ?? 0;
                         user.GrupoId = grupo.GrupoId;
+                        user.AreaId = grupo.AreaId;
                         user.UpdatedAt = DateTime.UtcNow;
                         registrosActualizados++;
 

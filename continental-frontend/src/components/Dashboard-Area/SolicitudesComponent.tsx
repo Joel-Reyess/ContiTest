@@ -33,7 +33,7 @@ import { useVacationConfig } from '../../hooks/useVacationConfig'
 import { TurnosActuales } from './TurnosActuales'
 import { TablaSolicitudes } from './TablaSolicitudes'
 import { SolicitudesPermisos } from './SolicitudesPermisos';
-
+import { TablaFestivosTrabajados } from './TablaFestivosTrabajados';
 function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
     const getPeriodoStatus = (periodo: 'ProgramacionAnual' | 'Reprogramacion') => {
         if (periodoActual === periodo) {
@@ -118,6 +118,7 @@ const SolicitudesComponent: React.FC = () => {
                 {config?.periodoActual === 'Reprogramacion' && (
                     <>
                         <TablaSolicitudes />
+                        <TablaFestivosTrabajados />
                         <SolicitudesPermisos />
                     </>
                 )}

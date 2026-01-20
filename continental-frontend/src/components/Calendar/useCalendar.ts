@@ -89,6 +89,9 @@ export const useCalendar = ({groupId, userId}: {groupId?: number; userId?: numbe
                                 eventType = "holiday"; // Naranja para reprogramación
                             } else if (tipoVacacion === "festivotrabajado") {
                                 eventType = "holiday"; // Naranja para festivos trabajados
+                                razon = "Festivo trabajado intercambiado";
+                                incidencia = entry.incidencia;
+                                tipoIncid = tipoVacacion;
                             } else {
                                 eventType = "holiday-boss"; // Default azul
                             }
@@ -152,6 +155,8 @@ export const useCalendar = ({groupId, userId}: {groupId?: number; userId?: numbe
                                 // El componente Calendar puede usar esta info para mostrar indicadores visuales
                             }
                         }
+
+
 
                         return {
                             day,
