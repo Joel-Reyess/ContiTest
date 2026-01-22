@@ -182,13 +182,20 @@ const WeeklyRoles = () => {
     }, [selectedGroup, weekStart]);
 
     // Cargar empleados del grupo seleccionado
+    // Cargar empleados del grupo seleccionado
     useEffect(() => {
         const loadEmployees = async () => {
             if (!selectedGroup) return;
-            const cached = employeesCache.get(parseInt(selectedGroup, 10));
-            if (cached) {
-                setGroupEmployees(cached);
-                return;
+
+            // ✅ CRÍTICO: Si es jefe o ingeniero, NO usar caché
+            const shouldUseCache = !isBoss && !isIndustrial;
+
+            if (shouldUseCache) {
+                const cached = employeesCache.get(parseInt(selectedGroup, 10));
+                if (cached) {
+                    setGroupEmployees(cached);
+                    return;
+                }
             }
 
             setLoadingEmployees(true);
@@ -197,19 +204,26 @@ const WeeklyRoles = () => {
                     GrupoId: parseInt(selectedGroup, 10),
                     PageSize: 500,
                 });
+
                 const emps = (resp.usuarios || []).map((u) => ({
                     id: u.id,
                     nomina: u.nomina?.toString() || u.username || "",
                     fullName: u.fullName || "",
                 }));
+
                 emps.sort((a, b) => {
                     const na = parseInt(a.nomina, 10);
                     const nb = parseInt(b.nomina, 10);
                     if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
                     return a.nomina.localeCompare(b.nomina);
                 });
+
                 setGroupEmployees(emps);
-                employeesCache.set(parseInt(selectedGroup, 10), emps);
+
+                // Solo cachear si no es jefe ni ingeniero
+                if (shouldUseCache) {
+                    employeesCache.set(parseInt(selectedGroup, 10), emps);
+                }
             } catch (error) {
                 console.error("Error cargando empleados del grupo", error);
                 toast.error("No se pudieron cargar los empleados del grupo.");
@@ -218,8 +232,9 @@ const WeeklyRoles = () => {
                 setLoadingEmployees(false);
             }
         };
+
         loadEmployees();
-    }, [selectedGroup]);
+    }, [selectedGroup, isBoss, isIndustrial]);
 
     // Cargar empleados del grupo seleccionado
 useEffect(() => {

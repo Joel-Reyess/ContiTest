@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+Ôªøimport { useEffect, useState, useCallback, useRef } from 'react'
 import { Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { DataTable, type Column } from '../ui/data-table'
 import RejectModal from './RejectModal'
 import ApproveModal from './ApproveModal'
-import { festivosTrabajadosService, type SolicitudFestivoDto } from '../../services/festivosTrabajadosService'
+import { festivosTrabajadosService, type SolicitudFestivoTrabajado } from '../../services/festivosTrabajadosService'
 import { useAuth } from '../../hooks/useAuth'
 import { userService } from '../../services/userService'
 import { type User } from '@/interfaces/User.interface'
@@ -13,15 +13,15 @@ import { toast } from 'sonner'
 
 export function TablaFestivosTrabajados() {
     const { user } = useAuth()
-    const [solicitudes, setSolicitudes] = useState<SolicitudFestivoDto[]>([])
+    const [solicitudes, setSolicitudes] = useState<SolicitudFestivoTrabajado[]>([])
     const [loading, setLoading] = useState(true)
     const [userData, setUserData] = useState<User | null>(null)
     const [loadingUserData, setLoadingUserData] = useState(false)
     const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null)
     const [estadoFilter, setEstadoFilter] = useState<string>('Pendiente')
-    const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<SolicitudFestivoDto | null>(null)
+    const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<SolicitudFestivoTrabajado | null>(null)
     const [showApproveModal, setShowApproveModal] = useState(false)
-    const [selectedSolicitudForApprove, setSelectedSolicitudForApprove] = useState<SolicitudFestivoDto | null>(null)
+    const [selectedSolicitudForApprove, setSelectedSolicitudForApprove] = useState<SolicitudFestivoTrabajado | null>(null)
     const [showRejectModal, setShowRejectModal] = useState(false)
     const [query, setQuery] = useState('')
     const lastFetchedFiltersRef = useRef<string>('')
@@ -59,10 +59,12 @@ export function TablaFestivosTrabajados() {
                 estado: estadoFilter === 'Todas' ? undefined : estadoFilter,
                 areaId: selectedAreaId
             })
-            setSolicitudes(response.solicitudes || [])
+            // Asegurar que siempre sea un array
+            setSolicitudes(Array.isArray(response) ? response : [])
         } catch (error) {
             console.error('Error fetching solicitudes festivos:', error)
             toast.error('Error al cargar solicitudes de festivos trabajados')
+            setSolicitudes([]) // ‚Üê AGREGAR esta l√≠nea
         } finally {
             setLoading(false)
         }
@@ -125,10 +127,10 @@ export function TablaFestivosTrabajados() {
         setSelectedSolicitudForReject(null)
     }
 
-    const columns: Column<SolicitudFestivoDto>[] = [
+    const columns: Column<SolicitudFestivoTrabajado>[] = [
         {
             key: 'nominaEmpleado',
-            label: 'NÛmina',
+            label: 'N√≥mina',
             sortable: true,
             render: (value) => <div className="text-gray-900 font-extrabold text-lg">{String(value)}</div>
         },
@@ -140,7 +142,7 @@ export function TablaFestivosTrabajados() {
         },
         {
             key: 'areaEmpleado',
-            label: '¡rea',
+            label: '√Årea',
             sortable: true,
             render: (value) => <div className="text-gray-900 text-sm">{String(value)}</div>
         },
@@ -239,17 +241,17 @@ export function TablaFestivosTrabajados() {
                             <input
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                placeholder="Busca por nombre o nÛmina..."
+                                placeholder="Busca por nombre o n√≥mina..."
                                 className="pl-9 pr-3 py-2 rounded-md border border-gray-300 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-gray-200"
                             />
                         </div>
 
                         {userData?.areas && userData.areas.length > 0 && (
                             <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-700">¡rea</span>
+                                <span className="text-sm text-gray-700">√Årea</span>
                                 <Select value={selectedAreaId?.toString() || ""} onValueChange={(value) => setSelectedAreaId(parseInt(value))}>
                                     <SelectTrigger className="w-48">
-                                        <SelectValue placeholder="Selecciona un ·rea" />
+                                        <SelectValue placeholder="Selecciona un √°rea" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {userData.areas.map((area) => (
@@ -287,7 +289,7 @@ export function TablaFestivosTrabajados() {
                     {loading || loadingUserData ? (
                         <div className="p-8 text-center"><div className="text-gray-600">Cargando solicitudes...</div></div>
                     ) : (
-                        <DataTable<SolicitudFestivoDto> columns={columns} data={solicitudes} keyField="id" emptyMessage="No hay solicitudes de festivos trabajados" onSort={() => { }} className="border-t border-gray-200" />
+                        <DataTable<SolicitudFestivoTrabajado> columns={columns} data={solicitudes} keyField="id" emptyMessage="No hay solicitudes de festivos trabajados" onSort={() => { }} className="border-t border-gray-200" />
                     )}
                 </div>
             </section>

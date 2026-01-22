@@ -412,10 +412,12 @@ export default function SolicitudDetallePage() {
                                         </p>
                                     </div>
                                 )}
-                                <div>
+                                {/* <div>
                                     <span className="text-sm text-gray-500">Solicitado por:</span>
-                                    <p className="font-medium">{solicitud.solicitadoPor || 'Sistema'}</p>
-                                </div>
+                                    <p className="font-medium">
+                                        {solicitud.solicitadoPor || solicitud.nombreEmpleado || 'Sistema'}
+                                    </p>
+                                </div> */}
                             </div>
                         </div>
                     </div>

@@ -869,14 +869,13 @@ namespace tiempo_libre.app.Controllers
                 return Unauthorized(new ApiResponse<List<UsuarioInfoDto>>(false, null, "No hay sesión iniciada"));
             }
 
-            // Verificar que sea jefe de área
             var isJefe = currentUser.Roles.Any(r => r.Name == "Jefe De Area");
             if (!isJefe)
             {
                 return Forbid();
             }
 
-            // Obtener áreas donde es jefe
+            // ✅ CAMBIO CRÍTICO: Consultar áreas donde es jefe EN TIEMPO REAL desde Areas
             var areasComoJefe = await _dbContext.Areas
                 .Where(a => a.JefeId == currentUser.Id)
                 .Select(a => a.AreaId)
@@ -889,43 +888,44 @@ namespace tiempo_libre.app.Controllers
 
             int rolId = (int)RolEnum.Empleado_Sindicalizado;
 
-            // Obtener empleados SOLO de las áreas donde es jefe
-            var usuarios = await _dbContext.Users
-                .Include(u => u.Roles)
-                .Where(u => u.Roles.Any(r => r.Id == rolId) &&
-                            u.AreaId.HasValue &&
-                            areasComoJefe.Contains(u.AreaId.Value))
-                .Select(u => new UsuarioInfoDto
-                {
-                    Id = u.Id,
-                    FullName = u.FullName,
-                    Username = u.Username,
-                    Nomina = u.Nomina,
-                    UnidadOrganizativaSap = _dbContext.Areas
-                        .Where(a => a.AreaId == u.AreaId)
-                        .Select(a => a.UnidadOrganizativaSap)
-                        .FirstOrDefault() ?? "NA",
-                    Rol = "Empleado_Sindicalizado",
-                    Area = u.AreaId > 0 ? _dbContext.Areas
-                        .Where(a => a.AreaId == u.AreaId)
-                        .Select(a => new AreaInfoDto
-                        {
-                            AreaId = a.AreaId,
-                            NombreGeneral = a.NombreGeneral,
-                            UnidadOrganizativaSap = a.UnidadOrganizativaSap
-                        }).FirstOrDefault() : null,
-                    Grupo = u.GrupoId > 0 ? _dbContext.Grupos
-                        .Where(g => g.GrupoId == u.GrupoId)
-                        .Select(g => new GrupoInfoDto
-                        {
-                            GrupoId = g.GrupoId,
-                            Rol = g.Rol,
-                            IdentificadorSAP = g.IdentificadorSAP,
-                            PersonasPorTurno = g.PersonasPorTurno,
-                            DuracionDeturno = g.DuracionDeturno
-                        }).FirstOrDefault() : null
-                })
-                .ToListAsync();
+            // ✅ IMPORTANTE: Usar INNER JOIN para asegurar datos actualizados
+            var usuarios = await (from u in _dbContext.Users
+                                  join e in _dbContext.Empleados on u.Nomina equals e.Nomina into emp
+                                  from empleado in emp.DefaultIfEmpty()
+                                  where u.AreaId.HasValue &&
+                                        areasComoJefe.Contains(u.AreaId.Value) &&
+                                        u.Roles.Any(r => r.Id == rolId)
+                                  select new UsuarioInfoDto
+                                  {
+                                      Id = u.Id,
+                                      FullName = u.FullName,
+                                      Username = u.Username,
+                                      Nomina = u.Nomina,
+                                      UnidadOrganizativaSap = _dbContext.Areas
+                                          .Where(a => a.AreaId == u.AreaId)
+                                          .Select(a => a.UnidadOrganizativaSap)
+                                          .FirstOrDefault() ?? "NA",
+                                      Rol = empleado != null ? empleado.Rol : "Empleado_Sindicalizado",
+                                      Area = u.AreaId > 0 ? _dbContext.Areas
+                                          .Where(a => a.AreaId == u.AreaId)
+                                          .Select(a => new AreaInfoDto
+                                          {
+                                              AreaId = a.AreaId,
+                                              NombreGeneral = a.NombreGeneral,
+                                              UnidadOrganizativaSap = a.UnidadOrganizativaSap
+                                          }).FirstOrDefault() : null,
+                                      Grupo = u.GrupoId > 0 ? _dbContext.Grupos
+                                          .Where(g => g.GrupoId == u.GrupoId)
+                                          .Select(g => new GrupoInfoDto
+                                          {
+                                              GrupoId = g.GrupoId,
+                                              Rol = g.Rol,
+                                              IdentificadorSAP = g.IdentificadorSAP,
+                                              PersonasPorTurno = g.PersonasPorTurno,
+                                              DuracionDeturno = g.DuracionDeturno
+                                          }).FirstOrDefault() : null
+                                  })
+                                  .ToListAsync();
 
             return Ok(new ApiResponse<List<UsuarioInfoDto>>(true, usuarios));
         }

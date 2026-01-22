@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -31,7 +31,6 @@ namespace tiempo_libre.Services
             foreach (var rolSAP in rolesEmpleadosSAP)
             {
                 // Actualizar Empleados
-                // Actualizar Empleados
                 var empleado = await _context.Empleados
                     .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
 
@@ -39,19 +38,19 @@ namespace tiempo_libre.Services
                 {
                     bool cambios = false;
 
-                    if (empleado.Rol != rolSAP.Regla)
+                    if (!string.IsNullOrEmpty(rolSAP.Regla) && empleado.Rol != rolSAP.Regla)
                     {
                         empleado.Rol = rolSAP.Regla;
                         cambios = true;
                     }
 
-                    if (empleado.UnidadOrganizativa != rolSAP.UnidadOrganizativa)
+                    if (!string.IsNullOrEmpty(rolSAP.UnidadOrganizativa) && empleado.UnidadOrganizativa != rolSAP.UnidadOrganizativa)
                     {
                         empleado.UnidadOrganizativa = rolSAP.UnidadOrganizativa;
                         cambios = true;
                     }
 
-                    if (empleado.EncargadoRegistro != rolSAP.EncargadoRegistro)
+                    if (!string.IsNullOrEmpty(rolSAP.EncargadoRegistro) && empleado.EncargadoRegistro != rolSAP.EncargadoRegistro)
                     {
                         empleado.EncargadoRegistro = rolSAP.EncargadoRegistro;
                         cambios = true;
@@ -63,25 +62,51 @@ namespace tiempo_libre.Services
                     }
                 }
 
-                // Actualizar Users
+                // ✅ CRÍTICO: Actualizar Users con validación de área
                 var user = await _context.Users
                     .FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
 
                 if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
                 {
-                    var grupo = await _context.Grupos
-                        .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla);
+                    // ✅ PASO 1: Buscar el área correcta por UnidadOrganizativa
+                    Area areaCorrecta = null;
+                    if (!string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
+                    {
+                        areaCorrecta = await _context.Areas
+                            .FirstOrDefaultAsync(a => a.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa);
+                    }
 
-                    if (grupo != null && (user.GrupoId != grupo.GrupoId || user.AreaId != grupo.AreaId))
+                    // ✅ PASO 2: Buscar el grupo que coincida con Regla Y pertenezca al área correcta
+                    Grupo grupoCorrect = null;
+                    if (areaCorrecta != null)
+                    {
+                        grupoCorrect = await _context.Grupos
+                            .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla && g.AreaId == areaCorrecta.AreaId);
+                    }
+                    else
+                    {
+                        // Fallback: buscar grupo solo por Rol (si no hay área)
+                        grupoCorrect = await _context.Grupos
+                            .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla);
+                    }
+
+                    // ✅ PASO 3: Actualizar SOLO si encontramos grupo válido
+                    if (grupoCorrect != null && (user.GrupoId != grupoCorrect.GrupoId || user.AreaId != grupoCorrect.AreaId))
                     {
                         var grupoAnterior = user.GrupoId ?? 0;
-                        user.GrupoId = grupo.GrupoId;
-                        user.AreaId = grupo.AreaId;
+                        user.GrupoId = grupoCorrect.GrupoId;
+                        user.AreaId = grupoCorrect.AreaId;
                         user.UpdatedAt = DateTime.UtcNow;
                         registrosActualizados++;
 
-                        // Guardar para regenerar calendario despu�s
-                        empleadosCambiaronGrupo.Add((user, grupoAnterior, grupo.GrupoId));
+                        _logger.LogInformation($"Usuario {user.Nomina} actualizado: Area={grupoCorrect.AreaId}, Grupo={grupoCorrect.GrupoId}");
+
+                        // Guardar para regenerar calendario después
+                        empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId));
+                    }
+                    else if (grupoCorrect == null)
+                    {
+                        _logger.LogWarning($"No se encontró grupo válido para Nomina={rolSAP.Nomina}, Regla={rolSAP.Regla}, UnidadOrg={rolSAP.UnidadOrganizativa}");
                     }
                 }
             }
@@ -94,7 +119,7 @@ namespace tiempo_libre.Services
                 await RegenerarCalendarioFuturo(user.Id);
             }
 
-            _logger.LogInformation($"Sincronizaci�n completada. {registrosActualizados} registros actualizados. {empleadosCambiaronGrupo.Count} calendarios regenerados.");
+            _logger.LogInformation($"Sincronización completada. {registrosActualizados} registros actualizados. {empleadosCambiaronGrupo.Count} calendarios regenerados.");
             return registrosActualizados;
         }
 
@@ -114,11 +139,11 @@ namespace tiempo_libre.Services
                     _context.DiasCalendarioEmpleado.RemoveRange(diasFuturos);
                     await _context.SaveChangesAsync();
 
-                    _logger.LogInformation($"Eliminados {diasFuturos.Count} d�as futuros para usuario {userId}");
+                    _logger.LogInformation($"Eliminados {diasFuturos.Count} días futuros para usuario {userId}");
                 }
 
-                // NOTA: Aqu� podr�as llamar a EmployeesCalendarsGenerator si necesitas regenerar
-                // O esperar a que el proceso de generaci�n autom�tica lo haga
+                // NOTA: Aquí podrías llamar a EmployeesCalendarsGenerator si necesitas regenerar
+                // O esperar a que el proceso de generación automática lo haga
             }
             catch (Exception ex)
             {

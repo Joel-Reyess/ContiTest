@@ -23,7 +23,7 @@ namespace tiempo_libre.Services
         }
 
         public async Task<ApiResponse<SolicitudPermutaResponse>> SolicitarPermutaAsync(
-    SolicitudPermutaRequest request, int usuarioSolicitanteId)
+            SolicitudPermutaRequest request, int usuarioSolicitanteId)
         {
             try
             {
@@ -123,45 +123,39 @@ namespace tiempo_libre.Services
             }
         }
 
-        // Método para exportar a CSV
-        public async Task<byte[]> ExportarPermutasACsvAsync(int? anio = null)
+        public async Task<PermutasListResponse> ObtenerPermutasAsync(int? anio = null, int? usuarioId = null)
         {
             var query = _db.Permutas
                 .Include(p => p.EmpleadoOrigen)
+                    .ThenInclude(e => e.Area)
                 .Include(p => p.EmpleadoDestino)
+                    .ThenInclude(e => e.Area)
                 .Include(p => p.SolicitadoPor)
                 .AsQueryable();
 
-            if (anio.HasValue)
+            // Si se proporciona usuarioId, filtrar por área del jefe
+            if (usuarioId.HasValue)
             {
-                query = query.Where(p => p.FechaPermuta.Year == anio.Value);
+                var usuario = await _db.Users
+                    .Include(u => u.Roles)
+                    .FirstOrDefaultAsync(u => u.Id == usuarioId.Value);
+
+                if (usuario != null)
+                {
+                    // Si es Jefe de Área, filtrar por su área
+                    if (usuario.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe de Área"))
+                    {
+                        var areaId = usuario.AreaId;
+                        query = query.Where(p => p.EmpleadoOrigen.AreaId == areaId);
+                    }
+                    // Si es SuperUsuario, mostrar todas las permutas (no filtrar)
+                    // Si es otro rol, mostrar solo sus propias permutas
+                    else if (!usuario.Roles.Any(r => r.Name == "SuperUsuario"))
+                    {
+                        query = query.Where(p => p.SolicitadoPorId == usuarioId.Value);
+                    }
+                }
             }
-
-            var permutas = await query
-                .OrderBy(p => p.FechaSolicitud)
-                .ToListAsync();
-
-            var csv = new System.Text.StringBuilder();
-            csv.AppendLine("ID,Fecha Solicitud,Fecha Permuta,Empleado Origen,Turno Origen,Empleado Destino,Turno Destino,Motivo,Solicitado Por");
-
-            foreach (var p in permutas)
-            {
-                csv.AppendLine($"{p.Id},{p.FechaSolicitud:yyyy-MM-dd HH:mm},{p.FechaPermuta:yyyy-MM-dd}," +
-                    $"{p.EmpleadoOrigen?.FullName},{p.TurnoEmpleadoOrigen}," +
-                    $"{p.EmpleadoDestino?.FullName},{p.TurnoEmpleadoDestino}," +
-                    $"\"{p.Motivo}\",{p.SolicitadoPor?.FullName}");
-            }
-
-            return System.Text.Encoding.UTF8.GetBytes(csv.ToString());
-        }
-
-        public async Task<PermutasListResponse> ObtenerPermutasAsync(int? anio = null)
-        {
-            var query = _db.Permutas
-                .Include(p => p.EmpleadoOrigen)
-                .Include(p => p.EmpleadoDestino)
-                .Include(p => p.SolicitadoPor)
-                .AsQueryable();
 
             if (anio.HasValue)
             {
@@ -189,6 +183,26 @@ namespace tiempo_libre.Services
                 Permutas = permutas,
                 Total = permutas.Count
             };
+        }
+
+        // Método para exportar a CSV
+        public async Task<byte[]> ExportarPermutasACsvAsync(int? anio = null, int? usuarioId = null)
+        {
+            var resultado = await ObtenerPermutasAsync(anio, usuarioId);
+            var permutas = resultado.Permutas;
+
+            var csv = new System.Text.StringBuilder();
+            csv.AppendLine("ID,Fecha Solicitud,Fecha Permuta,Empleado Origen,Turno Origen,Empleado Destino,Turno Destino,Motivo,Solicitado Por");
+
+            foreach (var p in permutas)
+            {
+                csv.AppendLine($"{p.Id},{p.FechaSolicitud:yyyy-MM-dd HH:mm},{p.FechaPermuta:yyyy-MM-dd}," +
+                    $"{p.EmpleadoOrigenNombre},{p.TurnoEmpleadoOrigen}," +
+                    $"{p.EmpleadoDestinoNombre},{p.TurnoEmpleadoDestino}," +
+                    $"\"{p.Motivo}\",{p.SolicitadoPorNombre}");
+            }
+
+            return System.Text.Encoding.UTF8.GetBytes(csv.ToString());
         }
     }
 }

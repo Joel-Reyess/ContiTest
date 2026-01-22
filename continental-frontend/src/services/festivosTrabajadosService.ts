@@ -71,10 +71,13 @@ export interface SolicitudFestivoTrabajado {
   empleadoId: number
   nombreEmpleado: string
   nominaEmpleado: string
+  areaEmpleado: string
+  grupoEmpleado: string 
   festivoOriginal: string
   fechaNueva: string
   motivo: string
   estadoSolicitud: string
+  porcentajeCalculado: number
   fechaSolicitud: string
   fechaAprobacion?: string
   aprobadoPor?: string

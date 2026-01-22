@@ -28,12 +28,14 @@
  * =============================================================================
  */
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useVacationConfig } from '../../hooks/useVacationConfig'
 import { TurnosActuales } from './TurnosActuales'
 import { TablaSolicitudes } from './TablaSolicitudes'
 import { SolicitudesPermisos } from './SolicitudesPermisos';
 import { TablaFestivosTrabajados } from './TablaFestivosTrabajados';
+import { TablaPermutas } from './TablaPermutas';
+import { ChevronDown } from 'lucide-react'
 function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
     const getPeriodoStatus = (periodo: 'ProgramacionAnual' | 'Reprogramacion') => {
         if (periodoActual === periodo) {
@@ -68,8 +70,11 @@ function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
     )
 }
 
+type TabOption = 'solicitudes' | 'festivos' | 'permutas' | 'permisos' | 'vacaciones';
+
 const SolicitudesComponent: React.FC = () => {
     const { config, loading, error } = useVacationConfig()
+    const [selectedTab, setSelectedTab] = useState<TabOption>('vacaciones')
 
     if (loading) {
         return (
@@ -95,6 +100,13 @@ const SolicitudesComponent: React.FC = () => {
         )
     }
 
+    const tabOptions = [
+        {value: 'vacaciones' as TabOption, label: 'Solicitudes Reprogramaciones'},
+        {value: 'festivos' as TabOption, label: 'Festivos Trabajados'},
+        {value: 'permisos' as TabOption, label: 'Solicitudes Permisos'},
+        {value: 'permutas' as TabOption, label: 'Permutas de Turno'},
+    ]
+
     return (
         <div className="p-6 bg-gray-50 min-h-screen">
             <div className="max-w-[1400px] mx-auto space-y-4">
@@ -117,9 +129,33 @@ const SolicitudesComponent: React.FC = () => {
                 {config?.periodoActual === 'ProgramacionAnual' && <TurnosActuales anioVigente={config?.anioVigente || new Date().getFullYear() + 1} />}
                 {config?.periodoActual === 'Reprogramacion' && (
                     <>
-                        <TablaSolicitudes />
-                        <TablaFestivosTrabajados />
-                        <SolicitudesPermisos />
+                        {/* Dropdown selector */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="relative">
+                                <select
+                                    value={selectedTab}
+                                    onChange={(e) => setSelectedTab(e.target.value as TabOption)}
+                                    className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-3 pr-10 text-base font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer hover:border-gray-400 transition-colors"
+                                >
+                                    {tabOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                                    <ChevronDown className="w-5 h-5" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Contenido dinámico según selección */}
+                        <div className="animate-fadeIn">
+                            {selectedTab === 'vacaciones' && <TablaSolicitudes />}
+                            {selectedTab === 'festivos' && <TablaFestivosTrabajados />}
+                            {selectedTab === 'permisos' && <SolicitudesPermisos />}
+                            {selectedTab === 'permutas' && <TablaPermutas />}
+                        </div>
                     </>
                 )}
             </div>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -27,14 +27,14 @@ namespace tiempo_libre.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Servicio de sincronizaci�n de roles iniciado");
+            _logger.LogInformation("Servicio de sincronización de roles iniciado");
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
                     await SincronizarRoles();
-                    _logger.LogInformation($"Pr�xima sincronizaci�n en {_intervalo.TotalHours} horas");
+                    _logger.LogInformation($"Próxima sincronización en {_intervalo.TotalHours} horas");
 
                     try
                     {
@@ -42,13 +42,13 @@ namespace tiempo_libre.Services
                     }
                     catch (TaskCanceledException)
                     {
-                        // Cancelaci�n normal durante el shutdown
+                        // Cancelación normal durante el shutdown
                         break;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error en el servicio de sincronizaci�n de roles");
+                    _logger.LogError(ex, "Error en el servicio de sincronización de roles");
 
                     try
                     {
@@ -61,7 +61,7 @@ namespace tiempo_libre.Services
                 }
             }
 
-            _logger.LogInformation("Servicio de sincronizaci�n de roles detenido");
+            _logger.LogInformation("Servicio de sincronización de roles detenido");
         }
 
         private async Task SincronizarRoles()
@@ -80,6 +80,7 @@ namespace tiempo_libre.Services
 
                     foreach (var rolSAP in rolesEmpleadosSAP)
                     {
+                        // Actualizar Empleados
                         var empleado = await context.Empleados
                             .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
 
@@ -87,19 +88,19 @@ namespace tiempo_libre.Services
                         {
                             bool cambios = false;
 
-                            if (empleado.Rol != rolSAP.Regla && !string.IsNullOrEmpty(rolSAP.Regla))
+                            if (!string.IsNullOrEmpty(rolSAP.Regla) && empleado.Rol != rolSAP.Regla)
                             {
                                 empleado.Rol = rolSAP.Regla;
                                 cambios = true;
                             }
 
-                            if (empleado.UnidadOrganizativa != rolSAP.UnidadOrganizativa && !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
+                            if (!string.IsNullOrEmpty(rolSAP.UnidadOrganizativa) && empleado.UnidadOrganizativa != rolSAP.UnidadOrganizativa)
                             {
                                 empleado.UnidadOrganizativa = rolSAP.UnidadOrganizativa;
                                 cambios = true;
                             }
 
-                            if (empleado.EncargadoRegistro != rolSAP.EncargadoRegistro && !string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
+                            if (!string.IsNullOrEmpty(rolSAP.EncargadoRegistro) && empleado.EncargadoRegistro != rolSAP.EncargadoRegistro)
                             {
                                 empleado.EncargadoRegistro = rolSAP.EncargadoRegistro;
                                 cambios = true;
@@ -111,21 +112,61 @@ namespace tiempo_libre.Services
                             }
                         }
 
-                        // AGREGAR ESTO: Actualizar tambi�n en Users
+                        // ✅ CRÍTICO: Actualizar Users con validación de área
                         var user = await context.Users
                             .FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
 
                         if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
                         {
-                            var grupo = await context.Grupos
-                                .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla);
-
-                            if (grupo != null && (user.GrupoId != grupo.GrupoId || user.AreaId != grupo.AreaId))
+                            // ✅ PASO 1: Buscar el área correcta por UnidadOrganizativa
+                            Area areaCorrecta = null;
+                            if (!string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
                             {
-                                user.GrupoId = grupo.GrupoId;
-                                user.AreaId = grupo.AreaId;
-                                user.UpdatedAt = DateTime.UtcNow;
-                                registrosActualizados++;
+                                areaCorrecta = await context.Areas
+                                    .FirstOrDefaultAsync(a => a.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa);
+                            }
+
+                            // ✅ PASO 2: Buscar el grupo que coincida con Regla Y pertenezca al área correcta
+                            Grupo grupoCorrect = null;
+                            if (areaCorrecta != null)
+                            {
+                                grupoCorrect = await context.Grupos
+                                    .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla && g.AreaId == areaCorrecta.AreaId);
+                            }
+                            else
+                            {
+                                // Fallback: buscar grupo solo por Rol (si no hay área)
+                                grupoCorrect = await context.Grupos
+                                    .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla);
+                            }
+
+                            // ✅ PASO 3: Actualizar SOLO si encontramos grupo válido
+                            if (grupoCorrect != null)
+                            {
+                                bool cambiosUser = false;
+
+                                if (user.GrupoId != grupoCorrect.GrupoId)
+                                {
+                                    user.GrupoId = grupoCorrect.GrupoId;
+                                    cambiosUser = true;
+                                }
+
+                                if (user.AreaId != grupoCorrect.AreaId)
+                                {
+                                    user.AreaId = grupoCorrect.AreaId;
+                                    cambiosUser = true;
+                                }
+
+                                if (cambiosUser)
+                                {
+                                    user.UpdatedAt = DateTime.UtcNow;
+                                    registrosActualizados++;
+                                    _logger.LogInformation($"Usuario {user.Nomina} actualizado: Area={grupoCorrect.AreaId}, Grupo={grupoCorrect.GrupoId}");
+                                }
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"No se encontró grupo válido para Nomina={rolSAP.Nomina}, Regla={rolSAP.Regla}, UnidadOrg={rolSAP.UnidadOrganizativa}");
                             }
                         }
                     }
@@ -133,11 +174,11 @@ namespace tiempo_libre.Services
                     if (registrosActualizados > 0)
                     {
                         await context.SaveChangesAsync();
-                        _logger.LogInformation($"Sincronizaci�n completada. {registrosActualizados} roles actualizados.");
+                        _logger.LogInformation($"Sincronización completada. {registrosActualizados} roles actualizados.");
                     }
                     else
                     {
-                        _logger.LogInformation("Sincronizaci�n completada. No hay cambios que aplicar.");
+                        _logger.LogInformation("Sincronización completada. No hay cambios que aplicar.");
                     }
                 }
                 catch (Exception ex)
