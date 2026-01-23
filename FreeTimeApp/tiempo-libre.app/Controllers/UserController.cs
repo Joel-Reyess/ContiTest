@@ -875,7 +875,6 @@ namespace tiempo_libre.app.Controllers
                 return Forbid();
             }
 
-            // ✅ CAMBIO CRÍTICO: Consultar áreas donde es jefe EN TIEMPO REAL desde Areas
             var areasComoJefe = await _dbContext.Areas
                 .Where(a => a.JefeId == currentUser.Id)
                 .Select(a => a.AreaId)
@@ -888,13 +887,13 @@ namespace tiempo_libre.app.Controllers
 
             int rolId = (int)RolEnum.Empleado_Sindicalizado;
 
-            // ✅ IMPORTANTE: Usar INNER JOIN para asegurar datos actualizados
+            // ✅ FILTRAR TAMBIÉN POR EncargadoRegistro
             var usuarios = await (from u in _dbContext.Users
-                                  join e in _dbContext.Empleados on u.Nomina equals e.Nomina into emp
-                                  from empleado in emp.DefaultIfEmpty()
+                                  join e in _dbContext.Empleados on u.Nomina equals e.Nomina
                                   where u.AreaId.HasValue &&
                                         areasComoJefe.Contains(u.AreaId.Value) &&
-                                        u.Roles.Any(r => r.Id == rolId)
+                                        u.Roles.Any(r => r.Id == rolId) &&
+                                        e.EncargadoRegistro == currentUser.Nomina.ToString()
                                   select new UsuarioInfoDto
                                   {
                                       Id = u.Id,
@@ -905,7 +904,7 @@ namespace tiempo_libre.app.Controllers
                                           .Where(a => a.AreaId == u.AreaId)
                                           .Select(a => a.UnidadOrganizativaSap)
                                           .FirstOrDefault() ?? "NA",
-                                      Rol = empleado != null ? empleado.Rol : "Empleado_Sindicalizado",
+                                      Rol = e.Rol ?? "Empleado_Sindicalizado",
                                       Area = u.AreaId > 0 ? _dbContext.Areas
                                           .Where(a => a.AreaId == u.AreaId)
                                           .Select(a => new AreaInfoDto

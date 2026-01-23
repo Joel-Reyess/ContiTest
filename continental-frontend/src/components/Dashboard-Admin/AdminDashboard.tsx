@@ -11,6 +11,8 @@ import { DetallesEmpleado } from '../Empleado/DetallesEmpleado';
 import { useState } from 'react';
 import { PeriodOptions, type Period } from '@/interfaces/Calendar.interface';
 import { DetallesUsuario } from './DetallesUsuario';
+import WeeklyRoles from "../Dashboard-Empleados/WeeklyRoles";
+import { CalendarClock } from "lucide-react";
 
 const navItems = [
   { to: "/admin/areas", label: "Areas", icon: <Factory /> },
@@ -18,6 +20,7 @@ const navItems = [
   { to: "/admin/plantilla", label: "Plantilla", icon: <Users /> },
   { to: "/admin/reportes", label: "Reportes", icon: <FileChartColumn /> },
   { to: "/admin/usuarios", label: "Usuarios", icon: <User2 /> },
+  { to: "/admin/roles-semanales", label: "Roles semanales", icon: <CalendarClock /> },
 ];
 
 const AdminDashboard = (): JSX.Element => {
@@ -56,6 +59,7 @@ const AdminDashboard = (): JSX.Element => {
           <Route index element={<Areas />} />
           <Route path="areas" element={<Areas />} />
           <Route path="vacaciones" element={<Vacaciones />} />
+          <Route path="roles-semanales" element={<WeeklyRoles />} />
           <Route path="plantilla" element={<Plantilla />} />
           <Route path="plantilla/:id" element={<DetallesEmpleado currentPeriod={currentPeriod} />} />
           <Route path="reportes" element={<Reportes />} />

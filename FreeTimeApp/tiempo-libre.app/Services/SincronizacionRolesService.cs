@@ -62,21 +62,38 @@ namespace tiempo_libre.Services
                     }
                 }
 
-                // ✅ CRÍTICO: Actualizar Users con validación de área
                 var user = await _context.Users
                     .FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
 
                 if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
                 {
-                    // ✅ PASO 1: Buscar el área correcta por UnidadOrganizativa
                     Area areaCorrecta = null;
                     if (!string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
                     {
-                        areaCorrecta = await _context.Areas
-                            .FirstOrDefaultAsync(a => a.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa);
+                        var jefeNomina = !string.IsNullOrEmpty(rolSAP.EncargadoRegistro)
+                            ? int.TryParse(rolSAP.EncargadoRegistro, out int nominaJefe) ? nominaJefe : (int?)null
+                            : null;
+
+                        if (jefeNomina.HasValue)
+                        {
+                            var jefeUser = await _context.Users
+                                .FirstOrDefaultAsync(u => u.Nomina == jefeNomina.Value);
+
+                            if (jefeUser != null)
+                            {
+                                areaCorrecta = await _context.Areas
+                                    .FirstOrDefaultAsync(a => a.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa
+                                                            && a.JefeId == jefeUser.Id);
+                            }
+                        }
+
+                        if (areaCorrecta == null)
+                        {
+                            areaCorrecta = await _context.Areas
+                                .FirstOrDefaultAsync(a => a.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa);
+                        }
                     }
 
-                    // ✅ PASO 2: Buscar el grupo que coincida con Regla Y pertenezca al área correcta
                     Grupo grupoCorrect = null;
                     if (areaCorrecta != null)
                     {
@@ -85,12 +102,10 @@ namespace tiempo_libre.Services
                     }
                     else
                     {
-                        // Fallback: buscar grupo solo por Rol (si no hay área)
                         grupoCorrect = await _context.Grupos
                             .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla);
                     }
 
-                    // ✅ PASO 3: Actualizar SOLO si encontramos grupo válido
                     if (grupoCorrect != null && (user.GrupoId != grupoCorrect.GrupoId || user.AreaId != grupoCorrect.AreaId))
                     {
                         var grupoAnterior = user.GrupoId ?? 0;
@@ -99,21 +114,19 @@ namespace tiempo_libre.Services
                         user.UpdatedAt = DateTime.UtcNow;
                         registrosActualizados++;
 
-                        _logger.LogInformation($"Usuario {user.Nomina} actualizado: Area={grupoCorrect.AreaId}, Grupo={grupoCorrect.GrupoId}");
+                        _logger.LogInformation($"Usuario {user.Nomina} actualizado: Area={grupoCorrect.AreaId}, Grupo={grupoCorrect.GrupoId}, Jefe={rolSAP.EncargadoRegistro}");
 
-                        // Guardar para regenerar calendario después
                         empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId));
                     }
                     else if (grupoCorrect == null)
                     {
-                        _logger.LogWarning($"No se encontró grupo válido para Nomina={rolSAP.Nomina}, Regla={rolSAP.Regla}, UnidadOrg={rolSAP.UnidadOrganizativa}");
+                        _logger.LogWarning($"No se encontró grupo válido para Nomina={rolSAP.Nomina}, Regla={rolSAP.Regla}, UnidadOrg={rolSAP.UnidadOrganizativa}, EncargadoRegistro={rolSAP.EncargadoRegistro}");
                     }
                 }
             }
 
             await _context.SaveChangesAsync();
 
-            // REGENERAR CALENDARIOS FUTUROS para empleados que cambiaron de grupo
             foreach (var (user, grupoAnterior, grupoNuevo) in empleadosCambiaronGrupo)
             {
                 await RegenerarCalendarioFuturo(user.Id);

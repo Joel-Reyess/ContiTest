@@ -45,6 +45,7 @@ const WeeklyRoles = () => {
     const [exportingAll, setExportingAll] = useState(false);
 
     const canAccess =
+        hasRole(UserRole.SUPER_ADMIN) ||
         hasRole(UserRole.AREA_ADMIN) ||
         hasRole(UserRole.LEADER) ||
         hasRole(UserRole.INDUSTRIAL) ||
@@ -53,6 +54,7 @@ const WeeklyRoles = () => {
         user?.area?.nombreGeneral === "Sindicato";
     const isIndustrial = hasRole(UserRole.INDUSTRIAL);
     const isBoss = hasRole(UserRole.AREA_ADMIN);
+    const isAdmin = hasRole(UserRole.SUPER_ADMIN);
 
     // Cargar areas y grupos (si es jefe de área solo ve sus áreas)
     useEffect(() => {
@@ -77,7 +79,10 @@ const WeeklyRoles = () => {
 
                 let allowedAreas: Area[];
 
-                if (isBoss) {
+
+                if (isAdmin) {
+                    allowedAreas = allAreas;
+                } else if(isBoss) {
                     allowedAreas = allAreas.filter(
                         (a) =>
                             (a.jefe?.id != null && jefeId != null && a.jefe.id === jefeId) ||
@@ -536,7 +541,7 @@ useEffect(() => {
                         onChange={(e) => setSelectedArea(e.target.value === "all" ? "all" : parseInt(e.target.value, 10))}
                         disabled={loadingGroups}
                     >
-                        {!isBoss && !isIndustrial && <option value="all">Todas</option>}
+                        {(isAdmin ||(!isBoss && !isIndustrial)) && <option value="all">Todas</option>}
                         {uniqueAreas.map((a) => (
                             <option key={a.id ?? "na"} value={a.id ?? ""}>
                                 {a.name}
