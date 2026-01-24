@@ -68,166 +68,19 @@ namespace tiempo_libre.Services
         {
             using (var scope = _serviceProvider.CreateScope())
             {
-                var context = scope.ServiceProvider.GetRequiredService<FreeTimeDbContext>();
+                var sincronizacionService = scope.ServiceProvider.GetRequiredService<SincronizacionRolesService>();
 
                 try
                 {
-                    int registrosActualizados = 0;
-
-                    var rolesEmpleadosSAP = await context.RolesEmpleadosSAP
-                        .Where(r => !string.IsNullOrEmpty(r.Regla))
-                        .ToListAsync();
-
-                    _logger.LogInformation($"📊 Total registros SAP a procesar: {rolesEmpleadosSAP.Count}");
-
-                    foreach (var rolSAP in rolesEmpleadosSAP)
-                    {
-                        // Actualizar Empleados
-                        var empleado = await context.Empleados
-                            .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
-
-                        if (empleado != null)
-                        {
-                            bool cambios = false;
-
-                            if (!string.IsNullOrEmpty(rolSAP.Regla) && empleado.Rol != rolSAP.Regla)
-                            {
-                                empleado.Rol = rolSAP.Regla;
-                                cambios = true;
-                            }
-
-                            if (!string.IsNullOrEmpty(rolSAP.UnidadOrganizativa) && empleado.UnidadOrganizativa != rolSAP.UnidadOrganizativa)
-                            {
-                                empleado.UnidadOrganizativa = rolSAP.UnidadOrganizativa;
-                                cambios = true;
-                            }
-
-                            if (!string.IsNullOrEmpty(rolSAP.EncargadoRegistro) && empleado.EncargadoRegistro != rolSAP.EncargadoRegistro)
-                            {
-                                empleado.EncargadoRegistro = rolSAP.EncargadoRegistro;
-                                cambios = true;
-                            }
-
-                            if (cambios)
-                            {
-                                registrosActualizados++;
-                            }
-                        }
-
-                        // ✅ ACTUALIZAR USERS - NUEVA LÓGICA
-                        var user = await context.Users
-                            .FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
-
-                        if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
-                        {
-                            // PASO 1: Buscar el grupo por Rol/Regla (normalizado)
-                            var reglaLimpia = rolSAP.Regla.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper();
-
-                            var todosGrupos = await context.Grupos.Include(g => g.Area).ToListAsync();
-                            var gruposPosibles = todosGrupos
-                                .Where(g => g.Rol.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper() == reglaLimpia)
-                                .ToList();
-
-                            if (!gruposPosibles.Any())
-                            {
-                                _logger.LogWarning($"   ❌ NO existe grupo con Rol={rolSAP.Regla} para Nomina={rolSAP.Nomina}");
-                                continue;
-                            }
-
-                            Grupo grupoCorrect = null;
-
-                            // PASO 2: Si hay múltiples grupos con el mismo Rol, filtrar por UnidadOrganizativa + EncargadoRegistro
-                            if (gruposPosibles.Count > 1 && !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
-                            {
-                                // Filtrar por UnidadOrganizativa
-                                var gruposMismaUnidad = gruposPosibles
-                                    .Where(g => g.Area.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa)
-                                    .ToList();
-
-                                if (gruposMismaUnidad.Count == 1)
-                                {
-                                    grupoCorrect = gruposMismaUnidad.First();
-                                    //_logger.LogInformation($"   ✅ Grupo único en UnidadOrg: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.AreaId}");
-                                }
-                                else if (gruposMismaUnidad.Count > 1 && !string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
-                                {
-                                    // PASO 3: Validar por EncargadoRegistro del área
-                                    var nombreEncargado = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
-
-                                    grupoCorrect = gruposMismaUnidad.FirstOrDefault(g =>
-                                    {
-                                        if (string.IsNullOrEmpty(g.Area.EncargadoRegistro))
-                                            return false;
-
-                                        var encargadoArea = RemoverAcentos(g.Area.EncargadoRegistro.Trim()).ToLower();
-                                        return encargadoArea == nombreEncargado;
-                                    });
-
-                                    if (grupoCorrect != null)
-                                    {
-                                        //_logger.LogInformation($"   ✅ Grupo encontrado por EncargadoRegistro: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.AreaId}");
-                                    }
-                                    else
-                                    {
-                                        // Fallback: tomar el primero de la misma unidad
-                                        grupoCorrect = gruposMismaUnidad.First();
-                                        _logger.LogWarning($"   ⚠️ EncargadoRegistro no coincide, usando primer grupo: GrupoId={grupoCorrect.GrupoId}");
-                                    }
-                                }
-                                else if (gruposMismaUnidad.Any())
-                                {
-                                    grupoCorrect = gruposMismaUnidad.First();
-                                    _logger.LogWarning($"   ⚠️ Múltiples grupos, usando primero: GrupoId={grupoCorrect.GrupoId}");
-                                }
-                                else
-                                {
-                                    // No hay grupos en esa UnidadOrganizativa, tomar el primero disponible
-                                    grupoCorrect = gruposPosibles.First();
-                                    _logger.LogWarning($"   ⚠️ UnidadOrg no coincide, usando primer grupo disponible: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.AreaId}");
-                                }
-                            }
-                            else
-                            {
-                                // Solo hay un grupo con ese Rol
-                                grupoCorrect = gruposPosibles.First();
-                                //_logger.LogInformation($"   ✅ Grupo único encontrado: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.AreaId}");
-                            }
-
-                            // PASO 4: Actualizar usuario
-                            if (grupoCorrect != null)
-                            {
-                                bool cambiosUser = false;
-
-                                if (user.GrupoId != grupoCorrect.GrupoId)
-                                {
-                                    user.GrupoId = grupoCorrect.GrupoId;
-                                    cambiosUser = true;
-                                }
-
-                                if (user.AreaId != grupoCorrect.AreaId)
-                                {
-                                    user.AreaId = grupoCorrect.AreaId;
-                                    cambiosUser = true;
-                                }
-
-                                if (cambiosUser)
-                                {
-                                    user.UpdatedAt = DateTime.UtcNow;
-                                    registrosActualizados++;
-                                    _logger.LogInformation($"   ✅ Usuario {user.Nomina} actualizado: Area={grupoCorrect.AreaId}, Grupo={grupoCorrect.GrupoId}");
-                                }
-                            }
-                        }
-                    }
+                    var registrosActualizados = await sincronizacionService.SincronizarRolesDesdeRegla();
 
                     if (registrosActualizados > 0)
                     {
-                        await context.SaveChangesAsync();
-                        _logger.LogInformation($" Sincronización completada. {registrosActualizados} roles actualizados.");
+                        _logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} roles actualizados.");
                     }
                     else
                     {
-                        _logger.LogInformation($" Sincronización completada. No hay cambios que aplicar.");
+                        _logger.LogInformation($"✅ Sincronización completada. No hay cambios que aplicar.");
                     }
                 }
                 catch (Exception ex)
