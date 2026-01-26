@@ -264,6 +264,106 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Genera el reporte de días a eliminar para SAP basado en reprogramaciones aceptadas.
+        /// </summary>
+        public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapReprogramacionEliminarAsync(
+            int year,
+            int? areaId = null,
+            List<string>? gruposRol = null)
+        {
+            return await GenerarReporteSapReprogramacionBaseAsync(year, true, areaId, gruposRol);
+        }
+
+        /// <summary>
+        /// Genera el reporte de días nuevos a reprogramar para SAP basado en reprogramaciones aceptadas.
+        /// </summary>
+        public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapReprogramacionNuevosAsync(
+            int year,
+            int? areaId = null,
+            List<string>? gruposRol = null)
+        {
+            return await GenerarReporteSapReprogramacionBaseAsync(year, false, areaId, gruposRol);
+        }
+
+        private async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapReprogramacionBaseAsync(
+            int year,
+            bool esParaEliminar,
+            int? areaId = null,
+            List<string>? gruposRol = null)
+        {
+            try
+            {
+                _logger.LogInformation("Generando Reporte SAP Reprogramación ({Tipo}) basado en Solicitudes para año {Year}",
+                    esParaEliminar ? "Eliminar" : "Nuevos", year);
+
+                var query = _context.SolicitudesReprogramacion
+                    .AsNoTracking()
+                    .Include(s => s.Empleado)
+                        .ThenInclude(e => e.Area)
+                    .Include(s => s.Empleado)
+                        .ThenInclude(e => e.Grupo)
+                    .Where(s => s.EstadoSolicitud == "Aprobada");
+
+                // Filtrar por año de la fecha nueva (que es el periodo objetivo usualmente)
+                query = query.Where(s => s.FechaNuevaSolicitada.Year == year);
+
+                if (areaId.HasValue)
+                    query = query.Where(s => s.Empleado.AreaId == areaId.Value);
+
+                if (gruposRol != null && gruposRol.Any())
+                    query = query.Where(s => s.Empleado.Grupo != null && gruposRol.Contains(s.Empleado.Grupo.Rol));
+
+                var datos = await query
+                    .OrderBy(s => s.Empleado.Nomina)
+                    .Select(s => new
+                    {
+                        s.Empleado.Nomina,
+                        Fecha = esParaEliminar ? s.FechaOriginalGuardada : s.FechaNuevaSolicitada
+                    })
+                    .ToListAsync();
+
+                // if (datos.Count == 0)
+                //    throw new InvalidOperationException($"No se encontraron reprogramaciones aceptadas para {year}");
+
+                var sb = new StringBuilder(datos.Count * 32);
+
+                if (datos.Count == 0)
+                {
+                     _logger.LogWarning("No se encontraron reprogramaciones para el año {Year}. Generando archivo vacío.", year);
+                }
+                else
+                {
+                    foreach (var item in datos)
+                    {
+                        var fechaStr = item.Fecha.ToString("ddMMyyyy");
+                        sb.Append(item.Nomina)
+                          .Append(',')
+                          .Append(fechaStr)
+                          .Append(',')
+                          .Append(fechaStr)
+                          .Append(',')
+                          .Append("1100")
+                          .Append('\n');
+                    }
+                }
+
+                var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var bytes = encoding.GetBytes(sb.ToString());
+                var stream = new MemoryStream(bytes, writable: false);
+
+                var prefix = esParaEliminar ? "ReporteSAP_Reprog_Eliminar" : "ReporteSAP_Reprog_Nuevos";
+                var fileName = $"{prefix}_{year}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+
+                return (stream, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando reporte SAP de reprogramación");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Sanitiza el nombre de una hoja de Excel para cumplir con las restricciones:
         /// - Máximo 31 caracteres
         /// - No puede contener: : \ / ? * [ ]

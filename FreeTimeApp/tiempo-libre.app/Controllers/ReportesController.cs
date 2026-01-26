@@ -86,6 +86,52 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        [HttpGet("reporte-sap-repro-eliminar")]
+        public async Task<IActionResult> ExportarReporteSapReproEliminar(
+            [FromQuery] int year,
+            [FromQuery] int? areaId = null,
+            [FromQuery] List<string>? gruposRol = null)
+        {
+            try
+            {
+                var (stream, fileName) = await _exportService.GenerarReporteSapReprogramacionEliminarAsync(year, areaId, gruposRol);
+                stream.Position = 0;
+                return File(stream, "text/plain", fileName);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al generar el reporte SAP Reprogramación Eliminar");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("reporte-sap-repro-nuevos")]
+        public async Task<IActionResult> ExportarReporteSapReproNuevos(
+            [FromQuery] int year,
+            [FromQuery] int? areaId = null,
+            [FromQuery] List<string>? gruposRol = null)
+        {
+            try
+            {
+                var (stream, fileName) = await _exportService.GenerarReporteSapReprogramacionNuevosAsync(year, areaId, gruposRol);
+                stream.Position = 0;
+                return File(stream, "text/plain", fileName);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al generar el reporte SAP Reprogramación Nuevos");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
         [HttpGet("empleados-faltantes-vacaciones")]
         public async Task<IActionResult> ObtenerEmpleadosFaltantesCaptura(
             [FromQuery] int anioObjetivo,

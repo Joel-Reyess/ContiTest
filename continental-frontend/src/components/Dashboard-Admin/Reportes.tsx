@@ -218,6 +218,18 @@ export const Reportes = () => {
         title: "General de Reprogramaciones",
         subtitle: "Todas las reprogramaciones (solo en periodo de reprogramación).",
         requiresReprogramming: true // Flag para identificarlo
+    },
+    {
+        id: 12,
+        icon: FileText,
+        title: "Reporte SAP Reprogramación (Eliminar)",
+        subtitle: "Días que se quitarán de la programación original."
+    },
+    {
+        id: 13,
+        icon: FileText,
+        title: "Reporte SAP Reprogramación (Nuevos)",
+        subtitle: "Días que se agregarán a la nueva programación."
     }
   ];
 
@@ -553,6 +565,32 @@ export const Reportes = () => {
           }
       } else if (reportId === 11) {
           await handleReprogGeneral();
+      } else if (reportId === 12 || reportId === 13) {
+          try {
+              if (!selectedYear) {
+                  toast.error("Selecciona el año para generar el reporte");
+                  return;
+              }
+
+              const tipo = reportId === 12 ? 'eliminar' : 'nuevos';
+              const loadingToast = toast.loading(`Generando Reporte SAP Reprogramación (${tipo})...`);
+
+              const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
+              const gruposRol = selectedGroups.length > 0 ? selectedGroups : undefined;
+
+              await reportesService.exportarReporteSAPReprogramacion(tipo, {
+                  year: parseInt(selectedYear),
+                  areaId: areaIdFilter,
+                  gruposRol
+              });
+
+              toast.dismiss(loadingToast);
+              toast.success(`Reporte SAP Reprogramación (${tipo}) descargado exitosamente`);
+          } catch (error) {
+              console.error("Error al descargar Reporte SAP Reprogramación:", error);
+              toast.dismiss();
+              toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+          }
       } else {
           console.log(`Descargando reporte ${reportId}`);
           toast.info("Funcionalidad en desarrollo para este tipo de reporte");

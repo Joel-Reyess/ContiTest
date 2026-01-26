@@ -121,6 +121,41 @@ const url = `${env.API_BASE_URL}/api/reportes/reporte-sap?${qs.toString()}`;
     document.body.removeChild(link);
   },
 
+  /**
+   * Descarga el reporte SAP de reprogramaciones (eliminar o nuevos)
+   * @param tipo - 'eliminar' | 'nuevos'
+   * @param params - { year, areaId?, gruposRol? }
+   */
+  async exportarReporteSAPReprogramacion(tipo: 'eliminar' | 'nuevos', params: { year: number; areaId?: number; gruposRol?: string[] }): Promise<void> {
+    const token = localStorage.getItem("auth_token");
+    if (!token) throw new Error("No se encontró token de autenticación");
+
+    const qs = new URLSearchParams();
+    qs.append("year", params.year.toString());
+    if (params.areaId) qs.append("areaId", params.areaId.toString());
+    params.gruposRol?.forEach((g) => qs.append("gruposRol", g));
+
+    const endpoint = tipo === 'eliminar' ? 'reporte-sap-repro-eliminar' : 'reporte-sap-repro-nuevos';
+    const url = `${env.API_BASE_URL}/api/reportes/${endpoint}?${qs.toString()}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) throw new Error(`Error al descargar el Reporte SAP de reprogramación (${tipo})`);
+
+    const blob = await response.blob();
+    const fileName = `ReporteSAP_Reprog_${tipo === 'eliminar' ? 'Eliminar' : 'Nuevos'}_${params.year}_${new Date().toISOString().split("T")[0]}.csv`;
+
+    const link = document.createElement("a");
+    link.href = window.URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  },
+
     async obtenerEmpleadosFaltantesCaptura(params: { anio: number; areaId?: number; grupoId?: number }): Promise<EmpleadosFaltantesCapturaResponse> {
         const response = await httpClient.get<ApiResponse<EmpleadosFaltantesCapturaResponse>>(
             '/api/reportes/empleados-faltantes-vacaciones',
