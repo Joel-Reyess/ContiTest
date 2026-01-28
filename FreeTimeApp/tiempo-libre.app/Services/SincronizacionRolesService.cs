@@ -24,6 +24,8 @@ namespace tiempo_libre.Services
             int registrosActualizados = 0;
             var empleadosCambiaronGrupo = new List<(User user, int grupoAnterior, int grupoNuevo)>();
 
+            await ActualizarEncargadoRegistroEnAreas();
+
             var rolesEmpleadosSAP = await _context.RolesEmpleadosSAP
                 .Where(r => !string.IsNullOrEmpty(r.Regla))
                 .ToListAsync();
@@ -124,15 +126,50 @@ namespace tiempo_libre.Services
                                 }
                             }
 
-                            // Ahora buscar el grupo por Area.JefeId
+                            // CRÍTICO: Buscar el grupo por Area.JefeId Y verificar EncargadoRegistro
                             if (jefeIdBuscado.HasValue)
                             {
-                                grupoCorrect = gruposMismaUnidad.FirstOrDefault(g =>
-                                    g.Area.JefeId == jefeIdBuscado.Value);
+                                _logger.LogInformation($"🔍 Buscando grupo para Nomina={rolSAP.Nomina}, JefeId={jefeIdBuscado.Value}, EncargadoSAP='{rolSAP.EncargadoRegistro}'");
 
-                                if (grupoCorrect != null)
+                                // Buscar grupos donde el JefeId coincida
+                                var gruposConJefeCorrecto = gruposMismaUnidad
+                                    .Where(g => g.Area.JefeId == jefeIdBuscado.Value)
+                                    .ToList();
+
+                                if (gruposConJefeCorrecto.Count == 1)
                                 {
-                                    _logger.LogInformation($"✅ Grupo encontrado por Area.JefeId={jefeIdBuscado.Value}: GrupoId={grupoCorrect.GrupoId}");
+                                    grupoCorrect = gruposConJefeCorrecto.First();
+                                    _logger.LogInformation($"✅ Grupo ÚNICO encontrado por JefeId: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.Area.NombreGeneral}");
+                                }
+                                else if (gruposConJefeCorrecto.Count > 1)
+                                {
+                                    // Hay múltiples grupos con el mismo jefe - verificar por EncargadoRegistro normalizado
+                                    var encargadoNormalizado = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
+
+                                    _logger.LogInformation($"🔍 Múltiples grupos con JefeId={jefeIdBuscado.Value}, comparando EncargadoRegistro:");
+                                    foreach (var g in gruposConJefeCorrecto)
+                                    {
+                                        var encargadoAreaNormalizado = RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim();
+                                        _logger.LogInformation($"   GrupoId={g.GrupoId}, Area='{g.Area.NombreGeneral}', EncargadoArea='{g.Area.EncargadoRegistro}' (normalizado='{encargadoAreaNormalizado}')");
+                                    }
+
+                                    grupoCorrect = gruposConJefeCorrecto.FirstOrDefault(g =>
+                                        RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim() == encargadoNormalizado);
+
+                                    if (grupoCorrect != null)
+                                    {
+                                        _logger.LogInformation($"✅ Grupo encontrado por JefeId + EncargadoRegistro: GrupoId={grupoCorrect.GrupoId}, Area='{grupoCorrect.Area.NombreGeneral}'");
+                                    }
+                                    else
+                                    {
+                                        // Último intento: tomar el primero
+                                        grupoCorrect = gruposConJefeCorrecto.First();
+                                        _logger.LogWarning($"⚠️ No coincide EncargadoRegistro, usando primer grupo con JefeId correcto: GrupoId={grupoCorrect.GrupoId}, Area='{grupoCorrect.Area.NombreGeneral}'");
+                                    }
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"⚠️ No se encontró grupo con JefeId={jefeIdBuscado.Value} en esta UnidadOrg");
                                 }
                             }
 
@@ -140,7 +177,7 @@ namespace tiempo_libre.Services
                             if (grupoCorrect == null)
                             {
                                 grupoCorrect = gruposMismaUnidad.First();
-                                _logger.LogWarning($"⚠️ No se encontró coincidencia, usando primer grupo: GrupoId={grupoCorrect.GrupoId}, EncargadoSAP={rolSAP.EncargadoRegistro}");
+                                _logger.LogWarning($"⚠️ FALLBACK: usando primer grupo: GrupoId={grupoCorrect.GrupoId}, Area='{grupoCorrect.Area.NombreGeneral}', EncargadoSAP={rolSAP.EncargadoRegistro}");
                             }
                         }
                         else if (gruposMismaUnidad.Any())
@@ -179,7 +216,6 @@ namespace tiempo_libre.Services
             {
                 await RegenerarCalendarioFuturo(user.Id);
             }
-
             _logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} registros actualizados.");
             return registrosActualizados;
         }
@@ -255,5 +291,89 @@ namespace tiempo_libre.Services
                 _logger.LogError(ex, $"Error al regenerar calendario para usuario {userId}");
             }
         }
+        public async Task ActualizarEncargadoRegistroEnAreas()
+        {
+            try
+            {
+                _logger.LogInformation("🔄 Iniciando actualización de EncargadoRegistro en Areas basado en JefeId...");
+
+                // Obtener todas las áreas con sus jefes
+                var areas = await _context.Areas
+                    .Include(a => a.Jefe)
+                    .ToListAsync();
+
+                int areasActualizadas = 0;
+
+                foreach (var area in areas)
+                {
+                    string nuevoEncargado = null;
+
+                    // PRIORIDAD 1: Si tiene JefeId asignado, usar el FullName del jefe
+                    if (area.JefeId.HasValue && area.Jefe != null)
+                    {
+                        nuevoEncargado = area.Jefe.FullName;
+                        _logger.LogInformation($"🎯 Area {area.AreaId} ({area.UnidadOrganizativaSap}): " +
+                            $"Usando Jefe.FullName='{nuevoEncargado}' (JefeId={area.JefeId})");
+                    }
+                    // PRIORIDAD 2: Si NO tiene JefeId, buscar el encargado más frecuente en RolesEmpleadosSAP
+                    else
+                    {
+                        var encargadosConFrecuencia = await _context.RolesEmpleadosSAP
+                            .Where(r => r.UnidadOrganizativa == area.UnidadOrganizativaSap &&
+                                       !string.IsNullOrEmpty(r.EncargadoRegistro))
+                            .GroupBy(r => r.EncargadoRegistro)
+                            .Select(g => new {
+                                EncargadoRegistro = g.Key,
+                                Frecuencia = g.Count()
+                            })
+                            .OrderByDescending(x => x.Frecuencia)
+                            .ToListAsync();
+
+                        if (encargadosConFrecuencia.Any())
+                        {
+                            nuevoEncargado = encargadosConFrecuencia.First().EncargadoRegistro;
+                            _logger.LogInformation($"📊 Area {area.AreaId} ({area.UnidadOrganizativaSap}): " +
+                                $"Sin JefeId, usando más frecuente='{nuevoEncargado}' " +
+                                $"(Frecuencia: {encargadosConFrecuencia.First().Frecuencia})");
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"⚠️ Area {area.AreaId} ({area.UnidadOrganizativaSap}): " +
+                                $"Sin JefeId y sin EncargadoRegistro en RolesEmpleadosSAP");
+                            continue;
+                        }
+                    }
+
+                    // Normalizar para comparación
+                    var encargadoActualNormalizado = RemoverAcentos(area.EncargadoRegistro ?? "").ToLower().Trim();
+                    var encargadoNuevoNormalizado = RemoverAcentos(nuevoEncargado).ToLower().Trim();
+
+                    // Actualizar si es diferente
+                    if (encargadoActualNormalizado != encargadoNuevoNormalizado)
+                    {
+                        _logger.LogInformation($"📝 Actualizando Area {area.AreaId}: " +
+                            $"'{area.EncargadoRegistro}' → '{nuevoEncargado}'");
+
+                        area.EncargadoRegistro = nuevoEncargado;
+                        areasActualizadas++;
+                    }
+                }
+
+                if (areasActualizadas > 0)
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation($"✅ {areasActualizadas} áreas actualizadas con nuevo EncargadoRegistro");
+                }
+                else
+                {
+                    _logger.LogInformation("✅ No hay cambios en EncargadoRegistro de Areas");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error al actualizar EncargadoRegistro en Areas");
+            }
+        }
+
     }
 }
