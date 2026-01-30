@@ -131,6 +131,54 @@ namespace tiempo_libre.Controllers
                     }
                 }
 
+                // Consultar vacaciones
+                var empleadosIds = empleados.Select(e => e.Id).ToList();
+
+                // NUEVO: Consultar permutas aprobadas
+                var permutasAprobadas = await _db.Permutas
+                    .Where(p => empleadosIds.Contains(p.EmpleadoOrigenId) &&
+                                p.FechaPermuta >= DateOnly.FromDateTime(inicio) &&
+                                p.FechaPermuta <= DateOnly.FromDateTime(fin) &&
+                                p.EstadoSolicitud == "Aprobada")
+                    .Select(p => new {
+                        p.EmpleadoOrigenId,
+                        p.EmpleadoDestinoId,
+                        p.FechaPermuta,
+                        p.TurnoEmpleadoOrigen,
+                        p.TurnoEmpleadoDestino
+                    })
+                    .ToListAsync();
+
+                // Crear diccionario de permutas por empleado y fecha
+                var permutasPorEmpleadoYFecha = new Dictionary<int, Dictionary<string, string>>();
+
+                foreach (var permuta in permutasAprobadas)
+                {
+                    var fechaStr = permuta.FechaPermuta.ToString("yyyy-MM-dd");
+
+                    // Asignar turno al empleado origen
+                    if (!permutasPorEmpleadoYFecha.ContainsKey(permuta.EmpleadoOrigenId))
+                    {
+                        permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId] = new Dictionary<string, string>();
+                    }
+
+                    // El empleado origen toma el turno que originalmente tenía el destino
+                    var turnoNuevoOrigen = permuta.TurnoEmpleadoDestino ?? permuta.TurnoEmpleadoOrigen;
+                    permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = turnoNuevoOrigen;
+
+                    // Si hay empleado destino (no es cambio individual), también actualizarlo
+                    if (permuta.EmpleadoDestinoId.HasValue)
+                    {
+                        if (!permutasPorEmpleadoYFecha.ContainsKey(permuta.EmpleadoDestinoId.Value))
+                        {
+                            permutasPorEmpleadoYFecha[permuta.EmpleadoDestinoId.Value] = new Dictionary<string, string>();
+                        }
+
+                        // El empleado destino toma el turno que originalmente tenía el origen
+                        permutasPorEmpleadoYFecha[permuta.EmpleadoDestinoId.Value][fechaStr] = permuta.TurnoEmpleadoOrigen;
+                    }
+                }
+
                 // Para cada empleado y cada día de la semana, asegurar una entrada
                 foreach (var emp in empleados)
                 {
@@ -148,13 +196,19 @@ namespace tiempo_libre.Controllers
                         {
                             codigoTurno = permisosPorEmpleadoYFecha[fechaStr][emp.Nomina.Value];
                         }
-                        // PRIORIDAD 2: Verificar si hay un turno real
+                        // ✅ PRIORIDAD 2: Verificar si hay una permuta aprobada
+                        else if (permutasPorEmpleadoYFecha.ContainsKey(emp.Id) &&
+                                 permutasPorEmpleadoYFecha[emp.Id].ContainsKey(fechaStr))
+                        {
+                            codigoTurno = permutasPorEmpleadoYFecha[emp.Id][fechaStr];
+                        }
+                        // PRIORIDAD 3: Verificar si hay un turno real
                         else if (turnosReales.ContainsKey(fechaStr) &&
                                  turnosReales[fechaStr].ContainsKey(emp.Id))
                         {
                             codigoTurno = turnosReales[fechaStr][emp.Id];
                         }
-                        // PRIORIDAD 3: Usar turno del patrón del grupo
+                        // PRIORIDAD 4: Usar turno del patrón del grupo
                         else
                         {
                             codigoTurno = dia.Turno ?? string.Empty;
@@ -179,9 +233,6 @@ namespace tiempo_libre.Controllers
                         });
                     }
                 }
-
-                // Consultar vacaciones
-                var empleadosIds = empleados.Select(e => e.Id).ToList();
 
                 var vacacionesProgramadas = await _db.VacacionesProgramadas
                     .Where(v => empleadosIds.Contains(v.EmpleadoId)

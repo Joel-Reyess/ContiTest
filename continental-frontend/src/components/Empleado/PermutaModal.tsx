@@ -3,12 +3,17 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { permutasService, type PermutaRequest } from "@/services/permutasService";
 import { empleadosService } from "@/services/empleadosService";
+import { rolesService } from "@/services/rolesService"; // ✅ IMPORT CORRECTO
 import type { UsuarioInfoDto } from "@/interfaces/Api.interface";
-import { Search, Users, ArrowLeftRight } from "lucide-react";
+import { Search, Users, ArrowLeftRight, RefreshCw, Info } from "lucide-react";
+
+const TURNOS_DISPLAY = [
+    { label: "Turno 1 (Primero)", value: "1" },
+    { label: "Turno 2 (Segundo)", value: "2" },
+    { label: "Turno 3 (Tercero)", value: "3" }
+];
 
 interface PermutaModalProps {
     show: boolean;
@@ -28,15 +33,16 @@ export const PermutaModal = ({
     const [motivo, setMotivo] = useState("");
     const [turnoOrigen, setTurnoOrigen] = useState<string>("");
     const [turnoDestino, setTurnoDestino] = useState<string>("");
-
-    const TURNOS = ["Primero", "Segundo", "Tercero"];
+    const [turnoOrigenDetectado, setTurnoOrigenDetectado] = useState<string>("");
+    const [turnoDestinoDetectado, setTurnoDestinoDetectado] = useState<string>("");
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [empleadosDisponibles, setEmpleadosDisponibles] = useState<UsuarioInfoDto[]>([]);
     const [showSearch, setShowSearch] = useState(false);
     const [esCambioIndividual, setEsCambioIndividual] = useState(false);
+    const [loadingTurnos, setLoadingTurnos] = useState(false);
 
-    // Buscar empleados del mismo grupo
+    // Buscar empleados del mismo área
     useEffect(() => {
         const fetchEmpleados = async () => {
             if (!showSearch || !empleadoOrigen.area?.areaId) return;
@@ -47,7 +53,6 @@ export const PermutaModal = ({
                     PageSize: 100,
                 });
 
-                // Filtrar empleado origen
                 const filtered = resp.usuarios.filter(
                     (emp) => emp.id !== empleadoOrigen.id
                 );
@@ -61,6 +66,64 @@ export const PermutaModal = ({
         fetchEmpleados();
     }, [showSearch, empleadoOrigen]);
 
+    // ✅ AUTO-DETECTAR turnos cuando cambia la fecha
+    useEffect(() => {
+        const detectarTurnos = async () => {
+            if (!fechaPermuta || !empleadoOrigen.grupo?.grupoId) {
+                setTurnoOrigenDetectado("");
+                setTurnoDestinoDetectado("");
+                return;
+            }
+
+            setLoadingTurnos(true);
+            try {
+                // ✅ Usar rolesService.getWeeklyRoles
+                const response = await rolesService.getWeeklyRoles(
+                    empleadoOrigen.grupo.grupoId,
+                    fechaPermuta // Ya está en formato YYYY-MM-DD
+                );
+
+                if (response.semana) {
+                    // Turno del empleado origen
+                    const entryOrigen = response.semana.find(
+                        entry => entry.empleado.id === empleadoOrigen.id &&
+                            entry.fecha === fechaPermuta
+                    );
+
+                    if (entryOrigen?.codigoTurno && ['1', '2', '3'].includes(entryOrigen.codigoTurno)) {
+                        setTurnoOrigenDetectado(entryOrigen.codigoTurno);
+                        setTurnoOrigen(entryOrigen.codigoTurno);
+                    } else {
+                        setTurnoOrigenDetectado("");
+                    }
+
+                    // Turno del empleado destino
+                    if (empleadoDestino) {
+                        const entryDestino = response.semana.find(
+                            entry => entry.empleado.id === empleadoDestino.id &&
+                                entry.fecha === fechaPermuta
+                        );
+
+                        if (entryDestino?.codigoTurno && ['1', '2', '3'].includes(entryDestino.codigoTurno)) {
+                            setTurnoDestinoDetectado(entryDestino.codigoTurno);
+                            setTurnoDestino(entryDestino.codigoTurno);
+                        } else {
+                            setTurnoDestinoDetectado("");
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error detectando turnos:', error);
+                setTurnoOrigenDetectado("");
+                setTurnoDestinoDetectado("");
+            } finally {
+                setLoadingTurnos(false);
+            }
+        };
+
+        detectarTurnos();
+    }, [fechaPermuta, empleadoOrigen, empleadoDestino]);
+
     const empleadosFiltrados = empleadosDisponibles.filter((emp) => {
         const term = searchTerm.toLowerCase();
         return (
@@ -71,7 +134,6 @@ export const PermutaModal = ({
     });
 
     const handleSubmit = async () => {
-
         if (!fechaPermuta || !motivo.trim() || !turnoOrigen) {
             toast.error("Por favor completa todos los campos obligatorios");
             return;
@@ -93,22 +155,19 @@ export const PermutaModal = ({
                 turnoEmpleadoOrigen: turnoOrigen,
                 turnoEmpleadoDestino: esCambioIndividual ? null : turnoDestino,
             };
-            //console.log("🚀 Payload a enviar:", payload);
-            //console.log("📋 JSON:", JSON.stringify(payload, null, 2));
+
             const response = await permutasService.solicitarPermuta(payload);
 
             if (response.exitoso) {
                 toast.success(esCambioIndividual ? "Cambio de turno registrado" : "Permuta solicitada exitosamente", {
                     description: esCambioIndividual
                         ? `${empleadoOrigen.fullName} cambia a turno ${turnoOrigen}`
-                        : `${empleadoOrigen.fullName} ⇄ ${empleadoDestino!.fullName}`,
+                        : `${empleadoOrigen.fullName} (T${turnoOrigen}) ⇄ ${empleadoDestino!.fullName} (T${turnoDestino})`,
                 });
                 handleClose();
             } else {
                 toast.error(response.mensaje || "Error al procesar la permuta");
             }
-
-
         } catch (error: any) {
             console.error("Error en permuta:", error);
             toast.error(error.message || "Error al solicitar la permuta");
@@ -125,6 +184,9 @@ export const PermutaModal = ({
         setShowSearch(false);
         setTurnoOrigen("");
         setTurnoDestino("");
+        setTurnoOrigenDetectado("");
+        setTurnoDestinoDetectado("");
+        setEsCambioIndividual(false);
         onClose();
     };
 
@@ -140,6 +202,7 @@ export const PermutaModal = ({
                             <ArrowLeftRight className="w-5 h-5 text-blue-600" />
                             Solicitar Permuta de Turno
                         </h2>
+
                         <div className="mb-4 flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                             <input
                                 type="checkbox"
@@ -150,6 +213,7 @@ export const PermutaModal = ({
                                     if (e.target.checked) {
                                         setEmpleadoDestino(null);
                                         setTurnoDestino("");
+                                        setTurnoDestinoDetectado("");
                                     }
                                 }}
                                 className="w-4 h-4"
@@ -174,80 +238,84 @@ export const PermutaModal = ({
 
                         {/* Selección de Empleado Destino */}
                         {!esCambioIndividual && (
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Empleado Destino *
-                            </label>
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Empleado Destino *
+                                </label>
 
-                            {!empleadoDestino ? (
-                                <>
-                                    <Button
-                                        variant="outline"
-                                        className="w-full mb-2"
-                                        onClick={() => setShowSearch(!showSearch)}
-                                    >
-                                        <Users className="w-4 h-4 mr-2" />
-                                        Seleccionar empleado del mismo grupo
-                                    </Button>
+                                {!empleadoDestino ? (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            className="w-full mb-2"
+                                            onClick={() => setShowSearch(!showSearch)}
+                                        >
+                                            <Users className="w-4 h-4 mr-2" />
+                                            Seleccionar empleado del mismo grupo
+                                        </Button>
 
-                                    {showSearch && (
-                                        <div className="border border-gray-300 rounded-lg p-3 max-h-64 overflow-y-auto">
-                                            <div className="relative mb-2">
-                                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
-                                                <Input
-                                                    placeholder="Buscar por nombre o nómina..."
-                                                    value={searchTerm}
-                                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                                    className="pl-8"
-                                                />
-                                            </div>
-
-                                            {empleadosFiltrados.length === 0 ? (
-                                                <p className="text-sm text-gray-500 text-center py-4">
-                                                    No hay empleados disponibles
-                                                </p>
-                                            ) : (
-                                                <div className="space-y-1">
-                                                    {empleadosFiltrados.map((emp) => (
-                                                        <button
-                                                            key={emp.id}
-                                                            onClick={() => {
-                                                                setEmpleadoDestino(emp);
-                                                                setShowSearch(false);
-                                                            }}
-                                                            className="w-full text-left p-2 hover:bg-gray-100 rounded text-sm"
-                                                        >
-                                                            <p className="font-medium">{emp.fullName}</p>
-                                                            <p className="text-xs text-gray-600">
-                                                                Nómina: {emp.nomina}
-                                                            </p>
-                                                        </button>
-                                                    ))}
+                                        {showSearch && (
+                                            <div className="border border-gray-300 rounded-lg p-3 max-h-64 overflow-y-auto">
+                                                <div className="relative mb-2">
+                                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                                                    <Input
+                                                        placeholder="Buscar por nombre o nómina..."
+                                                        value={searchTerm}
+                                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                                        className="pl-8"
+                                                    />
                                                 </div>
-                                            )}
+
+                                                {empleadosFiltrados.length === 0 ? (
+                                                    <p className="text-sm text-gray-500 text-center py-4">
+                                                        No hay empleados disponibles
+                                                    </p>
+                                                ) : (
+                                                    <div className="space-y-1">
+                                                        {empleadosFiltrados.map((emp) => (
+                                                            <button
+                                                                key={emp.id}
+                                                                onClick={() => {
+                                                                    setEmpleadoDestino(emp);
+                                                                    setShowSearch(false);
+                                                                }}
+                                                                className="w-full text-left p-2 hover:bg-gray-100 rounded text-sm"
+                                                            >
+                                                                <p className="font-medium">{emp.fullName}</p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    Nómina: {emp.nomina}
+                                                                </p>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm font-semibold text-green-900">
+                                                {empleadoDestino.fullName}
+                                            </p>
+                                            <p className="text-xs text-green-700">
+                                                Nómina: {empleadoDestino.nomina}
+                                            </p>
                                         </div>
-                                    )}
-                                </>
-                            ) : (
-                                <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex justify-between items-center">
-                                    <div>
-                                        <p className="text-sm font-semibold text-green-900">
-                                            {empleadoDestino.fullName}
-                                        </p>
-                                        <p className="text-xs text-green-700">
-                                            Nómina: {empleadoDestino.nomina}
-                                        </p>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                setEmpleadoDestino(null);
+                                                setTurnoDestino("");
+                                                setTurnoDestinoDetectado("");
+                                            }}
+                                        >
+                                            Cambiar
+                                        </Button>
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setEmpleadoDestino(null)}
-                                    >
-                                        Cambiar
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
+                                )}
+                            </div>
                         )}
 
                         {/* Fecha de Permuta */}
@@ -262,6 +330,12 @@ export const PermutaModal = ({
                                 disabled={loading}
                                 min={new Date().toISOString().split("T")[0]}
                             />
+                            {loadingTurnos && (
+                                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    Detectando turnos...
+                                </p>
+                            )}
                         </div>
 
                         {/* Turno Empleado Origen */}
@@ -269,6 +343,14 @@ export const PermutaModal = ({
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Turno de {empleadoOrigen.fullName} *
                             </label>
+                            {turnoOrigenDetectado && (
+                                <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs flex items-start gap-2">
+                                    <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                                    <span className="text-blue-700">
+                                        Turno actual detectado: <strong>Turno {turnoOrigenDetectado}</strong> para esta fecha
+                                    </span>
+                                </div>
+                            )}
                             <select
                                 value={turnoOrigen}
                                 onChange={(e) => setTurnoOrigen(e.target.value)}
@@ -276,20 +358,28 @@ export const PermutaModal = ({
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
                                 <option value="">Seleccionar turno...</option>
-                                {TURNOS.map((turno) => (
-                                    <option key={turno} value={turno}>
-                                        {turno}
+                                {TURNOS_DISPLAY.map((turno) => (
+                                    <option key={turno.value} value={turno.value}>
+                                        {turno.label}
                                     </option>
                                 ))}
                             </select>
                         </div>
 
                         {/* Turno Empleado Destino */}
-                        {empleadoDestino && (
+                        {empleadoDestino && !esCambioIndividual && (
                             <div className="mb-4">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Turno de {empleadoDestino.fullName} *
                                 </label>
+                                {turnoDestinoDetectado && (
+                                    <div className="mb-2 p-2 bg-green-50 border border-green-200 rounded text-xs flex items-start gap-2">
+                                        <Info className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                                        <span className="text-green-700">
+                                            Turno actual detectado: <strong>Turno {turnoDestinoDetectado}</strong> para esta fecha
+                                        </span>
+                                    </div>
+                                )}
                                 <select
                                     value={turnoDestino}
                                     onChange={(e) => setTurnoDestino(e.target.value)}
@@ -297,9 +387,9 @@ export const PermutaModal = ({
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
                                     <option value="">Seleccionar turno...</option>
-                                    {TURNOS.map((turno) => (
-                                        <option key={turno} value={turno}>
-                                            {turno}
+                                    {TURNOS_DISPLAY.map((turno) => (
+                                        <option key={turno.value} value={turno.value}>
+                                            {turno.label}
                                         </option>
                                     ))}
                                 </select>
