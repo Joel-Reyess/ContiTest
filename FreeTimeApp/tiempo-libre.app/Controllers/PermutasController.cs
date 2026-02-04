@@ -128,18 +128,23 @@ namespace tiempo_libre.Controllers
 
         [HttpGet("listado")]
         [Authorize]
-        public async Task<IActionResult> ObtenerPermutas([FromQuery] int? anio)
+        public async Task<IActionResult> ObtenerPermutas([FromQuery] int? anio, [FromQuery] int? areaId)
         {
             try
             {
-
                 var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var usuarioId))
                 {
                     return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
                 }
 
-                var response = await _permutaService.ObtenerPermutasAsync(anio, usuarioId);
+                _logger.LogInformation("🔍 ObtenerPermutas - Usuario: {UsuarioId}, Año: {Anio}, AreaId: {AreaId}",
+                    usuarioId, anio, areaId);
+
+                var response = await _permutaService.ObtenerPermutasAsync(anio, usuarioId, areaId);
+
+                _logger.LogInformation("📊 Permutas retornadas: {Count}", response.Total);
+
                 return Ok(new ApiResponse<PermutasListResponse>(true, response));
             }
             catch (Exception ex)

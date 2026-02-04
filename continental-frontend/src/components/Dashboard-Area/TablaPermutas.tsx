@@ -20,11 +20,22 @@ export const TablaPermutas = () => {
     const loadPermutas = async () => {
         try {
             setLoading(true);
-            const data = await permutasListService.obtenerPermutas(yearFilter);
 
-            // ✅ El backend YA filtra por área del jefe, solo asignamos directamente
+            // Obtener área del usuario actual
+            const userStr = localStorage.getItem('user');
+            let areaId: number | undefined;
+
+            if (userStr) {
+                const currentUser = JSON.parse(userStr);
+                areaId = currentUser.areaId || currentUser.area?.areaId;
+            }
+
+            const data = await permutasListService.obtenerPermutas({
+                anio: yearFilter,
+                areaId: areaId
+            });
+
             setPermutas(data.permutas);
-
             console.log('📋 Permutas cargadas:', data.permutas.length);
         } catch (error) {
             console.error('Error cargando permutas:', error);

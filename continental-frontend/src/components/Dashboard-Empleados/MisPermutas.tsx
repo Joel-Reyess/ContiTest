@@ -23,7 +23,9 @@ const MisPermutas = () => {
     const loadPermutas = async () => {
         try {
             setLoading(true);
-            const data = await permutasListService.obtenerPermutas(yearFilter);
+            const data = await permutasListService.obtenerPermutas({
+                anio: yearFilter
+            });
             setPermutas(data.permutas);
         } catch (error) {
             console.error('Error cargando permutas:', error);

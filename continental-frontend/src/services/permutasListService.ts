@@ -26,16 +26,28 @@ export interface PermutasListResponse {
     total: number;
 }
 
+export interface PermutasFilters {
+    anio?: number;
+    areaId?: number;
+    estadoSolicitud?: string;
+}
+
 export const permutasListService = {
-    async obtenerPermutas(anio: number): Promise<PermutasListResponse> {
-        const resp = await httpClient.get<PermutasListResponse>(
-            `/api/permutas/listado?anio=${anio}`
-        );
-        
+    async obtenerPermutas(filters?: PermutasFilters): Promise<PermutasListResponse> {
+        const params = new URLSearchParams();
+
+        if (filters?.anio) params.append('anio', filters.anio.toString());
+        if (filters?.areaId) params.append('areaId', filters.areaId.toString());
+        if (filters?.estadoSolicitud) params.append('estado', filters.estadoSolicitud);
+
+        const url = `/api/permutas/listado${params.toString() ? `?${params.toString()}` : ''}`;
+
+        const resp = await httpClient.get<PermutasListResponse>(url);
+
         if (!resp.success || !resp.data) {
             throw new Error(resp.errorMsg || 'Error al obtener permutas');
         }
-        
+
         return resp.data;
     },
 
@@ -49,11 +61,9 @@ export const permutasListService = {
                 }
             }
         );
-
         if (!response.ok) {
             throw new Error('Error al exportar Excel');
         }
-
         return await response.blob();
     },
 
@@ -62,7 +72,6 @@ export const permutasListService = {
             `/api/permutas/responder/${permutaId}`,
             { aprobar, motivoRechazo }
         );
-
         if (!resp.success) {
             throw new Error(resp.errorMsg || 'Error al responder permuta');
         }
