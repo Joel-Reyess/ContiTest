@@ -60,7 +60,15 @@ class SolicitudesService {
             console.log('Solicitud detail API response:', response)
 
             if (response.success && response.data) {
-                return response.data as unknown as Solicitud
+                const solicitud = response.data as unknown as Solicitud
+
+                // Si solicitadoPor viene vacío o es "Sistema", intenta obtenerlo de las notificaciones
+                if (!solicitud.solicitadoPor || solicitud.solicitadoPor === 'Sistema') {
+                    // El backend ya debería incluir esta info en ConsultarSolicitudesAsync
+                    // pero si no viene, puedes hacer una llamada adicional
+                }
+
+                return solicitud
             }
 
             throw new Error('Solicitud not found')

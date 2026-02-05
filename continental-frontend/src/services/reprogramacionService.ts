@@ -85,78 +85,15 @@ export class ReprogramacionService {
                 return (response as any).data as HistorialReprogramacionResponse;
             }
             if ((response as any)?.success === false) {
-                throw new Error((response as any)?.errorMsg || 'Error al obtener historial de solicitudes creadas por el usuario');
+                throw new Error((response as any)?.errorMsg || 'Error al obtener historial');
             }
             if (Array.isArray((response as any)?.solicitudes)) {
                 return response as unknown as HistorialReprogramacionResponse;
             }
 
-            throw new Error('Respuesta invalida al obtener historial de solicitudes creadas por el usuario');
+            throw new Error('Respuesta inválida');
         } catch (error: any) {
-            // Si el endpoint no existe (404), usar estrategia de fallback
-            if (error?.status === 404 || error?.message?.includes('404')) {
-                console.warn('⚠️ Endpoint creadas-por-mi no disponible, usando estrategia de fallback');
-
-                try {
-                    // Obtener el usuario actual del localStorage/auth
-                    const userStr = localStorage.getItem('user');
-                    if (!userStr) {
-                        return {
-                            solicitudes: [],
-                            totalSolicitudes: 0,
-                            pendientes: 0,
-                            aprobadas: 0,
-                            rechazadas: 0
-                        };
-                    }
-
-                    const currentUser = JSON.parse(userStr);
-                    const nombreUsuario = currentUser.fullName || currentUser.username;
-
-                    console.log('🔍 Buscando solicitudes creadas por:', nombreUsuario);
-
-                    // Obtener TODAS las solicitudes del año sin filtrar por empleado
-                    const allSolicitudesUrl = '/api/reprogramacion/todas';
-                    const allResponse = await httpClient.get<ApiResponse<HistorialReprogramacionResponse>>(
-                        allSolicitudesUrl,
-                        { anio },
-                        { timeout: 30000 }
-                    );
-
-                    let todasLasSolicitudes: SolicitudReprogramacion[] = [];
-
-                    if ((allResponse as any)?.data?.solicitudes) {
-                        todasLasSolicitudes = (allResponse as any).data.solicitudes;
-                    } else if (Array.isArray((allResponse as any)?.solicitudes)) {
-                        todasLasSolicitudes = (allResponse as any).solicitudes;
-                    }
-
-                    // Filtrar solo las solicitudes creadas por el usuario actual
-                    const solicitudesCreadas = todasLasSolicitudes.filter(s =>
-                        s.solicitadoPor === nombreUsuario
-                    );
-
-                    console.log(`✅ Solicitudes creadas por ${nombreUsuario}:`, solicitudesCreadas.length);
-
-                    return {
-                        solicitudes: solicitudesCreadas,
-                        totalSolicitudes: solicitudesCreadas.length,
-                        pendientes: solicitudesCreadas.filter(s => s.estadoSolicitud === 'Pendiente').length,
-                        aprobadas: solicitudesCreadas.filter(s => s.estadoSolicitud === 'Aprobada').length,
-                        rechazadas: solicitudesCreadas.filter(s => s.estadoSolicitud === 'Rechazada').length
-                    };
-                } catch (fallbackError) {
-                    console.error('❌ Error en estrategia de fallback:', fallbackError);
-                    // Retornar vacío si falla todo
-                    return {
-                        solicitudes: [],
-                        totalSolicitudes: 0,
-                        pendientes: 0,
-                        aprobadas: 0,
-                        rechazadas: 0
-                    };
-                }
-            }
+            console.error('Error en obtenerCreadasPorMi:', error);
             throw error;
         }
     }

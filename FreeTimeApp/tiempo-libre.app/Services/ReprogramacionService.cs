@@ -208,6 +208,7 @@ namespace tiempo_libre.Services
                     PorcentajeCalculado = porcentajeCalculado,
                     ObservacionesEmpleado = request.Motivo,
                     JefeAreaId = jefeArea?.Id,
+                    SolicitadoPorId = usuarioSolicitanteId,
                     FechaSolicitud = DateTime.Now
                 };
 
@@ -453,6 +454,7 @@ namespace tiempo_libre.Services
                         .ThenInclude(g => g.Area)
                     .Include(s => s.VacacionOriginal)
                     .Include(s => s.JefeArea)
+                    .Include(s => s.SolicitadoPor)
                     .AsQueryable();
 
                 if (esJefeArea && !esSuperUsuario && usuarioConsulta.AreaId.HasValue)
@@ -472,28 +474,7 @@ namespace tiempo_libre.Services
 
                 if (request.SolicitadoPorId.HasValue)
                 {
-                    var solicitanteId = request.SolicitadoPorId.Value;
-
-                    // Obtener IDs de solicitudes donde este usuario fue el emisor
-                    var solicitudIdsDelUsuario = await _db.Notificaciones
-                        .Where(n =>
-                            n.IdSolicitud.HasValue &&
-                            n.TipoDeNotificacion == TiposDeNotificacionEnum.SolicitudReprogramacion &&
-                            n.IdUsuarioEmisor == solicitanteId)
-                        .Select(n => n.IdSolicitud!.Value)
-                        .Distinct()
-                        .Take(500)
-                        .ToListAsync();
-
-                    if (solicitudIdsDelUsuario.Any())
-                    {
-                        query = query.Where(s => solicitudIdsDelUsuario.Contains(s.Id));
-                    }
-                    else
-                    {
-                        // Si no hay notificaciones, retornar vacío
-                        query = query.Where(s => false);
-                    }
+                    query = query.Where(s => s.SolicitadoPorId == request.SolicitadoPorId.Value);
                 }
 
                 if (request.JefeAreaId.HasValue)
@@ -531,27 +512,6 @@ namespace tiempo_libre.Services
                     .OrderByDescending(s => s.FechaSolicitud)
                     .ToListAsync();
 
-                var solicitudIds = solicitudes.Select(s => s.Id).ToList();
-
-                var notificacionesSolicitantes = solicitudIds.Count == 0
-                    ? new List<Notificaciones>()
-                    : await _db.Notificaciones
-                        .AsNoTracking() // ← Agregar esto para mejor rendimiento
-                        .Include(n => n.UsuarioEmisor)
-                        .Where(n =>
-                            n.IdSolicitud.HasValue &&
-                            solicitudIds.Contains(n.IdSolicitud.Value) &&
-                            n.TipoDeNotificacion == TiposDeNotificacionEnum.SolicitudReprogramacion)
-                        .Take(solicitudIds.Count) // ← Limitar resultados
-                        .ToListAsync();
-
-                var solicitantePorSolicitud = notificacionesSolicitantes
-                    .Where(n => n.IdSolicitud.HasValue)
-                    .GroupBy(n => n.IdSolicitud!.Value)
-                    .ToDictionary(
-                        g => g.Key,
-                        g => g.OrderByDescending(n => n.FechaAccion).First());
-
                 var solicitudesDto = solicitudes.Select(s => new SolicitudReprogramacionDto
                 {
                     Id = s.Id,
@@ -570,9 +530,7 @@ namespace tiempo_libre.Services
                     RequiereAprobacion = s.EstadoSolicitud == "Pendiente",
                     PorcentajeCalculado = s.PorcentajeCalculado,
                     FechaSolicitud = s.FechaSolicitud,
-                    SolicitadoPor = solicitantePorSolicitud.TryGetValue(s.Id, out var notificacionSolicitante)
-                        ? (notificacionSolicitante.UsuarioEmisor?.FullName ?? notificacionSolicitante.NombreEmisor ?? string.Empty)
-                        : "",
+                    SolicitadoPor = s.SolicitadoPor?.FullName ?? "Sistema",
                     FechaAprobacion = s.FechaRespuesta,
                     AprobadoPor = s.JefeArea != null && s.FechaRespuesta != null
                         ? s.JefeArea.FullName

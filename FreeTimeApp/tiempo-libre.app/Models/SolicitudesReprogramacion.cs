@@ -30,6 +30,11 @@ namespace tiempo_libre.Models
 
         public int? JefeAreaId { get; set; }
 
+        public int? SolicitadoPorId { get; set; }
+
+        [ForeignKey("SolicitadoPorId")]
+        public virtual User? SolicitadoPor { get; set; }
+
         public DateTime FechaSolicitud { get; set; } = DateTime.Now;
 
         public DateTime? FechaRespuesta { get; set; }

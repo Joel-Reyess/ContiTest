@@ -5,9 +5,10 @@ using System;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using tiempo_libre.Services;
 using tiempo_libre.DTOs;
 using tiempo_libre.Models;
+using tiempo_libre.Models.Enums;
+using tiempo_libre.Services;
 
 namespace tiempo_libre.Controllers
 {
@@ -344,7 +345,9 @@ namespace tiempo_libre.Controllers
 
                 var request = new ConsultaSolicitudesRequest
                 {
-                    SolicitadoPorId = usuarioId
+                    SolicitadoPorId = usuarioId,
+                    FechaNuevaDesde = anio.HasValue ? new DateOnly(anio.Value, 1, 1) : null,
+                    FechaNuevaHasta = anio.HasValue ? new DateOnly(anio.Value, 12, 31) : null
                 };
 
                 if (anio.HasValue)
@@ -373,11 +376,11 @@ namespace tiempo_libre.Controllers
 
         /// <summary>
         /// Obtener detalles de una solicitud específica
+        /// <summary>
+        /// Obtener solicitud individual por ID
         /// </summary>
-        /// <param name="solicitudId">ID de la solicitud</param>
-        /// <returns>Detalles completos de la solicitud</returns>
-        [HttpGet("solicitud/{solicitudId}")]
-        public async Task<IActionResult> ObtenerDetallesSolicitud([FromRoute] int solicitudId)
+        [HttpGet("solicitud/{id}")]
+        public async Task<IActionResult> ObtenerSolicitudPorId(int id)
         {
             try
             {
@@ -389,37 +392,31 @@ namespace tiempo_libre.Controllers
                     return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
                 }
 
-                // Crear un request específico para buscar por ID
+                // Crear un request para buscar solo esta solicitud
                 var request = new ConsultaSolicitudesRequest();
 
-                _logger.LogInformation(
-                    "Usuario {UsuarioId} consultando detalles de la solicitud {SolicitudId}",
-                    usuarioId, solicitudId);
+                _logger.LogInformation("Usuario {UsuarioId} consultando solicitud {SolicitudId}", usuarioId, id);
 
                 var response = await _reprogramacionService.ConsultarSolicitudesAsync(request, usuarioId);
 
-                if (!response.Success)
+                if (!response.Success || response.Data == null)
                 {
                     return BadRequest(response);
                 }
 
-                // Filtrar para obtener solo la solicitud específica
-                if (response.Data != null)
-                {
-                    var solicitud = response.Data.Solicitudes.FirstOrDefault(s => s.Id == solicitudId);
-                    if (solicitud == null)
-                    {
-                        return NotFound(new ApiResponse<object>(false, null, "Solicitud no encontrada"));
-                    }
+                // Buscar la solicitud específica en los resultados
+                var solicitud = response.Data.Solicitudes.FirstOrDefault(s => s.Id == id);
 
-                    return Ok(new ApiResponse<SolicitudReprogramacionDto>(true, solicitud, null));
+                if (solicitud == null)
+                {
+                    return NotFound(new ApiResponse<object>(false, null, "Solicitud no encontrada"));
                 }
 
-                return NotFound(new ApiResponse<object>(false, null, "Solicitud no encontrada"));
+                return Ok(new ApiResponse<SolicitudReprogramacionDto>(true, solicitud, null));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener detalles de la solicitud {SolicitudId}", solicitudId);
+                _logger.LogError(ex, "Error al obtener solicitud {SolicitudId}", id);
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }
