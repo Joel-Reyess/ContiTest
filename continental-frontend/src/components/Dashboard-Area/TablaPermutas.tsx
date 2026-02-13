@@ -1,29 +1,107 @@
-﻿import { useState, useEffect, useRef } from "react";
-import { Calendar, ArrowLeftRight, Download } from "lucide-react";
+﻿import { useState, useEffect, useRef, useCallback } from "react";
+import { Calendar, ArrowLeftRight, Download, Search } from "lucide-react";
 import { Button } from "../ui/button";
 import { permutasListService, type PermutaListItem } from "@/services/permutasListService";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { useAuth } from "@/hooks/useAuth";
+import { userService } from "@/services/userService";
+import { type User } from "@/interfaces/User.interface";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const TablaPermutas = () => {
+    const { user } = useAuth();
     const [permutas, setPermutas] = useState<PermutaListItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 5;
 
+    // 🆕 Estados para filtros
+    const [userData, setUserData] = useState<User | null>(null);
+    const [loadingUserData, setLoadingUserData] = useState(false);
+    const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
+    const [nominaSearch, setNominaSearch] = useState("");
+
+    const itemsPerPage = 5;
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const lastFetchedFiltersRef = useRef<string>('');
+
+    // 🆕 Función para obtener datos del usuario
+    const fetchUserData = useCallback(async () => {
+        if (!user?.id) {
+            setLoadingUserData(false);
+            return;
+        }
+
+        setLoadingUserData(true);
+        try {
+            const userDetail = await userService.getUserById(user.id);
+            console.log('User data for permutas:', userDetail);
+            setUserData(userDetail);
+
+            // Establecer área por defecto
+            if (userDetail?.areas && userDetail.areas.length > 0) {
+                const firstArea = userDetail.areas[0];
+                setSelectedAreaId(firstArea.areaId);
+            }
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+        } finally {
+            setLoadingUserData(false);
+        }
+    }, [user?.id]);
+
+    // 🆕 Cargar datos del usuario al inicio
     useEffect(() => {
-        loadPermutas();
-    }, [yearFilter]);
+        fetchUserData();
+    }, [fetchUserData]);
+
+    // 🆕 Efecto para cargar permutas con filtros
+    useEffect(() => {
+        if (loadingUserData || !userData) {
+            return;
+        }
+
+        // Solo hacer fetch si tenemos un área seleccionada
+        if (!selectedAreaId) {
+            return;
+        }
+
+        // Cancelar petición anterior
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
+        const filtersKey = JSON.stringify({ yearFilter, selectedAreaId });
+
+        // Evitar llamadas duplicadas
+        if (lastFetchedFiltersRef.current === filtersKey) {
+            return;
+        }
+
+        const timeoutId = setTimeout(() => {
+            lastFetchedFiltersRef.current = filtersKey;
+            loadPermutas();
+        }, 300);
+
+        return () => {
+            clearTimeout(timeoutId);
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+        };
+    }, [yearFilter, selectedAreaId, loadingUserData, userData]);
 
     const loadPermutas = async () => {
         try {
             setLoading(true);
 
             const data = await permutasListService.obtenerPermutas({
-                anio: yearFilter
-                // ← Quitar el filtro de areaId aquí
+                anio: yearFilter,
+                areaId: selectedAreaId || undefined
             });
 
             setPermutas(data.permutas);
@@ -35,29 +113,6 @@ export const TablaPermutas = () => {
             setLoading(false);
         }
     };
-
-    const abortControllerRef = useRef<AbortController | null>(null)
-
-    // Reemplaza useEffect:
-    useEffect(() => {
-        // Cancelar petición anterior
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort()
-        }
-        abortControllerRef.current = new AbortController()
-
-        const timeoutId = setTimeout(() => {
-            loadPermutas()
-        }, 300)
-
-        return () => {
-            clearTimeout(timeoutId)
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort()
-                abortControllerRef.current = null
-            }
-        }
-    }, [yearFilter])
 
     const handleExportExcel = async () => {
         try {
@@ -75,10 +130,23 @@ export const TablaPermutas = () => {
         }
     };
 
-    const totalPages = Math.ceil(permutas.length / itemsPerPage);
+    // 🆕 Filtrado por nómina en frontend
+    const filteredPermutas = permutas.filter((permuta) => {
+        if (!nominaSearch) return true;
+
+        const searchLower = nominaSearch.toLowerCase();
+        return (
+            (permuta as any).empleadoOrigenNomina?.toString().includes(nominaSearch) ||
+            (permuta as any).empleadoDestinoNomina?.toString().includes(nominaSearch) ||
+            permuta.empleadoOrigenNombre.toLowerCase().includes(searchLower) ||
+            permuta.empleadoDestinoNombre.toLowerCase().includes(searchLower)
+        );
+    });
+
+    const totalPages = Math.ceil(filteredPermutas.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    const currentPermutas = permutas.slice(startIndex, endIndex);
+    const currentPermutas = filteredPermutas.slice(startIndex, endIndex);
 
     const formatDate = (dateString: string) => {
         try {
@@ -114,33 +182,16 @@ export const TablaPermutas = () => {
 
     return (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h2 className="text-xl font-semibold text-gray-900">
-                        Historial de Permutas de Turno
-                    </h2>
-                    <p className="text-sm text-gray-600 mt-1">
-                        Intercambios de turnos registrados por empleados del área
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <select
-                        value={yearFilter}
-                        onChange={(e) => {
-                            setYearFilter(parseInt(e.target.value));
-                            setCurrentPage(1);
-                        }}
-                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        {Array.from({ length: 5 }, (_, i) => {
-                            const year = new Date().getFullYear() - 2 + i;
-                            return (
-                                <option key={year} value={year}>
-                                    {year}
-                                </option>
-                            );
-                        })}
-                    </select>
+            <div className="flex flex-col gap-4 mb-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-semibold text-gray-900">
+                            Historial de Permutas de Turno
+                        </h2>
+                        <p className="text-sm text-gray-600 mt-1">
+                            Intercambios de turnos registrados por empleados del área
+                        </p>
+                    </div>
                     <Button
                         onClick={handleExportExcel}
                         className="inline-flex items-center gap-2"
@@ -151,15 +202,88 @@ export const TablaPermutas = () => {
                         Exportar
                     </Button>
                 </div>
+
+                {/* 🆕 Fila de filtros */}
+                <div className="flex flex-wrap items-center gap-4">
+                    {/* Selector de Año */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700">Año</span>
+                        <select
+                            value={yearFilter}
+                            onChange={(e) => {
+                                setYearFilter(parseInt(e.target.value));
+                                setCurrentPage(1);
+                            }}
+                            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            {Array.from({ length: 5 }, (_, i) => {
+                                const year = new Date().getFullYear() - 2 + i;
+                                return (
+                                    <option key={year} value={year}>
+                                        {year}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
+
+                    {/* 🆕 Selector de Área */}
+                    {userData && userData.areas && userData.areas.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-700">Área</span>
+                            <Select
+                                value={selectedAreaId?.toString() || ""}
+                                onValueChange={(value) => {
+                                    setSelectedAreaId(parseInt(value));
+                                    setCurrentPage(1);
+                                }}
+                            >
+                                <SelectTrigger className="w-48">
+                                    <SelectValue placeholder="Selecciona un área" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {userData.areas.map((area) => (
+                                        <SelectItem key={area.areaId} value={area.areaId.toString()}>
+                                            {area.nombreGeneral}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {/* 🆕 Búsqueda por nómina/nombre */}
+                    <div className="relative">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                            value={nominaSearch}
+                            onChange={(e) => {
+                                setNominaSearch(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                            placeholder="Busca por nómina o nombre..."
+                            className="pl-9 pr-3 py-2 rounded-md border border-gray-300 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                        />
+                    </div>
+
+                    {/* 🆕 Contador de resultados */}
+                    <div className="text-sm text-gray-600">
+                        Total: {filteredPermutas.length} permutas
+                    </div>
+                </div>
             </div>
 
-            {loading ? (
+            {loading || loadingUserData ? (
                 <div className="flex justify-center items-center py-12">
                     <div className="text-gray-500">Cargando permutas...</div>
                 </div>
             ) : currentPermutas.length === 0 ? (
                 <div className="flex justify-center items-center py-12">
-                    <div className="text-gray-500">No hay permutas registradas</div>
+                    <div className="text-gray-500">
+                        {filteredPermutas.length === 0 && permutas.length > 0
+                            ? "No se encontraron permutas con los filtros aplicados"
+                            : "No hay permutas registradas"}
+                    </div>
                 </div>
             ) : (
                 <>
@@ -217,10 +341,10 @@ export const TablaPermutas = () => {
 
                                         <div className="flex items-center gap-3 mt-3">
                                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${permuta.estadoSolicitud === 'Aprobada'
-                                                ? 'bg-green-100 text-green-800'
-                                                : permuta.estadoSolicitud === 'Rechazada'
-                                                    ? 'bg-red-100 text-red-800'
-                                                    : 'bg-yellow-100 text-yellow-800'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : permuta.estadoSolicitud === 'Rechazada'
+                                                        ? 'bg-red-100 text-red-800'
+                                                        : 'bg-yellow-100 text-yellow-800'
                                                 }`}>
                                                 {permuta.estadoSolicitud}
                                             </span>
@@ -268,8 +392,8 @@ export const TablaPermutas = () => {
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
                             <div className="text-sm text-gray-600">
-                                Mostrando {permutas.length === 0 ? 0 : startIndex + 1} a{" "}
-                                {Math.min(endIndex, permutas.length)} de {permutas.length} permutas
+                                Mostrando {filteredPermutas.length === 0 ? 0 : startIndex + 1} a{" "}
+                                {Math.min(endIndex, filteredPermutas.length)} de {filteredPermutas.length} permutas
                             </div>
                             <div className="flex items-center gap-2">
                                 <button

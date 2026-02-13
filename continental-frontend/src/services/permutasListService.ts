@@ -9,6 +9,7 @@ export interface PermutaListItem {
     turnoEmpleadoDestino: string;
     motivo: string;
     solicitadoPorNombre: string;
+    solicitadoPorId: number;
     fechaSolicitud: string;
     estadoSolicitud: 'Pendiente' | 'Aprobada' | 'Rechazada';
     jefeAprobadorNombre?: string;

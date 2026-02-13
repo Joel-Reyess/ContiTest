@@ -15,7 +15,7 @@ import { empleadosService } from "@/services/empleadosService";
 import { generarExcelEmpleadosFaltantesCaptura } from "@/utils/empleadosFaltantesCapturaExcel";
 import { generarExcelVacacionesAsignadasEmpresa } from "@/utils/vacacionesAsignadasEmpresaExcel";
 import { toast } from "sonner";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, ChevronDown } from "lucide-react";
 import { Download, Palmtree, FileText, Award, AlertTriangle, FileSpreadsheet, UserMinus } from "lucide-react";
 import type { EmpleadoDetalle } from "@/interfaces/Api.interface";
 import { PeriodOptions } from "@/interfaces/Calendar.interface";
@@ -52,11 +52,37 @@ const calculateAntiguedadAlCierre = (fechaIngreso: string | null | undefined, ta
     return Math.max(years, 0);
 };
 
+// 🆕 Función para convertir 24h a 12h con AM/PM
+const formatTime12Hour = (time24: string): string => {
+    if (!time24) return "";
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+};
+
+type ReportCategory = 'programacion-anual' | 'reprogramacion';
+
+interface ReportCard {
+    id: number;
+    icon: any;
+    title: string;
+    subtitle: string;
+    category: ReportCategory;
+    requiresReprogramming?: boolean;
+}
+
 export const Reportes = () => {
     const [selectedArea, setSelectedArea] = useState<string>("");
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
     const [selectedYear, setSelectedYear] = useState<string>("");
     const [loadingGeneral, setLoadingGeneral] = useState(false);
+
+    const [timeFrom, setTimeFrom] = useState<string>("");
+    const [timeTo, setTimeTo] = useState<string>("");
+
+    // 🆕 Estado para categoría seleccionada
+    const [selectedCategory, setSelectedCategory] = useState<ReportCategory | 'all'>('all');
 
     interface GroupOption {
         value: string;
@@ -147,20 +173,56 @@ export const Reportes = () => {
                 fechaHasta: undefined
             });
 
-            const solicitudes = response?.solicitudes || [];
+            let solicitudes = response?.solicitudes || [];
+
+            if (timeFrom || timeTo) {
+                solicitudes = solicitudes.filter((solicitud) => {
+                    const fechaSolicitud = new Date(solicitud.fechaSolicitud);
+                    const hora = fechaSolicitud.getHours();
+                    const minutos = fechaSolicitud.getMinutes();
+                    const tiempoSolicitud = hora * 60 + minutos;
+
+                    let cumpleFiltro = true;
+
+                    if (timeFrom) {
+                        const [horaDesde, minutosDesde] = timeFrom.split(':').map(Number);
+                        const tiempoDesde = horaDesde * 60 + minutosDesde;
+                        cumpleFiltro = cumpleFiltro && tiempoSolicitud >= tiempoDesde;
+                    }
+
+                    if (timeTo) {
+                        const [horaHasta, minutosHasta] = timeTo.split(':').map(Number);
+                        const tiempoHasta = horaHasta * 60 + minutosHasta;
+                        cumpleFiltro = cumpleFiltro && tiempoSolicitud <= tiempoHasta;
+                    }
+
+                    return cumpleFiltro;
+                });
+            }
+
             if (solicitudes.length === 0) {
                 toast.info("No hay reprogramaciones con los filtros seleccionados.");
                 return;
             }
+
+            const periodoTexto = timeFrom && timeTo
+                ? `${formatTime12Hour(timeFrom)} - ${formatTime12Hour(timeTo)}`
+                : timeFrom
+                    ? `Desde ${formatTime12Hour(timeFrom)}`
+                    : timeTo
+                        ? `Hasta ${formatTime12Hour(timeTo)}`
+                        : undefined;
 
             exportarReprogramacionesExcel(solicitudes, {
                 titulo: "Reporte general de reprogramaciones",
                 tipo: "general",
                 area: areaName,
                 fechaDesde: undefined,
-                fechaHasta: undefined
+                fechaHasta: undefined,
+                periodo: periodoTexto
             });
-            toast.success("Reporte general descargado.");
+
+            toast.success(`Reporte general descargado (${solicitudes.length} registros).`);
         } catch (error: any) {
             console.error("Error al descargar reprogramaciones generales", error);
             toast.error(error?.message || "No se pudo generar el reporte general de reprogramaciones.");
@@ -169,75 +231,97 @@ export const Reportes = () => {
         }
     };
 
-  const reportCards = [
-    {
-      id: 1,
-      icon: Palmtree,
-      title: "Reporte de Vacaciones Asignadas por la Empresa",
-      subtitle: "Reporte con los empleados en vacaciones."
-    },
-    {
-      id: 10,
-      icon: UserMinus,
-      title: "Empleados faltantes de capturar vacaciones",
-      subtitle: "Asignados en bloque cola sin vacaciones manuales activas."
-    },
-    {
-      id: 5,
-      icon: Award,
-      title: "Constancia de Antiguedad",
-      subtitle: "Constancia de antiguedad y vacaciones adicionales para empleados sindicalizados."
-    },
-    {
-      id: 6,
-      icon: FileText,
-      title: "Empleados sin Asignación Automática",
-      subtitle: "Reporte de empleados que no tienen asignación automática de vacaciones."
-    },
-    {
-      id: 7,
-      icon: AlertTriangle,
-      title: "Empleados que No Respondieron",
-      subtitle: "Reporte de empleados que no respondieron a la asignación de bloques de vacaciones."
-    },
-    {
-      id: 8,
-      icon: FileSpreadsheet,
-      title: "Vacaciones Programadas por Área",
-      subtitle: "Exporta todas las vacaciones programadas agrupadas por área en formato Excel."
-    },
-    {
-      id: 9,
-      icon: FileSpreadsheet,
-      title: "Reporte SAP",
-      subtitle: "Genera archivo plano (Nómina, fecha dos veces y 1100, sin encabezados)."
-    },
-    {
-        id: 11, // Nuevo ID
-        icon: RefreshCw, // O Calendar
-        title: "General de Reprogramaciones",
-        subtitle: "Todas las reprogramaciones (solo en periodo de reprogramación).",
-        requiresReprogramming: true // Flag para identificarlo
-    },
-    {
-        id: 12,
-        icon: FileText,
-        title: "Reporte SAP Reprogramación (Eliminar)",
-        subtitle: "Días que se quitarán de la programación original."
-    },
-    {
-        id: 13,
-        icon: FileText,
-        title: "Reporte SAP Reprogramación (Nuevos)",
-        subtitle: "Días que se agregarán a la nueva programación."
-    },
-    {
-    id: 14,
-    icon: FileText,
-    title: "Reporte SAP Permutas",
-    subtitle: "Días permutados con nueva regla de turno asignada."
-    }
-  ];
+    const reportCards: ReportCard[] = [
+        {
+            id: 1,
+            icon: Palmtree,
+            title: "Reporte de Vacaciones Asignadas por la Empresa",
+            subtitle: "Reporte con los empleados en vacaciones.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 5,
+            icon: Award,
+            title: "Constancia de Antiguedad",
+            subtitle: "Constancia de antiguedad y vacaciones adicionales para empleados sindicalizados.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 7,
+            icon: AlertTriangle,
+            title: "Empleados que No Respondieron",
+            subtitle: "Reporte de empleados que no respondieron a la asignación de bloques de vacaciones.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 9,
+            icon: FileSpreadsheet,
+            title: "Reporte SAP Vacaciones Anuales",
+            subtitle: "Genera archivo plano (Nómina, fecha dos veces y 1100, sin encabezados).",
+            category: 'programacion-anual'
+        },
+        {
+            id: 10,
+            icon: UserMinus,
+            title: "Empleados faltantes de capturar vacaciones",
+            subtitle: "Asignados en bloque cola sin vacaciones manuales activas.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 6,
+            icon: FileText,
+            title: "Empleados sin Asignación Automática",
+            subtitle: "Reporte de empleados que no tienen asignación automática de vacaciones.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 8,
+            icon: FileSpreadsheet,
+            title: "Vacaciones Programadas por Área",
+            subtitle: "Exporta todas las vacaciones programadas agrupadas por área en formato Excel.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 12,
+            icon: FileText,
+            title: "Reporte SAP Reprogramación (Eliminar)",
+            subtitle: "Días que se quitarán de la programación original.",
+            category: 'reprogramacion'
+        },
+        {
+            id: 11,
+            icon: RefreshCw,
+            title: "General de Reprogramaciones",
+            subtitle: "Todas las reprogramaciones (solo en periodo de reprogramación).",
+            category: 'reprogramacion',
+            requiresReprogramming: true
+        },
+        {
+            id: 13,
+            icon: FileText,
+            title: "Reporte SAP Reprogramación (Nuevos)",
+            subtitle: "Días que se agregarán a la nueva programación.",
+            category: 'reprogramacion'
+        },
+        {
+            id: 14,
+            icon: FileText,
+            title: "Reporte SAP Permutas",
+            subtitle: "Días permutados con nueva regla de turno asignada.",
+            category: 'reprogramacion'
+        }
+    ];
+
+    // 🆕 Filtrar reportes por categoría seleccionada
+    const filteredReports = selectedCategory === 'all'
+        ? reportCards
+        : reportCards.filter(r => r.category === selectedCategory);
+
+    const categoriaTitulos = {
+        'programacion-anual': 'Programación Anual',
+        'reprogramacion': 'Reprogramación',
+        'all': 'Todos los reportes'
+    };
 
     const handleDownload = async (reportId: number) => {
         const areaId = selectedArea ? parseInt(selectedArea) : undefined;
@@ -257,6 +341,9 @@ export const Reportes = () => {
                         reject(err);
                     });
             });
+
+        // [... resto del código de handleDownload sin cambios ...]
+        // (Mantén todo el código existente de handleDownload exactamente igual)
 
         if (reportId === 1) {
             try {
@@ -589,46 +676,46 @@ export const Reportes = () => {
                     gruposRol
                 });
 
-              toast.dismiss(loadingToast);
-              toast.success("Reporte SAP descargado exitosamente");
-          } catch (error) {
-              console.error("Error al descargar Reporte SAP:", error);
-              toast.dismiss();
-              toast.error(error instanceof Error ? error.message : "No se pudo generar el Reporte SAP");
-          }
-      } else if (reportId === 11) {
-          await handleReprogGeneral();
-      } else if (reportId === 12 || reportId === 13) {
-          try {
-              if (!selectedYear) {
-                  toast.error("Selecciona el año para generar el reporte");
-                  return;
-              }
+                toast.dismiss(loadingToast);
+                toast.success("Reporte SAP descargado exitosamente");
+            } catch (error) {
+                console.error("Error al descargar Reporte SAP:", error);
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el Reporte SAP");
+            }
+        } else if (reportId === 11) {
+            await handleReprogGeneral();
+        } else if (reportId === 12 || reportId === 13) {
+            try {
+                if (!selectedYear) {
+                    toast.error("Selecciona el año para generar el reporte");
+                    return;
+                }
 
-              const tipo = reportId === 12 ? 'eliminar' : 'nuevos';
-              const loadingToast = toast.loading(`Generando Reporte SAP Reprogramación (${tipo})...`);
+                const tipo = reportId === 12 ? 'eliminar' : 'nuevos';
+                const loadingToast = toast.loading(`Generando Reporte SAP Reprogramación (${tipo})...`);
 
-              const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
-              const gruposRol = selectedGroups.length > 0 ? selectedGroups : undefined;
+                const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
+                const gruposRol = selectedGroups.length > 0 ? selectedGroups : undefined;
 
-              await reportesService.exportarReporteSAPReprogramacion(tipo, {
-                  year: parseInt(selectedYear),
-                  areaId: areaIdFilter,
-                  gruposRol
-              });
+                await reportesService.exportarReporteSAPReprogramacion(tipo, {
+                    year: parseInt(selectedYear),
+                    areaId: areaIdFilter,
+                    gruposRol
+                });
 
-              toast.dismiss(loadingToast);
-              toast.success(`Reporte SAP Reprogramación (${tipo}) descargado exitosamente`);
-          } catch (error) {
-              console.error("Error al descargar Reporte SAP Reprogramación:", error);
-              toast.dismiss();
-              toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
-          }
-      } else {
-          console.log(`Descargando reporte ${reportId}`);
-          toast.info("Funcionalidad en desarrollo para este tipo de reporte");
-      }
-  };
+                toast.dismiss(loadingToast);
+                toast.success(`Reporte SAP Reprogramación (${tipo}) descargado exitosamente`);
+            } catch (error) {
+                console.error("Error al descargar Reporte SAP Reprogramación:", error);
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+            }
+        } else {
+            console.log(`Descargando reporte ${reportId}`);
+            toast.info("Funcionalidad en desarrollo para este tipo de reporte");
+        }
+    };
 
     return (
         <div className="space-y-6 p-6 max-w-7xl mx-auto">
@@ -641,11 +728,11 @@ export const Reportes = () => {
                 </div>
 
                 <div className="space-y-2">
-                    <Label className="text-base font-medium text-continental-black">Área</Label>
+                    <Label className="text-base font-medium text-continental-black">Área (opcional)</Label>
                     <Select
-                        value={selectedArea}
+                        value={selectedArea || "0"}
                         onValueChange={(value) => {
-                            setSelectedArea(value);
+                            setSelectedArea(value === "0" ? "" : value);
                             setSelectedGroups([]);
                             setAvailableGroups([]);
                         }}
@@ -658,10 +745,11 @@ export const Reportes = () => {
                                     Cargando áreas...
                                 </div>
                             ) : (
-                                <SelectValue placeholder="Seleccionar área" />
+                                <SelectValue placeholder="Todas las áreas" />
                             )}
                         </SelectTrigger>
                         <SelectContent>
+                            <SelectItem value="0">Todas las áreas</SelectItem>
                             {areas.map((area) => (
                                 <SelectItem key={area.areaId} value={area.areaId.toString()}>
                                     {area.nombreGeneral}
@@ -672,7 +760,7 @@ export const Reportes = () => {
                 </div>
 
                 <div className="space-y-2">
-                    <Label className="text-base font-medium text-continental-black">Grupo</Label>
+                    <Label className="text-base font-medium text-continental-black">Grupo (opcional)</Label>
                     {areasLoading || !selectedArea ? (
                         <div className="flex gap-2">
                             <div className="flex flex-wrap gap-2">
@@ -727,11 +815,83 @@ export const Reportes = () => {
                     </Select>
                 </div>
 
+                <div className="space-y-2">
+                    <Label className="text-base font-medium text-continental-black">
+                        Periodo de tiempo (opcional)
+                    </Label>
+                    <div className="grid grid-cols-2 gap-3 max-w-sm">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-600">Desde</span>
+                            <input
+                                type="time"
+                                value={timeFrom}
+                                onChange={(e) => setTimeFrom(e.target.value)}
+                                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            {timeFrom && (
+                                <span className="text-xs text-gray-500 italic">
+                                    {formatTime12Hour(timeFrom)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-600">Hasta</span>
+                            <input
+                                type="time"
+                                value={timeTo}
+                                onChange={(e) => setTimeTo(e.target.value)}
+                                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            {timeTo && (
+                                <span className="text-xs text-gray-500 italic">
+                                    {formatTime12Hour(timeTo)}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    {(timeFrom || timeTo) && (
+                        <button
+                            onClick={() => {
+                                setTimeFrom("");
+                                setTimeTo("");
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                            Limpiar periodo
+                        </button>
+                    )}
+                </div>
+
+                {/* 🆕 DROPDOWN DE CATEGORÍAS */}
+                <div className="space-y-2">
+                    <Label className="text-base font-medium text-continental-black">Categoría de reporte</Label>
+                    <Select
+                        value={selectedCategory}
+                        onValueChange={(value) => setSelectedCategory(value as any)}
+                    >
+                        <SelectTrigger className="w-full max-w-sm">
+                            <SelectValue placeholder="Seleccionar categoría" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los reportes</SelectItem>
+                            <SelectItem value="programacion-anual">Programación Anual</SelectItem>
+                            <SelectItem value="reprogramacion">Reprogramación</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
                 <div className="space-y-4">
-                    <h2 className="text-base font-bold text-continental-black text-left">Tipo de reporte</h2>
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-base font-bold text-continental-black">
+                            {categoriaTitulos[selectedCategory]}
+                        </h2>
+                        <span className="text-sm text-gray-600">
+                            {filteredReports.length} reporte(s)
+                        </span>
+                    </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {reportCards.map((report) => (
+                        {filteredReports.map((report) => (
                             <Card key={report.id} className="rounded-xl border-gray-300">
                                 <CardContent className="p-6">
                                     <div className="flex items-start justify-between">
@@ -744,7 +904,12 @@ export const Reportes = () => {
                                                 <h3 className="font-semibold text-continental-black">{report.title}</h3>
                                                 <p className="text-sm text-gray-600">{report.subtitle}</p>
                                                 <div className="flex items-center gap-2">
-                                                    <FileText size={16} className="text-gray-400" />
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${report.category === 'programacion-anual'
+                                                            ? 'bg-blue-100 text-blue-700'
+                                                            : 'bg-purple-100 text-purple-700'
+                                                        }`}>
+                                                        {report.category === 'programacion-anual' ? 'Programación Anual' : 'Reprogramación'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>

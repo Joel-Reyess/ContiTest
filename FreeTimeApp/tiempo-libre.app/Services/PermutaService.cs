@@ -241,6 +241,7 @@ namespace tiempo_libre.Services
                         TurnoEmpleadoDestino = p.TurnoEmpleadoDestino ?? "N/A",
                         Motivo = p.Motivo,
                         SolicitadoPorNombre = p.SolicitadoPor.FullName,
+                        SolicitadoPorId = p.SolicitadoPorId,
                         FechaSolicitud = p.FechaSolicitud,
                         EstadoSolicitud = p.EstadoSolicitud,
                         JefeAprobadorNombre = p.JefeAprobador != null ? p.JefeAprobador.FullName : null,

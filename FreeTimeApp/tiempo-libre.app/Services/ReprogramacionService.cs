@@ -489,8 +489,6 @@ namespace tiempo_libre.Services
                         usuarioConsultaId, usuarioConsultaId);
                 }
 
-                // FILTROS ADICIONALES DEL REQUEST
-                // FILTROS ADICIONALES DEL REQUEST
                 if (!string.IsNullOrEmpty(request.Estado))
                 {
                     query = query.Where(s => s.EstadoSolicitud == request.Estado);
@@ -501,15 +499,12 @@ namespace tiempo_libre.Services
                     query = query.Where(s => s.EmpleadoId == request.EmpleadoId.Value);
                 }
 
-                // 🔥 MODIFICACIÓN CRÍTICA: Solo aplicar este filtro si NO es delegado sindical
-                // O si el valor solicitado NO es el mismo que el usuario consultando
                 if (request.SolicitadoPorId.HasValue && !esDelegadoSindical)
                 {
                     query = query.Where(s => s.SolicitadoPorId == request.SolicitadoPorId.Value);
                 }
                 else if (request.SolicitadoPorId.HasValue && esDelegadoSindical && request.SolicitadoPorId.Value != usuarioConsultaId)
                 {
-                    // Si es delegado pero está filtrando por OTRO usuario, aplicar el filtro
                     query = query.Where(s => s.SolicitadoPorId == request.SolicitadoPorId.Value);
                 }
 

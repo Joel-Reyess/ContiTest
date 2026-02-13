@@ -13,6 +13,7 @@ namespace tiempo_libre.DTOs
         public string TurnoEmpleadoDestino { get; set; } = string.Empty;
         public string Motivo { get; set; } = string.Empty;
         public string SolicitadoPorNombre { get; set; } = string.Empty;
+        public int SolicitadoPorId { get; set; }
         public DateTime FechaSolicitud { get; set; }
         public string EstadoSolicitud { get; set; } = "Pendiente";
         public string? JefeAprobadorNombre { get; set; }
