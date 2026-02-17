@@ -81,7 +81,7 @@ namespace tiempo_libre.Services
                         continue;
                     }
 
-                    Grupo grupoCorrect = null;
+                    Grupo? grupoCorrect = null;
 
                     // PASO 2: Filtrar por UnidadOrganizativa
                     if (gruposPosibles.Count > 1 && !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
@@ -93,14 +93,12 @@ namespace tiempo_libre.Services
                         if (gruposMismaUnidad.Count == 1)
                         {
                             grupoCorrect = gruposMismaUnidad.First();
-                            //_logger.LogInformation($"✅ Grupo único en UnidadOrg: GrupoId={grupoCorrect.GrupoId}");
                         }
                         else if (gruposMismaUnidad.Count > 1 && !string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
                         {
                             // PASO 3: Buscar por JefeId usando EncargadoRegistro
                             int? jefeIdBuscado = null;
 
-                            // Primero intentar parsear como nómina
                             if (int.TryParse(rolSAP.EncargadoRegistro.Trim(), out int nominaJefe))
                             {
                                 jefeIdBuscado = await _context.Users
@@ -109,7 +107,6 @@ namespace tiempo_libre.Services
                                     .FirstOrDefaultAsync();
                             }
 
-                            // Si no es nómina, buscar por FullName en Users
                             if (!jefeIdBuscado.HasValue)
                             {
                                 var nombreEncargadoSAP = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
@@ -126,12 +123,8 @@ namespace tiempo_libre.Services
                                 }
                             }
 
-                            // CRÍTICO: Buscar el grupo por Area.JefeId Y verificar EncargadoRegistro
                             if (jefeIdBuscado.HasValue)
                             {
-                                //_logger.LogInformation($"🔍 Buscando grupo para Nomina={rolSAP.Nomina}, JefeId={jefeIdBuscado.Value}, EncargadoSAP='{rolSAP.EncargadoRegistro}'");
-
-                                // Buscar grupos donde el JefeId coincida
                                 var gruposConJefeCorrecto = gruposMismaUnidad
                                     .Where(g => g.Area.JefeId == jefeIdBuscado.Value)
                                     .ToList();
@@ -139,32 +132,22 @@ namespace tiempo_libre.Services
                                 if (gruposConJefeCorrecto.Count == 1)
                                 {
                                     grupoCorrect = gruposConJefeCorrecto.First();
-                                    //_logger.LogInformation($"✅ Grupo ÚNICO encontrado por JefeId: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.Area.NombreGeneral}");
                                 }
                                 else if (gruposConJefeCorrecto.Count > 1)
                                 {
-                                    // Hay múltiples grupos con el mismo jefe - verificar por EncargadoRegistro normalizado
                                     var encargadoNormalizado = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
-
-                                    //_logger.LogInformation($"🔍 Múltiples grupos con JefeId={jefeIdBuscado.Value}, comparando EncargadoRegistro:");
-                                    foreach (var g in gruposConJefeCorrecto)
-                                    {
-                                        var encargadoAreaNormalizado = RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim();
-                                       // _logger.LogInformation($"   GrupoId={g.GrupoId}, Area='{g.Area.NombreGeneral}', EncargadoArea='{g.Area.EncargadoRegistro}' (normalizado='{encargadoAreaNormalizado}')");
-                                    }
 
                                     grupoCorrect = gruposConJefeCorrecto.FirstOrDefault(g =>
                                         RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim() == encargadoNormalizado);
 
                                     if (grupoCorrect != null)
                                     {
-                                        _logger.LogInformation($"✅ Grupo encontrado por JefeId + EncargadoRegistro: GrupoId={grupoCorrect.GrupoId}, Area='{grupoCorrect.Area.NombreGeneral}'");
+                                        _logger.LogInformation($"✅ Grupo encontrado por JefeId + EncargadoRegistro: GrupoId={grupoCorrect.GrupoId}");
                                     }
                                     else
                                     {
-                                        // Último intento: tomar el primero
                                         grupoCorrect = gruposConJefeCorrecto.First();
-                                        _logger.LogWarning($"⚠️ No coincide EncargadoRegistro, usando primer grupo con JefeId correcto: GrupoId={grupoCorrect.GrupoId}, Area='{grupoCorrect.Area.NombreGeneral}'");
+                                        _logger.LogWarning($"⚠️ No coincide EncargadoRegistro, usando primer grupo con JefeId correcto: GrupoId={grupoCorrect.GrupoId}");
                                     }
                                 }
                                 else
@@ -173,11 +156,10 @@ namespace tiempo_libre.Services
                                 }
                             }
 
-                            // PASO 4: Último fallback - tomar el primero
                             if (grupoCorrect == null)
                             {
                                 grupoCorrect = gruposMismaUnidad.First();
-                                _logger.LogWarning($"⚠️ FALLBACK: usando primer grupo: GrupoId={grupoCorrect.GrupoId}, Area='{grupoCorrect.Area.NombreGeneral}', EncargadoSAP={rolSAP.EncargadoRegistro}");
+                                _logger.LogWarning($"⚠️ FALLBACK: usando primer grupo: GrupoId={grupoCorrect.GrupoId}");
                             }
                         }
                         else if (gruposMismaUnidad.Any())
@@ -208,7 +190,7 @@ namespace tiempo_libre.Services
                         empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId));
                     }
                 }
-            } // ✅ ESTA LLAVE FALTABA - Cierra el foreach principal
+            }
 
             await _context.SaveChangesAsync();
 
@@ -216,9 +198,72 @@ namespace tiempo_libre.Services
             {
                 await RegenerarCalendarioFuturo(user.Id);
             }
+
+            // ✅ ELIMINAR EMPLEADOS Y USUARIOS INACTIVOS
+            await EliminarEmpleadosInactivos();
+
             _logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} registros actualizados.");
             return registrosActualizados;
         }
+
+        public async Task<int> EliminarEmpleadosInactivos()
+        {
+            int empleadosEliminados = 0;
+            int usuariosEliminados = 0;
+
+            try
+            {
+                // Obtener nóminas activas en RolesEmpleadosSAP
+                var nominasActivas = await _context.RolesEmpleadosSAP
+                    .Select(r => r.Nomina)
+                    .Distinct()
+                    .ToListAsync();
+
+                // Encontrar empleados que ya no están en RolesEmpleadosSAP
+                var empleadosAEliminar = await _context.Empleados
+                    .Where(e => !nominasActivas.Contains(e.Nomina))
+                    .ToListAsync();
+
+                if (empleadosAEliminar.Any())
+                {
+                    _context.Empleados.RemoveRange(empleadosAEliminar);
+                    empleadosEliminados = empleadosAEliminar.Count;
+                    _logger.LogInformation($"🗑️ Eliminados {empleadosEliminados} empleados inactivos");
+                }
+
+                // Buscar el rol Empleado_Sindicalizado
+                var rolSindicalizado = await _context.Roles
+                    .FirstOrDefaultAsync(r => r.Name == "Empleado_Sindicalizado" || r.Name == "Empleado Sindicalizado");
+
+                if (rolSindicalizado != null)
+                {
+                    var usuariosAEliminar = await _context.Users
+                        .Include(u => u.Roles)
+                        .Where(u => u.Nomina.HasValue &&
+                                   !nominasActivas.Contains(u.Nomina.Value) &&
+                                   u.Roles.Any(r => r.Id == rolSindicalizado.Id))
+                        .ToListAsync();
+
+                    if (usuariosAEliminar.Any())
+                    {
+                        _context.Users.RemoveRange(usuariosAEliminar);
+                        usuariosEliminados = usuariosAEliminar.Count;
+                        _logger.LogInformation($"🗑️ Eliminados {usuariosEliminados} usuarios sindicalizados inactivos");
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation($"✅ Limpieza completada. Empleados: {empleadosEliminados}, Usuarios: {usuariosEliminados}");
+                return empleadosEliminados + usuariosEliminados;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error al eliminar empleados/usuarios inactivos");
+                return 0;
+            }
+        }
+
         private string RemoverAcentos(string texto)
         {
             if (string.IsNullOrEmpty(texto))

@@ -218,8 +218,7 @@ export const Reportes = () => {
                 tipo: "general",
                 area: areaName,
                 fechaDesde: undefined,
-                fechaHasta: undefined,
-                periodo: periodoTexto
+                fechaHasta: undefined
             });
 
             toast.success(`Reporte general descargado (${solicitudes.length} registros).`);
