@@ -21,6 +21,7 @@ import type { EmpleadoDetalle } from "@/interfaces/Api.interface";
 import { PeriodOptions } from "@/interfaces/Calendar.interface";
 import { exportarReprogramacionesExcel } from "@/utils/reprogramacionesExcel";
 import { solicitudesService } from "@/services/solicitudesService";
+import { festivosTrabajadosService } from "@/services/festivosTrabajadosService";
 
 const transformGroupRole = (role: string) => {
     if (!role) return "";
@@ -378,7 +379,14 @@ export const Reportes = () => {
             title: "Reporte SAP Permutas",
             subtitle: "Días permutados con nueva regla de turno asignada.",
             category: 'reprogramacion'
-        }
+        },
+        {
+            id: 15,
+            icon: FileSpreadsheet,
+            title: "Reporte de Festivos Trabajados",
+            subtitle: "Nómina, nombre, fecha trabajada y fecha de intercambio aprobada.",
+            category: 'reprogramacion'
+        },
     ];
 
     const filteredReports = selectedCategory === 'all'
@@ -504,6 +512,37 @@ export const Reportes = () => {
                 toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
             }
         }
+        else if (reportId === 15) {
+        try {
+            const loadingToast = toast.loading("Generando Reporte de Festivos Trabajados...");
+
+            const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
+
+            const solicitudes = await festivosTrabajadosService.getSolicitudes({
+                estado: 'Aprobada',
+                areaId: areaIdFilter,
+            });
+
+            toast.dismiss(loadingToast);
+
+            if (!solicitudes.length) {
+                toast.info("No hay festivos trabajados aprobados con los filtros seleccionados.");
+                return;
+            }
+
+            const { exportarExcelFestivosTrabajados } = await import("@/utils/festivosTrabajadosExcel");
+            const areaName = selectedArea
+                ? areas.find(a => a.areaId.toString() === selectedArea)?.nombreGeneral ?? "Sin área"
+                : "Todas";
+
+            exportarExcelFestivosTrabajados(solicitudes, { area: areaName });
+            toast.success(`Reporte descargado con ${solicitudes.length} registro(s).`);
+        } catch (error) {
+            console.error("Error al descargar Reporte de Festivos Trabajados:", error);
+            toast.dismiss();
+            toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte.");
+        }
+      }
         else if (reportId === 5) {
             if (!selectedArea || selectedGroups.length === 0 || !selectedYear) {
                 toast.error("Por favor selecciona área, grupos y año para generar la constancia de antiguedad");
