@@ -178,16 +178,27 @@ namespace tiempo_libre.Services
                     }
 
                     // PASO 4: Actualizar usuario
-                    if (grupoCorrect != null && (user.GrupoId != grupoCorrect.GrupoId || user.AreaId != grupoCorrect.AreaId))
+                    // PASO 4: Actualizar usuario
+                    if (grupoCorrect != null)
                     {
-                        var grupoAnterior = user.GrupoId ?? 0;
-                        user.GrupoId = grupoCorrect.GrupoId;
-                        user.AreaId = grupoCorrect.AreaId;
-                        user.UpdatedAt = DateTime.UtcNow;
-                        registrosActualizados++;
-
-                        _logger.LogInformation($"✅ Usuario {user.Nomina} actualizado: Area={grupoCorrect.AreaId}, Grupo={grupoCorrect.GrupoId}");
-                        empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId));
+                        if (user.GrupoId != grupoCorrect.GrupoId || user.AreaId != grupoCorrect.AreaId)
+                        {
+                            _logger.LogInformation($"🔄 Usuario {user.Nomina}: GrupoId {user.GrupoId}→{grupoCorrect.GrupoId} | AreaId {user.AreaId}→{grupoCorrect.AreaId}");
+                            var grupoAnterior = user.GrupoId ?? 0;
+                            user.GrupoId = grupoCorrect.GrupoId;
+                            user.AreaId = grupoCorrect.AreaId;
+                            user.UpdatedAt = DateTime.UtcNow;
+                            registrosActualizados++;
+                            empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId));
+                        }
+                        else
+                        {
+                            _logger.LogInformation($"✅ Usuario {user.Nomina}: ya está en GrupoId={grupoCorrect.GrupoId} correcto");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"❌ Usuario {user.Nomina}: grupoCorrect es null, no se actualizó. Regla={rolSAP.Regla}, UnidadOrg={rolSAP.UnidadOrganizativa}");
                     }
                 }
             }
@@ -203,7 +214,108 @@ namespace tiempo_libre.Services
             await EliminarEmpleadosInactivos();
 
             _logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} registros actualizados.");
+            // Sincronizar Users desde Empleados (flujo directo por UnidadOrganizativa y Rol)
+            var usersActualizados = await SincronizarUsersDesdeEmpleados();
+            registrosActualizados += usersActualizados;
             return registrosActualizados;
+        }
+
+        public async Task<int> SincronizarUsersDesdeEmpleados()
+        {
+            int actualizados = 0;
+
+            // Traer todos los empleados con su UnidadOrganizativa y Rol
+            var empleados = await _context.Empleados
+                .Where(e => !string.IsNullOrEmpty(e.UnidadOrganizativa) && !string.IsNullOrEmpty(e.Rol))
+                .ToListAsync();
+
+            // Traer todas las áreas indexadas por UnidadOrganizativaSap
+            var areas = await _context.Areas.ToListAsync();
+            var areasPorUnidad = areas
+                .GroupBy(a => a.UnidadOrganizativaSap?.Trim().ToUpper())
+                .Where(g => g.Key != null)
+                .ToDictionary(g => g.Key!, g => g.ToList());
+
+            // Traer todos los grupos indexados por Rol
+            var grupos = await _context.Grupos.ToListAsync();
+            var gruposPorRol = grupos
+                .GroupBy(g => g.Rol?.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper())
+                .Where(g => g.Key != null)
+                .ToDictionary(g => g.Key!, g => g.ToList());
+
+            foreach (var empleado in empleados)
+            {
+                // Buscar el usuario por Username == Nomina
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Username == empleado.Nomina.ToString());
+
+                if (user == null)
+                {
+                    _logger.LogWarning($"⚠️ No se encontró User con Username={empleado.Nomina}");
+                    continue;
+                }
+
+                // Resolver AreaId desde UnidadOrganizativa
+                var unidadKey = empleado.UnidadOrganizativa?.Trim().ToUpper();
+                if (!areasPorUnidad.TryGetValue(unidadKey!, out var areasCandiatas) || !areasCandiatas.Any())
+                {
+                    _logger.LogWarning($"⚠️ Nomina={empleado.Nomina}: No se encontró Area para UnidadOrg={empleado.UnidadOrganizativa}");
+                    continue;
+                }
+
+                // Si hay más de un área con esa UnidadOrg, elegir por EncargadoRegistro
+                Area? areaCorrecta = null;
+                if (areasCandiatas.Count == 1)
+                {
+                    areaCorrecta = areasCandiatas.First();
+                }
+                else if (!string.IsNullOrEmpty(empleado.EncargadoRegistro))
+                {
+                    var encNorm = RemoverAcentos(empleado.EncargadoRegistro.Trim()).ToLower();
+                    areaCorrecta = areasCandiatas.FirstOrDefault(a =>
+                        RemoverAcentos(a.EncargadoRegistro ?? "").ToLower().Trim() == encNorm);
+
+                    if (areaCorrecta == null)
+                        areaCorrecta = areasCandiatas.First();
+                }
+                else
+                {
+                    areaCorrecta = areasCandiatas.First();
+                }
+
+                // Resolver GrupoId desde Rol dentro del área correcta
+                var rolKey = empleado.Rol?.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper();
+                if (!gruposPorRol.TryGetValue(rolKey!, out var gruposCanditatos) || !gruposCanditatos.Any())
+                {
+                    _logger.LogWarning($"⚠️ Nomina={empleado.Nomina}: No se encontró Grupo para Rol={empleado.Rol}");
+                    continue;
+                }
+
+                // Filtrar grupos que pertenezcan al área correcta
+                var grupoEnArea = gruposCanditatos.FirstOrDefault(g => g.AreaId == areaCorrecta.AreaId);
+                if (grupoEnArea == null)
+                {
+                    // Fallback: usar cualquier grupo con ese Rol
+                    grupoEnArea = gruposCanditatos.First();
+                    _logger.LogWarning($"⚠️ Nomina={empleado.Nomina}: Grupo Rol={empleado.Rol} no pertenece al Area={areaCorrecta.AreaId}, usando fallback GrupoId={grupoEnArea.GrupoId}");
+                }
+
+                // Actualizar solo si hay cambios
+                if (user.AreaId != areaCorrecta.AreaId || user.GrupoId != grupoEnArea.GrupoId)
+                {
+                    _logger.LogInformation($"🔄 Nomina={empleado.Nomina}: AreaId {user.AreaId}→{areaCorrecta.AreaId} | GrupoId {user.GrupoId}→{grupoEnArea.GrupoId}");
+                    user.AreaId = areaCorrecta.AreaId;
+                    user.GrupoId = grupoEnArea.GrupoId;
+                    user.UpdatedAt = DateTime.UtcNow;
+                    actualizados++;
+                }
+            }
+
+            if (actualizados > 0)
+                await _context.SaveChangesAsync();
+
+            _logger.LogInformation($"✅ SincronizarUsersDesdeEmpleados: {actualizados} usuarios actualizados.");
+            return actualizados;
         }
 
         public async Task<int> EliminarEmpleadosInactivos()
