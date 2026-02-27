@@ -78,25 +78,25 @@ export const DetallesUsuario = () => {
     try {
       console.log({ editedData });
       // 1. Realizar el PATCH (puede devolver datos parciales)
-        const areaIds = editedData.areas?.map(a => a.areaId) || [];
       await userService.updateUser(parseInt(id), {
         username: editedData.username,
         fullName: editedData.fullName,
         status: editedData.status,
-          roles: editedData.roles.map((role: any) => role.id),
-          areaId: editedData.areaId ?? null
+        roles: (editedData.roles || []).map((role: any) =>
+          typeof role === "object" ? role?.id : role
+        ).filter(id => id !== undefined && id !== null),
+        areaId: editedData.areaId ?? null
       });
 
       const freshUser = await userService.getUserById(parseInt(id));
       setUserData(freshUser);
       setEditedData(freshUser);
       setIsEditing(false);
-    } catch (error) {
+      toast.success("Usuario actualizado correctamente");
+    } catch (error: any) {
       console.error("Error updating user:", error);
       setError(
-        error instanceof Error
-          ? error.message
-          : "Error al actualizar el usuario"
+        error?.message || "Error al actualizar el usuario"
       );
     } finally {
       setSaving(false);
@@ -170,13 +170,18 @@ export const DetallesUsuario = () => {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <User className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">Error al cargar usuario</h3>
+        <div className="text-center max-w-md px-4">
+          <User className="mx-auto h-12 w-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold">Ha ocurrido un error</h3>
           <p className="text-muted-foreground mb-4">{error}</p>
-          <Button onClick={() => navigate("/admin/usuarios")} variant="outline">
-            Regresar a Usuarios
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button onClick={() => setError(null)} variant="continental">
+              Reintentar
+            </Button>
+            <Button onClick={() => navigate("/admin/usuarios")} variant="outline">
+              Regresar a Usuarios
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -328,7 +333,11 @@ export const DetallesUsuario = () => {
                 <select
                   multiple
                   className="w-full border rounded-lg p-2"
-                  value={editedData?.roles?.map((r: any) => r.id) || []}
+                  value={
+                    (editedData?.roles || []).map((r: any) =>
+                      typeof r === "object" ? r?.id : r
+                    )
+                  }
                   onChange={(e) => {
                     const selected = Array.from(e.target.selectedOptions).map(
                       (opt) => parseInt(opt.value)
@@ -355,11 +364,20 @@ export const DetallesUsuario = () => {
               <div className="text-foreground bg-gray-50 p-3 rounded-lg border">
                 {currentData?.roles?.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    {currentData.roles.map((role, index) => (
-                      <Badge key={index} variant="secondary">
-                        {typeof role === "string" ? role : role.name}
-                      </Badge>
-                    ))}
+                    {currentData.roles.map((role: any, index) => {
+                      const roleName = typeof role === "object" ? role.name : 
+                                     role === 7 ? "SuperUsuario" :
+                                     role === 3 ? "Jefe De Area" :
+                                     role === 4 ? "Lider De Grupo" :
+                                     role === 5 ? "Ingeniero Industrial" :
+                                     role === 2 ? "Empleado Sindicalizado" :
+                                     role === 6 ? "Delegado Sindical" : role;
+                      return (
+                        <Badge key={index} variant="secondary">
+                          {roleName}
+                        </Badge>
+                      );
+                    })}
                   </div>
                 ) : (
                   <span className="text-muted-foreground">
