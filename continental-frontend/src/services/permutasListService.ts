@@ -15,6 +15,8 @@ export interface PermutaListItem {
     jefeAprobadorNombre?: string;
     fechaRespuesta?: string;
     motivoRechazo?: string;
+    empleadoOrigenNomina?: string;
+    empleadoDestinoNomina?: string;
 }
 
 export interface ResponderPermutaRequest {

@@ -126,35 +126,50 @@ const url = `${env.API_BASE_URL}/api/reportes/reporte-sap?${qs.toString()}`;
    * @param tipo - 'eliminar' | 'nuevos'
    * @param params - { year, areaId?, gruposRol? }
    */
-  async exportarReporteSAPReprogramacion(tipo: 'eliminar' | 'nuevos', params: { year: number; areaId?: number; gruposRol?: string[] }): Promise<void> {
-    const token = localStorage.getItem("auth_token");
-    if (!token) throw new Error("No se encontró token de autenticación");
+    async exportarReporteSAPReprogramacion(
+        tipo: 'eliminar' | 'nuevos',
+        params: {
+            year: number;
+            areaId?: number;
+            gruposRol?: string[];
+            fechaResolucionDesde?: string;
+            fechaResolucionHasta?: string;
+            horaDesde?: string;
+            horaHasta?: string;
+        }
+    ): Promise<void> {
+        const token = localStorage.getItem("auth_token");
+        if (!token) throw new Error("No se encontró token de autenticación");
 
-    const qs = new URLSearchParams();
-    qs.append("year", params.year.toString());
-    if (params.areaId) qs.append("areaId", params.areaId.toString());
-    params.gruposRol?.forEach((g) => qs.append("gruposRol", g));
+        const qs = new URLSearchParams();
+        qs.append("year", params.year.toString());
+        if (params.areaId) qs.append("areaId", params.areaId.toString());
+        params.gruposRol?.forEach((g) => qs.append("gruposRol", g));
+        if (params.fechaResolucionDesde) qs.append("fechaResolucionDesde", params.fechaResolucionDesde);
+        if (params.fechaResolucionHasta) qs.append("fechaResolucionHasta", params.fechaResolucionHasta);
+        if (params.horaDesde) qs.append("horaDesde", params.horaDesde);
+        if (params.horaHasta) qs.append("horaHasta", params.horaHasta);
 
-    const endpoint = tipo === 'eliminar' ? 'reporte-sap-repro-eliminar' : 'reporte-sap-repro-nuevos';
-    const url = `${env.API_BASE_URL}/api/reportes/${endpoint}?${qs.toString()}`;
+        const endpoint = tipo === 'eliminar' ? 'reporte-sap-repro-eliminar' : 'reporte-sap-repro-nuevos';
+        const url = `${env.API_BASE_URL}/api/reportes/${endpoint}?${qs.toString()}`;
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    });
+        const response = await fetch(url, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+        });
 
-    if (!response.ok) throw new Error(`Error al descargar el Reporte SAP de reprogramación (${tipo})`);
+        if (!response.ok) throw new Error(`Error al descargar el Reporte SAP de reprogramación (${tipo})`);
 
-    const blob = await response.blob();
-    const fileName = `ReporteSAP_Reprog_${tipo === 'eliminar' ? 'Eliminar' : 'Nuevos'}_${params.year}_${new Date().toISOString().split("T")[0]}.csv`;
+        const blob = await response.blob();
+        const fileName = `ReporteSAP_Reprog_${tipo === 'eliminar' ? 'Eliminar' : 'Nuevos'}_${params.year}_${new Date().toISOString().split("T")[0]}.csv`;
 
-    const link = document.createElement("a");
-    link.href = window.URL.createObjectURL(blob);
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  },
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    },
 
     async obtenerEmpleadosFaltantesCaptura(params: { anio: number; areaId?: number; grupoId?: number }): Promise<EmpleadosFaltantesCapturaResponse> {
         const response = await httpClient.get<ApiResponse<EmpleadosFaltantesCapturaResponse>>(
@@ -213,7 +228,17 @@ const url = `${env.API_BASE_URL}/api/reportes/reporte-sap?${qs.toString()}`;
     * Descarga el reporte SAP de permutas aprobadas
     * @param params - { year, areaId?, gruposRol? }
     */
-    async exportarReporteSAPPermutas(params: { year: number; areaId?: number; gruposRol?: string[] }): Promise<void> {
+    async exportarReporteSAPPermutas(
+        params: {
+            year: number;
+            areaId?: number;
+            gruposRol?: string[];
+            fechaResolucionDesde?: string;
+            fechaResolucionHasta?: string;
+            horaDesde?: string;
+            horaHasta?: string;
+        }
+    ): Promise<void> {
         const token = localStorage.getItem("auth_token");
         if (!token) throw new Error("No se encontró token de autenticación");
 
@@ -221,6 +246,10 @@ const url = `${env.API_BASE_URL}/api/reportes/reporte-sap?${qs.toString()}`;
         qs.append("year", params.year.toString());
         if (params.areaId) qs.append("areaId", params.areaId.toString());
         params.gruposRol?.forEach((g) => qs.append("gruposRol", g));
+        if (params.fechaResolucionDesde) qs.append("fechaResolucionDesde", params.fechaResolucionDesde);
+        if (params.fechaResolucionHasta) qs.append("fechaResolucionHasta", params.fechaResolucionHasta);
+        if (params.horaDesde) qs.append("horaDesde", params.horaDesde);
+        if (params.horaHasta) qs.append("horaHasta", params.horaHasta);
 
         const url = `${env.API_BASE_URL}/api/reportes/reporte-sap-permutas?${qs.toString()}`;
 
@@ -240,5 +269,5 @@ const url = `${env.API_BASE_URL}/api/reportes/reporte-sap?${qs.toString()}`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-    }
+    },
 };

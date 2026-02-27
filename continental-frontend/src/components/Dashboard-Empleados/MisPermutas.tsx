@@ -95,8 +95,8 @@ const MisPermutas = () => {
 
         // Filtro por nómina (si existe en el modelo)
         const byNomina = !nominaSearch ||
-            (permuta as any).empleadoOrigenNomina?.toString().includes(nominaSearch) ||
-            (permuta as any).empleadoDestinoNomina?.toString().includes(nominaSearch);
+            permuta.empleadoOrigenNomina?.toString().includes(nominaSearch) ||
+            permuta.empleadoDestinoNomina?.toString().includes(nominaSearch);
 
         return byRequester && byEmployeeName && byNomina;
     });

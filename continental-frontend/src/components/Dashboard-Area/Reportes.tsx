@@ -25,7 +25,11 @@ import {
   Award,
   ShieldCheck,
   ShieldAlert,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertTriangle,
+  UserMinus,
+  Loader2,
+  X
 } from "lucide-react";
 
 const MIN_REPROGRAMACION_DATE = "2026-01-01";
@@ -91,27 +95,57 @@ export const Reportes = () => {
     const found = areas.find((a) => a.areaId === selectedArea);
     return found?.nombreGeneral || `Área ${selectedArea}`;
   }, [areas, selectedArea]);
+    type DateFilterMode = 'single' | 'range';
+    type ReportCategory = 'programacion-anual' | 'reprogramacion';
+    interface ReportCard { id: number; icon: any; title: string; subtitle: string; category: ReportCategory; requiresReprogramming?: boolean; }
 
-  const otherReportCards = [
-    {
-      id: "vacaciones",
-      icon: Palmtree,
-      title: "Reporte de Vacaciones",
-      subtitle: "Reporte con los empleados en vacaciones."
-    },
-    {
-      id: "constancia",
-      icon: Award,
-      title: "Constancia de Antiguedad",
-      subtitle: "Constancia de antiguedad y vacaciones adicionales para empleados del área."
-    },
-    {
-      id: "vacaciones-area",
-      icon: FileSpreadsheet,
-      title: "Vacaciones Programadas por Área",
-      subtitle: "Exporta todas las vacaciones programadas agrupadas por área en formato Excel."
-    }
-  ];
+    const [selectedCategory, setSelectedCategory] = useState<ReportCategory | 'all'>('all');
+
+    const reportCards: ReportCard[] = [
+        {
+            id: 1,
+            icon: Palmtree,
+            title: "Reporte de Vacaciones Asignadas por la Empresa",
+            subtitle: "Reporte con los empleados en vacaciones.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 5,
+            icon: Award,
+            title: "Constancia de Antiguedad",
+            subtitle: "Constancia de antiguedad y vacaciones adicionales para empleados sindicalizados.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 7,
+            icon: AlertTriangle,
+            title: "Empleados que No Respondieron",
+            subtitle: "Reporte de empleados que no respondieron a la asignación de bloques de vacaciones.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 10,
+            icon: UserMinus,
+            title: "Empleados faltantes de capturar vacaciones",
+            subtitle: "Asignados en bloque cola sin vacaciones manuales activas.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 8,
+            icon: FileSpreadsheet,
+            title: "Vacaciones Programadas por Área",
+            subtitle: "Exporta todas las vacaciones programadas agrupadas por área en formato Excel.",
+            category: 'programacion-anual'
+        },
+        {
+            id: 11,
+            icon: RefreshCw,
+            title: "General de Reprogramaciones",
+            subtitle: "Todas las reprogramaciones (solo en periodo de reprogramación).",
+            category: 'reprogramacion',
+            requiresReprogramming: true
+        },
+    ];
 
   const ensureReprogramming = (): boolean => {
     if (!isReprogramming) {
@@ -395,204 +429,85 @@ export const Reportes = () => {
     }
   };
 
-  return (
-    <div className="p-6 bg-white min-h-screen">
-      <div className="max-w-7xl mx-auto space-y-8">
-        <div className="space-y-2">
-          <div className="text-[25px] font-bold text-continental-black text-left">Descargar Reportes</div>
-          <p className="text-[16px] font-medium text-continental-black text-left">
-            Accede y descarga los reportes más relevantes
-          </p>
-        </div>
+    const filteredReports = selectedCategory === 'all'
+        ? reportCards
+        : reportCards.filter(r => r.category === selectedCategory);
 
-        <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
-          <div className="flex items-center gap-3 mb-3">
-            {isReprogramming ? (
-              <span className="inline-flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1">
-                <ShieldCheck className="w-4 h-4" /> Periodo de reprogramación activo
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
-                <ShieldAlert className="w-4 h-4" /> Los reportes de reprogramación solo se habilitan en reprogramación
-              </span>
-            )}
-          </div>
-
-          <DateRangeInput
-            startDate={startDate}
-            endDate={endDate}
-            onStartDateChange={setStartDate}
-            onEndDateChange={setEndDate}
-            minDate={MIN_REPROGRAMACION_DATE}
-            title="Periodo del reporte (mínimo 2026) - opcional"
-            startLabel="Fecha inicio (opcional)"
-            endLabel="Fecha fin (opcional)"
-          />
-
-          <div className="mt-4 flex flex-col md:flex-row gap-3">
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold text-gray-700">Área</label>
-              <select
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1"
-                value={selectedArea}
-                onChange={(e) => setSelectedArea(e.target.value === "all" ? "all" : parseInt(e.target.value, 10))}
-                disabled={configLoading}
-              >
-                <option value="all">Todas</option>
-                {areas.map((area) => (
-                  <option key={area.areaId} value={area.areaId}>
-                    {area.nombreGeneral}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-base font-bold text-continental-black text-left">Control de Aprobaciones en Días Llenos</h2>
-          <p className="text-sm text-gray-600">
-            Reporta solicitudes aprobadas (automáticas o por jefe) en días con alta ocupación por vacaciones o permisos.
-          </p>
-          <ReporteAprobaciones selectedArea={selectedArea} selectedAreaName={selectedAreaName} />
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-base font-bold text-continental-black text-left">
-            Reportes de reprogramaciones (solo en reprogramación)
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="rounded-xl border-gray-300">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      <Calendar size={48} className="text-continental-black" />
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="font-semibold text-continental-black">General de reprogramaciones</h3>
-                      <p className="text-sm text-gray-600">Todas las reprogramaciones (por área opcional).</p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <RefreshCw size={14} /> Incluye estatus y fechas originales/nuevas.
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleReprogGeneral}
-                    variant="continental"
-                    className="flex items-center gap-2"
-                    disabled={loadingGeneral || !isReprogramming}
-                  >
-                    {loadingGeneral ? (
-                      "Generando..."
-                    ) : (
-                      <>
-                        <Download size={16} /> Descargar
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-xl border-gray-300">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      <Calendar size={48} className="text-continental-black" />
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="font-semibold text-continental-black">Reprogramaciones por área y fecha</h3>
-                      <p className="text-sm text-gray-600">
-                        Filtra por área y rango de fechas (a partir de 2026) usando fechas originales o nuevas.
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <FileText size={14} /> Reporte listo para análisis y consulta.
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleReprogFiltrado}
-                    variant="continental"
-                    className="flex items-center gap-2"
-                    disabled={loadingFiltered || !isReprogramming}
-                  >
-                    {loadingFiltered ? (
-                      "Generando..."
-                    ) : (
-                      <>
-                        <Download size={16} /> Descargar
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-base font-bold text-continental-black text-left">Otros reportes</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {otherReportCards.map((report) => (
-              <Card key={report.id} className="rounded-xl border-gray-300">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0">
-                        <report.icon size={48} className="text-continental-black" />
-                      </div>
-
-                      <div className="space-y-2">
-                        <h3 className="font-semibold text-continental-black">{report.title}</h3>
-                        <p className="text-sm text-gray-600">{report.subtitle}</p>
-                        <div className="flex items-center gap-2">
-                          <FileText size={16} className="text-gray-400" />
-                        </div>
-                      </div>
-                    </div>
-
-                    <Button
-                      onClick={async () => {
-                        if (report.id === "constancia") {
-                          handleDownloadConstancia();
-                        } else if (report.id === "vacaciones") {
-                          handleDownloadVacacionesAsignadas();
-                        } else if (report.id === "vacaciones-area") {
-                            try {
-                              const loadingToast = toast.loading("Generando reporte de vacaciones por area...");
-                              const yearToExport = selectedYear ? parseInt(selectedYear) : undefined;
-                              const areaIdToExport = selectedArea === "all" ? undefined : (selectedArea as number);
-                              await reportesService.exportarVacacionesPorArea(yearToExport, areaIdToExport);
-                              toast.dismiss(loadingToast);
-                              toast.success("Reporte de vacaciones por area descargado exitosamente");
-                            } catch (error) {
-                              console.error("Error al descargar reporte de vacaciones por area:", error);
-                              toast.dismiss();
-                              toast.error(
-                                error instanceof Error ? error.message : "No se pudo descargar el reporte de vacaciones por area"
-                              );
-                            }
-                        } else {
-                          toast.info("En construccion");
-                        }
-                      }}
-                      variant="continental"
-                      className="flex items-center gap-2"
-                    >
-                      <Download size={16} />
-                      Descargar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+    const categoriaTitulos = {
+        'programacion-anual': 'Programación Anual',
+        'reprogramacion': 'Reprogramación',
+        'all': 'Todos los reportes'
+    };
+    {/* 
+      REPORTE: Control de Aprobaciones en Días Llenos
+      Muestra solicitudes de reprogramación que fueron aprobadas en días donde
+      el porcentaje de ausencias ya estaba al límite o lleno (días con alta ocupación).
+      Sirve para auditar si los jefes aprobaron solicitudes en días que técnicamente
+      no debían permitirse.
+    
+      Para reactivarlo, descomentar el siguiente bloque:
+    
+      <div className="space-y-4">
+        <h2 className="text-base font-bold text-continental-black text-left">Control de Aprobaciones en Días Llenos</h2>
+        <p className="text-sm text-gray-600">
+          Reporta solicitudes aprobadas (automáticas o por jefe) en días con alta ocupación por vacaciones o permisos.
+        </p>
+        <ReporteAprobaciones selectedArea={selectedArea} selectedAreaName={selectedAreaName} />
       </div>
-    </div>
-  );
+    */}
+    return (
+        <div className="space-y-6 p-6 max-w-7xl mx-auto">
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <div className="text-[25px] font-bold text-continental-black text-left">Descargar Reportes</div>
+                    <p className="text-[16px] font-medium text-continental-black text-left">
+                        Accede y descarga los reportes más relevantes
+                    </p>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-base font-bold text-continental-black">
+                            {categoriaTitulos[selectedCategory]}
+                        </h2>
+                        <span className="text-sm text-gray-600">
+                            {filteredReports.length} reporte(s)
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {filteredReports.map((report) => (
+                            <Card key={report.id} className="rounded-xl border-gray-300">
+                                <CardContent className="p-6">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-start gap-4">
+                                            <div className="flex-shrink-0">
+                                                <report.icon size={48} className="text-continental-black" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <h3 className="font-semibold text-continental-black">{report.title}</h3>
+                                                <p className="text-sm text-gray-600">{report.subtitle}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${report.category === 'programacion-anual'
+                                                        ? 'bg-blue-100 text-blue-700'
+                                                        : 'bg-purple-100 text-purple-700'
+                                                        }`}>
+                                                        {report.category === 'programacion-anual' ? 'Programación Anual' : 'Reprogramación'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <Button onClick={() => handleDownload(report.id)} variant="continental" className="flex items-center gap-2">
+                                            <Download size={16} />
+                                            Descargar
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };

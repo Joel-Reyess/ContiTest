@@ -269,7 +269,9 @@ namespace tiempo_libre.Services
         public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapReprogramacionEliminarAsync(
             int year,
             int? areaId = null,
-            List<string>? gruposRol = null)
+            List<string>? gruposRol = null,
+            DateTime? fechaResolucionDesde = null,
+            DateTime? fechaResolucionHasta = null)
         {
             return await GenerarReporteSapReprogramacionBaseAsync(year, true, areaId, gruposRol);
         }
@@ -280,7 +282,9 @@ namespace tiempo_libre.Services
         public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapReprogramacionNuevosAsync(
             int year,
             int? areaId = null,
-            List<string>? gruposRol = null)
+            List<string>? gruposRol = null,
+            DateTime? fechaResolucionDesde = null,
+            DateTime? fechaResolucionHasta = null)
         {
             return await GenerarReporteSapReprogramacionBaseAsync(year, false, areaId, gruposRol);
         }
@@ -289,7 +293,9 @@ namespace tiempo_libre.Services
             int year,
             bool esParaEliminar,
             int? areaId = null,
-            List<string>? gruposRol = null)
+            List<string>? gruposRol = null,
+            DateTime? fechaResolucionDesde = null,
+            DateTime? fechaResolucionHasta = null)
         {
             try
             {
@@ -312,6 +318,11 @@ namespace tiempo_libre.Services
 
                 if (gruposRol != null && gruposRol.Any())
                     query = query.Where(s => s.Empleado.Grupo != null && gruposRol.Contains(s.Empleado.Grupo.Rol));
+
+                if (fechaResolucionDesde.HasValue)
+                    query = query.Where(s => s.FechaRespuesta >= fechaResolucionDesde.Value);
+                if (fechaResolucionHasta.HasValue)
+                    query = query.Where(s => s.FechaRespuesta <= fechaResolucionHasta.Value);
 
                 var datos = await query
                     .OrderBy(s => s.Empleado.Nomina)
@@ -368,9 +379,11 @@ namespace tiempo_libre.Services
         /// Formato: NOMINA,FECHA(ddMMyyyy),FECHA(ddMMyyyy),,,,,TURNO_NUEVO
         /// </summary>
         public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapPermutasAsync(
-    int year,
-    int? areaId = null,
-    List<string>? gruposRol = null)
+        int year,
+        int? areaId = null,
+        List<string>? gruposRol = null,
+        DateTime? fechaResolucionDesde = null,
+        DateTime? fechaResolucionHasta = null)
         {
             try
             {
@@ -397,6 +410,10 @@ namespace tiempo_libre.Services
                 if (gruposRol != null && gruposRol.Any())
                     query = query.Where(p => p.EmpleadoOrigen.Grupo != null &&
                                             gruposRol.Contains(p.EmpleadoOrigen.Grupo.Rol));
+                if (fechaResolucionDesde.HasValue)
+                    query = query.Where(p => p.FechaRespuesta >= fechaResolucionDesde.Value);
+                if (fechaResolucionHasta.HasValue)
+                    query = query.Where(p => p.FechaRespuesta <= fechaResolucionHasta.Value);
 
                 var permutasRaw = await query
                     .OrderBy(p => p.EmpleadoOrigen.Nomina)

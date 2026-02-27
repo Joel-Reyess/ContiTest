@@ -246,7 +246,9 @@ namespace tiempo_libre.Services
                         EstadoSolicitud = p.EstadoSolicitud,
                         JefeAprobadorNombre = p.JefeAprobador != null ? p.JefeAprobador.FullName : null,
                         FechaRespuesta = p.FechaRespuesta,
-                        MotivoRechazo = p.MotivoRechazo
+                        MotivoRechazo = p.MotivoRechazo,
+                        EmpleadoOrigenNomina = p.EmpleadoOrigen.Nomina.HasValue ? p.EmpleadoOrigen.Nomina.Value.ToString() : null,
+                        EmpleadoDestinoNomina = p.EmpleadoDestino != null && p.EmpleadoDestino.Nomina.HasValue ? p.EmpleadoDestino.Nomina.Value.ToString() : null,
                     })
                     .ToList();
 

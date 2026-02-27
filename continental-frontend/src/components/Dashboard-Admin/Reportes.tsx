@@ -68,6 +68,12 @@ const formatDateDisplay = (dateStr: string): string => {
     return `${day}/${month}/${year}`;
 };
 
+// Combina una fecha YYYY-MM-DD con una hora HH:mm en un Date exacto
+const buildTimestamp = (dateStr: string, time: string): Date => {
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const [hours, minutes] = time.split(":").map(Number);
+    return new Date(year, month - 1, day, hours, minutes, 0, 0);
+};
 // Convierte una fecha YYYY-MM-DD al inicio del día (00:00:00.000)
 const toStartOfDay = (dateStr: string): Date => {
     const [year, month, day] = dateStr.split("-").map(Number);
@@ -232,20 +238,32 @@ export const Reportes = () => {
             let solicitudes = response?.solicitudes || [];
 
             // 🆕 Filtro de fecha primero
-            if (hasDateFilter()) {
+            // Filtro por fecha de aprobación con lógica de timestamps exactos
+            if (hasDateFilter() || timeFrom || timeTo) {
                 solicitudes = solicitudes.filter((solicitud) => {
-                    const fechaSolicitud = new Date(solicitud.fechaSolicitud);
+                    const fechaResolucion = solicitud.fechaAprobacion
+                        ? new Date(solicitud.fechaAprobacion)
+                        : null;
+                    if (!fechaResolucion) return false;
 
                     if (dateFilterMode === 'single' && singleDate) {
-                        const start = toStartOfDay(singleDate);
-                        const end = toEndOfDay(singleDate);
-                        return fechaSolicitud >= start && fechaSolicitud <= end;
+                        // Día específico: hora-desde y hora-hasta acotan dentro de ese día
+                        const start = buildTimestamp(singleDate, timeFrom || "00:00");
+                        const end = buildTimestamp(singleDate, timeTo || "23:59");
+                        return fechaResolucion >= start && fechaResolucion <= end;
                     }
 
                     if (dateFilterMode === 'range') {
+                        // Rango: cada fecha tiene su propia hora
                         let cumple = true;
-                        if (dateRangeFrom) cumple = cumple && fechaSolicitud >= toStartOfDay(dateRangeFrom);
-                        if (dateRangeTo) cumple = cumple && fechaSolicitud <= toEndOfDay(dateRangeTo);
+                        if (dateRangeFrom) {
+                            const start = buildTimestamp(dateRangeFrom, timeFrom || "00:00");
+                            cumple = cumple && fechaResolucion >= start;
+                        }
+                        if (dateRangeTo) {
+                            const end = buildTimestamp(dateRangeTo, timeTo || "23:59");
+                            cumple = cumple && fechaResolucion <= end;
+                        }
                         return cumple;
                     }
 
@@ -254,30 +272,30 @@ export const Reportes = () => {
             }
 
             // Filtro de hora
-            if (timeFrom || timeTo) {
-                solicitudes = solicitudes.filter((solicitud) => {
-                    const fechaSolicitud = new Date(solicitud.fechaSolicitud);
-                    const hora = fechaSolicitud.getHours();
-                    const minutos = fechaSolicitud.getMinutes();
-                    const tiempoSolicitud = hora * 60 + minutos;
+            //if (timeFrom || timeTo) {
+            //    solicitudes = solicitudes.filter((solicitud) => {
+            //        const fechaSolicitud = new Date(solicitud.fechaSolicitud);
+            //        const hora = fechaSolicitud.getHours();
+            //        const minutos = fechaSolicitud.getMinutes();
+            //        const tiempoSolicitud = hora * 60 + minutos;
 
-                    let cumpleFiltro = true;
+            //        let cumpleFiltro = true;
 
-                    if (timeFrom) {
-                        const [horaDesde, minutosDesde] = timeFrom.split(':').map(Number);
-                        const tiempoDesde = horaDesde * 60 + minutosDesde;
-                        cumpleFiltro = cumpleFiltro && tiempoSolicitud >= tiempoDesde;
-                    }
+            //        if (timeFrom) {
+            //            const [horaDesde, minutosDesde] = timeFrom.split(':').map(Number);
+            //            const tiempoDesde = horaDesde * 60 + minutosDesde;
+            //            cumpleFiltro = cumpleFiltro && tiempoSolicitud >= tiempoDesde;
+            //        }
 
-                    if (timeTo) {
-                        const [horaHasta, minutosHasta] = timeTo.split(':').map(Number);
-                        const tiempoHasta = horaHasta * 60 + minutosHasta;
-                        cumpleFiltro = cumpleFiltro && tiempoSolicitud <= tiempoHasta;
-                    }
+            //        if (timeTo) {
+            //            const [horaHasta, minutosHasta] = timeTo.split(':').map(Number);
+            //            const tiempoHasta = horaHasta * 60 + minutosHasta;
+            //            cumpleFiltro = cumpleFiltro && tiempoSolicitud <= tiempoHasta;
+            //        }
 
-                    return cumpleFiltro;
-                });
-            }
+            //        return cumpleFiltro;
+            //    });
+            //}
 
             if (solicitudes.length === 0) {
                 toast.info("No hay reprogramaciones con los filtros seleccionados.");
@@ -501,7 +519,11 @@ export const Reportes = () => {
                 await reportesService.exportarReporteSAPPermutas({
                     year: parseInt(selectedYear),
                     areaId: areaIdFilter,
-                    gruposRol
+                    gruposRol,
+                    fechaResolucionDesde: dateRangeFrom || singleDate || undefined,
+                    fechaResolucionHasta: dateRangeTo || singleDate || undefined,
+                    horaDesde: timeFrom || undefined,
+                    horaHasta: timeTo || undefined,
                 });
 
                 toast.dismiss(loadingToast);
@@ -805,7 +827,11 @@ export const Reportes = () => {
                 await reportesService.exportarReporteSAPReprogramacion(tipo, {
                     year: parseInt(selectedYear),
                     areaId: areaIdFilter,
-                    gruposRol
+                    gruposRol,
+                    fechaResolucionDesde: dateRangeFrom || singleDate || undefined,
+                    fechaResolucionHasta: dateRangeTo || singleDate || undefined,
+                    horaDesde: timeFrom || undefined,
+                    horaHasta: timeTo || undefined,
                 });
 
                 toast.dismiss(loadingToast);
@@ -815,7 +841,8 @@ export const Reportes = () => {
                 toast.dismiss();
                 toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
             }
-        } else {
+        }
+                else {
             console.log(`Descargando reporte ${reportId}`);
             toast.info("Funcionalidad en desarrollo para este tipo de reporte");
         }

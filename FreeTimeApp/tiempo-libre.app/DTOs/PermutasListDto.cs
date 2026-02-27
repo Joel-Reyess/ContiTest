@@ -19,6 +19,8 @@ namespace tiempo_libre.DTOs
         public string? JefeAprobadorNombre { get; set; }
         public DateTime? FechaRespuesta { get; set; }
         public string? MotivoRechazo { get; set; }
+        public string? EmpleadoOrigenNomina { get; set; }
+        public string? EmpleadoDestinoNomina { get; set; }
     }
 
     public class PermutasListResponse

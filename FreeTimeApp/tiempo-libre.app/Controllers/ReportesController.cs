@@ -15,6 +15,17 @@ namespace tiempo_libre.Controllers
         private readonly ReportesVacacionesService _reportesService;
         private readonly ILogger<ReportesController> _logger;
 
+        private static DateTime? ParseFechaHora(string? fecha, string? hora, bool esInicio)
+        {
+            if (string.IsNullOrEmpty(fecha)) return null;
+            if (!DateOnly.TryParse(fecha, out var d)) return null;
+
+            TimeOnly t = esInicio ? TimeOnly.MinValue : new TimeOnly(23, 59, 59);
+            if (!string.IsNullOrEmpty(hora) && TimeOnly.TryParse(hora, out var horaParseada))
+                t = horaParseada;
+
+            return d.ToDateTime(t);
+        }
         public ReportesController(
             VacacionesExportService exportService,
             ReportesVacacionesService reportesService,
@@ -60,9 +71,9 @@ namespace tiempo_libre.Controllers
 
         [HttpGet("reporte-sap")]
         public async Task<IActionResult> ExportarReporteSap(
-    [FromQuery] int year,
-    [FromQuery] int? areaId = null,
-    [FromQuery] List<string>? gruposRol = null)
+        [FromQuery] int year,
+        [FromQuery] int? areaId = null,
+        [FromQuery] List<string>? gruposRol = null)
         {
             try
             {
@@ -88,13 +99,20 @@ namespace tiempo_libre.Controllers
 
         [HttpGet("reporte-sap-repro-eliminar")]
         public async Task<IActionResult> ExportarReporteSapReproEliminar(
-            [FromQuery] int year,
-            [FromQuery] int? areaId = null,
-            [FromQuery] List<string>? gruposRol = null)
+        [FromQuery] int year,
+        [FromQuery] int? areaId = null,
+        [FromQuery] List<string>? gruposRol = null,
+        [FromQuery] string? fechaResolucionDesde = null,
+        [FromQuery] string? horaDesde = null,
+        [FromQuery] string? fechaResolucionHasta = null,
+        [FromQuery] string? horaHasta = null)
         {
             try
             {
-                var (stream, fileName) = await _exportService.GenerarReporteSapReprogramacionEliminarAsync(year, areaId, gruposRol);
+                DateTime? desde = ParseFechaHora(fechaResolucionDesde, horaDesde, esInicio: true);
+                DateTime? hasta = ParseFechaHora(fechaResolucionHasta, horaHasta, esInicio: false);
+
+                var (stream, fileName) = await _exportService.GenerarReporteSapReprogramacionEliminarAsync(year, areaId, gruposRol, desde, hasta);
                 stream.Position = 0;
                 return File(stream, "text/plain", fileName);
             }
@@ -111,13 +129,20 @@ namespace tiempo_libre.Controllers
 
         [HttpGet("reporte-sap-repro-nuevos")]
         public async Task<IActionResult> ExportarReporteSapReproNuevos(
-            [FromQuery] int year,
-            [FromQuery] int? areaId = null,
-            [FromQuery] List<string>? gruposRol = null)
+        [FromQuery] int year,
+        [FromQuery] int? areaId = null,
+        [FromQuery] List<string>? gruposRol = null,
+        [FromQuery] string? fechaResolucionDesde = null,
+        [FromQuery] string? horaDesde = null,
+        [FromQuery] string? fechaResolucionHasta = null,
+        [FromQuery] string? horaHasta = null)
         {
             try
             {
-                var (stream, fileName) = await _exportService.GenerarReporteSapReprogramacionNuevosAsync(year, areaId, gruposRol);
+                DateTime? desde = ParseFechaHora(fechaResolucionDesde, horaDesde, esInicio: true);
+                DateTime? hasta = ParseFechaHora(fechaResolucionHasta, horaHasta, esInicio: false);
+
+                var (stream, fileName) = await _exportService.GenerarReporteSapReprogramacionNuevosAsync(year, areaId, gruposRol, desde, hasta);
                 stream.Position = 0;
                 return File(stream, "text/plain", fileName);
             }
@@ -176,13 +201,20 @@ namespace tiempo_libre.Controllers
 
         [HttpGet("reporte-sap-permutas")]
         public async Task<IActionResult> ExportarReporteSapPermutas(
-        [FromQuery] int year,
-        [FromQuery] int? areaId = null,
-        [FromQuery] List<string>? gruposRol = null)
+            [FromQuery] int year,
+            [FromQuery] int? areaId = null,
+            [FromQuery] List<string>? gruposRol = null,
+            [FromQuery] string? fechaResolucionDesde = null,
+            [FromQuery] string? horaDesde = null,
+            [FromQuery] string? fechaResolucionHasta = null,
+            [FromQuery] string? horaHasta = null)
         {
             try
             {
-                var (stream, fileName) = await _exportService.GenerarReporteSapPermutasAsync(year, areaId, gruposRol);
+                DateTime? desde = ParseFechaHora(fechaResolucionDesde, horaDesde, esInicio: true);
+                DateTime? hasta = ParseFechaHora(fechaResolucionHasta, horaHasta, esInicio: false);
+
+                var (stream, fileName) = await _exportService.GenerarReporteSapPermutasAsync(year, areaId, gruposRol, desde, hasta);
                 stream.Position = 0;
                 return File(stream, "text/plain", fileName);
             }
