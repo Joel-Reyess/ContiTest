@@ -457,7 +457,7 @@ namespace tiempo_libre.Services
                 {
                     // Verificar si es suplente válido
                     var suplencia = await _suplenciaService.ObtenerSuplenciaActiva(jefeAreaId);
-                    
+
                     // Si no es suplente o el titular de la suplencia no es el jefe aprobador requerido
                     if (suplencia == null || suplencia.UsuarioTitularId != solicitudValidacion.JefeAprobadorId)
                     {

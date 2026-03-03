@@ -323,14 +323,43 @@ export function TablaSolicitudes() {
         },
         {
             key: 'porcentajeCalculado',
-            label: 'Porcentaje',
+            label: '% Turno',
             sortable: true,
-            className: 'w-[80px]',
-            render: (value) => (
-                <div className="text-xs text-gray-900 font-semibold text-center px-1">
-                    {Number(value).toFixed(1)}%
-                </div>
-            )
+            className: 'w-[90px]',
+            render: (value, row) => {
+                const pct = Number(value)
+                const colorClass = pct > 4.5
+                    ? 'text-red-600 font-bold'
+                    : pct > 3
+                        ? 'text-yellow-600 font-semibold'
+                        : 'text-gray-900 font-semibold'
+                return (
+                    <div className={`text-xs text-center px-1 ${colorClass}`}>
+                        {pct.toFixed(1)}%
+                        <div className="text-gray-400 font-normal text-xs">del turno</div>
+                    </div>
+                )
+            }
+        },
+        {
+            key: 'porcentajeDelDia',
+            label: '% Día',
+            sortable: true,
+            className: 'w-[90px]',
+            render: (value) => {
+                const pct = Number(value ?? 0)
+                const colorClass = pct > 4.5
+                    ? 'text-red-600 font-bold'
+                    : pct > 3
+                        ? 'text-yellow-600 font-semibold'
+                        : 'text-gray-900 font-semibold'
+                return (
+                    <div className={`text-xs text-center px-1 ${colorClass}`}>
+                        {pct > 0 ? `${pct.toFixed(1)}%` : '—'}
+                        <div className="text-gray-400 font-normal text-xs">del día</div>
+                    </div>
+                )
+            }
         },
         {
             key: 'acciones',

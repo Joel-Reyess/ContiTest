@@ -23,6 +23,7 @@ export interface Solicitud {
   estadoSolicitud: string;
   requiereAprobacion: boolean;
   porcentajeCalculado: number;
+  porcentajeDelDia?: number | null;
   fechaSolicitud: string;
   solicitadoPor: string;
   fechaAprobacion?: string;

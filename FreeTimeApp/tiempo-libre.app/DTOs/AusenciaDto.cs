@@ -51,6 +51,7 @@ namespace tiempo_libre.DTOs
         public int? Nomina { get; set; }
         public string TipoVacacion { get; set; } = string.Empty; // 'Anual', 'AsignadaAutomaticamente', etc.
         public string? Maquina { get; set; } // Máquina asignada al empleado
+        public string? Motivo { get; set; }
     }
 
     public class EmpleadoDisponibleDto

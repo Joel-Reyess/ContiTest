@@ -108,8 +108,10 @@ export const MonthlyView: React.FC<ViewProps> = ({ calendarData, currentDate, se
                         })
                         : [];
                     
+                    const isSunday = dayDate.getDay() === 0;
+                    const divisor = isSunday ? 2 : 3;
                     const totalPercentage = groupsData.length > 0
-                        ? groupsData.reduce((sum, g) => sum + g.percentage, 0) / groupsData.length
+                        ? groupsData.reduce((sum, g) => sum + g.percentage, 0) / divisor
                         : 0;
 
                     // Indicadores basados en datos reales de ausencias
@@ -258,8 +260,10 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
                         })
                         : [];
                     
+                    const isSunday = date.getDay() === 0;
+                    const divisor = isSunday ? 2 : 3;
                     const totalPercentage = groupsData.length > 0
-                        ? groupsData.reduce((sum, g) => sum + g.percentage, 0) / groupsData.length
+                        ? groupsData.reduce((sum, g) => sum + g.percentage, 0) / divisor
                         : 0;
 
                     // Indicadores visuales

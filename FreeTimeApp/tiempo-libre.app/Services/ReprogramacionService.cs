@@ -550,6 +550,90 @@ namespace tiempo_libre.Services
                     solicitudes.Count(s => !s.SolicitadoPorId.HasValue)
                 );
 
+                // Precalcular porcentajes del día para cada solicitud
+                // (no se puede hacer await dentro del .Select() de LINQ)
+                var porcentajesDelDia = new Dictionary<int, decimal>();
+
+                foreach (var s in solicitudes)
+                {
+                    try
+                    {
+                        // Obtener todos los grupos del área del empleado
+                        var areaId = s.Empleado?.Grupo?.Area?.AreaId ?? s.Empleado?.AreaId;
+                        if (!areaId.HasValue) continue;
+
+                        var gruposDelArea = await _db.Grupos
+                            .Where(g => g.AreaId == areaId.Value)
+                            .Select(g => g.GrupoId)
+                            .ToListAsync();
+
+                        if (gruposDelArea.Count == 0) continue;
+
+                        // Total de empleados activos del área
+                        var totalEmpleadosArea = await _db.Users
+                            .CountAsync(u => gruposDelArea.Contains(u.GrupoId ?? 0)
+                                          && u.Status == UserStatus.Activo);
+
+                        if (totalEmpleadosArea == 0) continue;
+
+                        var fechaNueva = s.FechaNuevaSolicitada;
+
+                        // Ausentes por vacaciones activas
+                        var ausentesVacaciones = await _db.VacacionesProgramadas
+                            .Where(v => v.FechaVacacion == fechaNueva
+                                     && v.EstadoVacacion == "Activa"
+                                     && gruposDelArea.Contains(
+                                            _db.Users
+                                               .Where(u => u.Id == v.EmpleadoId)
+                                               .Select(u => u.GrupoId ?? 0)
+                                               .FirstOrDefault()))
+                            .Select(v => v.EmpleadoId)
+                            .Distinct()
+                            .ToListAsync();
+
+                        // Ausentes por permisos/incapacidades SAP
+                        var nominasDelArea = await _db.Users
+                            .Where(u => gruposDelArea.Contains(u.GrupoId ?? 0)
+                                     && u.Status == UserStatus.Activo)
+                            .Select(u => u.Nomina)
+                            .ToListAsync();
+
+                        var ausentesPermisos = await _db.PermisosEIncapacidadesSAP
+                            .Where(p => p.Desde <= fechaNueva
+                                     && p.Hasta >= fechaNueva
+                                     && nominasDelArea.Contains(p.Nomina))
+                            .Join(_db.Users,
+                                  p => p.Nomina,
+                                  u => u.Nomina,
+                                  (p, u) => u.Id)
+                            .Distinct()
+                            .ToListAsync();
+
+                        // Ausentes por festivos trabajados aprobados
+                        var ausentesFestivos = await _db.SolicitudesFestivosTrabajados
+                            .Where(f => f.FechaNuevaSolicitada == fechaNueva
+                                     && f.EstadoSolicitud == "Aprobada"
+                                     && nominasDelArea.Contains(f.Nomina))
+                            .Select(f => f.EmpleadoId)
+                            .Distinct()
+                            .ToListAsync();
+
+                        // Unión de todos los ausentes (sin duplicados)
+                        var totalAusentesIds = ausentesVacaciones
+                            .Union(ausentesPermisos)
+                            .Union(ausentesFestivos)
+                            .Distinct()
+                            .Count();
+
+                        var porcentaje = ((decimal)totalAusentesIds / totalEmpleadosArea) * 100m;
+                        porcentajesDelDia[s.Id] = Math.Round(porcentaje, 2);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "No se pudo calcular porcentaje del día para solicitud {Id}", s.Id);
+                    }
+                }
+
                 var solicitudesDto = solicitudes.Select(s => new SolicitudReprogramacionDto
                 {
                     Id = s.Id,
@@ -567,6 +651,7 @@ namespace tiempo_libre.Services
                     EstadoSolicitud = s.EstadoSolicitud,
                     RequiereAprobacion = s.EstadoSolicitud == "Pendiente",
                     PorcentajeCalculado = s.PorcentajeCalculado,
+                    PorcentajeDelDia = porcentajesDelDia.TryGetValue(s.Id, out var pctDia) ? pctDia : null,
                     FechaSolicitud = s.FechaSolicitud,
                     SolicitadoPor = s.SolicitadoPor?.FullName ?? "Sistema",
                     FechaAprobacion = s.FechaRespuesta,

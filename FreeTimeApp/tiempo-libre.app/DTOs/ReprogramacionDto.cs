@@ -133,6 +133,7 @@ namespace tiempo_libre.DTOs
         public string EstadoSolicitud { get; set; } = string.Empty;
         public bool RequiereAprobacion { get; set; }
         public decimal? PorcentajeCalculado { get; set; }
+        public decimal? PorcentajeDelDia { get; set; }
         public DateTime FechaSolicitud { get; set; }
         public string SolicitadoPor { get; set; } = string.Empty;
         public DateTime? FechaAprobacion { get; set; }

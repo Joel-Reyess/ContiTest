@@ -387,7 +387,10 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
                 );
 
                 if (gruposData.length > 0) {
-                    const avg = gruposData.reduce((sum, g) => sum + g.porcentajeAusencia, 0) / gruposData.length;
+                    const isSunday = currentDate.getDay() === 0;
+                    const divisor = isSunday ? 2 : 3;
+                    const sum = gruposData.reduce((sum, g) => sum + g.porcentajeAusencia, 0);
+                    const avg = sum / divisor;
                     return Math.round(avg * 10) / 10;
                 }
             }
@@ -403,7 +406,9 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
         const selectedManning = dayData.manning.filter(m => filters.selectedGroups.includes(m.group));
         if (selectedManning.length === 0) return dayData.averagePercentage || 0;
 
-        const avg = selectedManning.reduce((sum, m) => sum + m.percentage, 0) / selectedManning.length;
+        const isSunday = currentDate.getDay() === 0;
+        const divisor = isSunday ? 2 : 3;
+        const avg = selectedManning.reduce((sum, m) => sum + m.percentage, 0) / divisor;
         return Math.round(avg * 10) / 10;
     }, [ausenciasData, calendarData, filters.selectedGroups, currentDate, filters.view]);
 
@@ -424,7 +429,10 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
             const dailyAverages = calendarData.days.map(day => {
                 const selectedManning = day.manning.filter(m => filters.selectedGroups.includes(m.group));
                 if (selectedManning.length === 0) return day.averagePercentage || 0;
-                return selectedManning.reduce((sum, m) => sum + m.percentage, 0) / selectedManning.length;
+
+                const isSunday = day.date.getDay() === 0;
+                const divisor = isSunday ? 2 : 3;
+                return selectedManning.reduce((sum, m) => sum + m.percentage, 0) / divisor;
             });
 
             const averagePercentage = dailyAverages.reduce((sum, avg) => sum + avg, 0) / (dailyAverages.length || 1);
@@ -446,7 +454,11 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
             );
 
             if (gruposData.length > 0) {
-                const avgForDay = gruposData.reduce((sum, g) => sum + g.porcentajeAusencia, 0) / gruposData.length;
+                const date = new Date(fechaData.fecha);
+                const isSunday = date.getDay() === 0;
+                const divisor = isSunday ? 2 : 3;
+                const sum = gruposData.reduce((sum, g) => sum + g.porcentajeAusencia, 0);
+                const avgForDay = sum / divisor;
                 dailyAverages.push(avgForDay);
             }
         });
