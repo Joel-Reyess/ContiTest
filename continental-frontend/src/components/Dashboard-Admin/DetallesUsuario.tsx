@@ -88,20 +88,20 @@ export const DetallesUsuario = () => {
                 areaId: editedData.areaId ?? null
             });
 
-            const freshUser = await userService.getUserById(parseInt(id));
-            setUserData(freshUser);
-            setEditedData(freshUser);
-            setIsEditing(false);
-            toast.success("Usuario actualizado correctamente");
-        } catch (error: any) {
-            console.error("Error updating user:", error);
-            setError(
-                error?.message || "Error al actualizar el usuario"
-            );
-        } finally {
-            setSaving(false);
-        }
-    };
+      const freshUser = await userService.getUserById(parseInt(id));
+      setUserData(freshUser);
+      setEditedData(freshUser);
+      setIsEditing(false);
+      toast.success("Usuario actualizado correctamente");
+    } catch (error: any) {
+      console.error("Error updating user:", error);
+      setError(
+        error?.message || "Error al actualizar el usuario"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
     const handleCancel = () => {
         setEditedData(userData);
@@ -167,25 +167,25 @@ export const DetallesUsuario = () => {
         );
     }
 
-    if (error) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="text-center max-w-md px-4">
-                    <User className="mx-auto h-12 w-12 text-destructive mb-4" />
-                    <h3 className="text-lg font-semibold">Ha ocurrido un error</h3>
-                    <p className="text-muted-foreground mb-4">{error}</p>
-                    <div className="flex flex-col gap-2">
-                        <Button onClick={() => setError(null)} variant="continental">
-                            Reintentar
-                        </Button>
-                        <Button onClick={() => navigate("/admin/usuarios")} variant="outline">
-                            Regresar a Usuarios
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center max-w-md px-4">
+          <User className="mx-auto h-12 w-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold">Ha ocurrido un error</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <div className="flex flex-col gap-2">
+            <Button onClick={() => setError(null)} variant="continental">
+              Reintentar
+            </Button>
+            <Button onClick={() => navigate("/admin/usuarios")} variant="outline">
+              Regresar a Usuarios
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
     if (!userData) {
         return (
@@ -328,67 +328,67 @@ export const DetallesUsuario = () => {
                                 Roles
                             </label>
 
-                            {isEditing ? (
-                                <div className="space-y-2">
-                                    <select
-                                        multiple
-                                        className="w-full border rounded-lg p-2"
-                                        value={
-                                            (editedData?.roles || []).map((r: any) =>
-                                                typeof r === "object" ? r?.id : r
-                                            )
-                                        }
-                                        onChange={(e) => {
-                                            const selected = Array.from(e.target.selectedOptions).map(
-                                                (opt) => parseInt(opt.value)
-                                            );
-                                            handleInputChange(
-                                                "roles",
-                                                selected
-                                            );
-                                        }}
-                                    >
-                                        <option value={7}>SuperUsuario</option>
-                                        <option value={3}>Jefe De Area</option>
-                                        <option value={4}>Lider De Grupo</option>
-                                        <option value={5}>Ingeniero Industrial</option>
-                                        <option value={2}>Empleado Sindicalizado</option>
-                                        <option value={6}>Delegado Sindical</option>
+            {isEditing ? (
+              <div className="space-y-2">
+                <select
+                  multiple
+                  className="w-full border rounded-lg p-2"
+                  value={
+                    (editedData?.roles || []).map((r: any) =>
+                      typeof r === "object" ? r?.id : r
+                    )
+                  }
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions).map(
+                      (opt) => parseInt(opt.value)
+                    );
+                    handleInputChange(
+                      "roles",
+                      selected
+                    );
+                  }}
+                >
+                  <option value={7}>SuperUsuario</option>
+                  <option value={3}>Jefe De Area</option>
+                  <option value={4}>Lider De Grupo</option>
+                  <option value={5}>Ingeniero Industrial</option>
+                  <option value={2}>Empleado Sindicalizado</option>
+                  <option value={6}>Delegado Sindical</option>
 
-                                    </select>
-                                    <p className="text-xs text-muted-foreground">
-                                        Mantén presionado Ctrl o Cmd para seleccionar varios.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="text-foreground bg-gray-50 p-3 rounded-lg border">
-                                    {currentData?.roles?.length > 0 ? (
-                                        <div className="flex flex-wrap gap-2">
-                                            {currentData.roles.map((role: any, index) => {
-                                                const roleName = typeof role === "object" ? role.name :
-                                                    role === 7 ? "SuperUsuario" :
-                                                        role === 3 ? "Jefe De Area" :
-                                                            role === 4 ? "Lider De Grupo" :
-                                                                role === 5 ? "Ingeniero Industrial" :
-                                                                    role === 2 ? "Empleado Sindicalizado" :
-                                                                        role === 6 ? "Delegado Sindical" : role;
-                                                return (
-                                                    <Badge key={index} variant="secondary">
-                                                        {roleName}
-                                                    </Badge>
-                                                );
-                                            })}
-                                        </div>
-                                    ) : (
-                                        <span className="text-muted-foreground">
-                                            Sin roles asignados
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                        <div></div>
-                    </div>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Mantén presionado Ctrl o Cmd para seleccionar varios.
+                </p>
+              </div>
+            ) : (
+              <div className="text-foreground bg-gray-50 p-3 rounded-lg border">
+                {currentData?.roles?.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {currentData.roles.map((role: any, index) => {
+                      const roleName = typeof role === "object" ? role.name : 
+                                     role === 7 ? "SuperUsuario" :
+                                     role === 3 ? "Jefe De Area" :
+                                     role === 4 ? "Lider De Grupo" :
+                                     role === 5 ? "Ingeniero Industrial" :
+                                     role === 2 ? "Empleado Sindicalizado" :
+                                     role === 6 ? "Delegado Sindical" : role;
+                      return (
+                        <Badge key={index} variant="secondary">
+                          {roleName}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">
+                    Sin roles asignados
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div></div>
+        </div>
 
 
                     {/* Información Laboral */}
