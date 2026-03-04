@@ -134,14 +134,11 @@ export function TablaSolicitudes() {
     // Al inicio del componente, después de los estados
     const abortControllerRef = useRef<AbortController | null>(null)
 
-    // Reemplaza el efecto de aplicar filtros por:
     useEffect(() => {
-        // Esperar a que se restauren los filtros y se cargue userData
         if (lastFetchedFiltersRef.current === 'RESTORING' || loadingUserData || !userData) {
             return
         }
 
-        // Solo hacer fetch si tenemos un área seleccionada
         if (!selectedAreaId) {
             return
         }
@@ -154,37 +151,15 @@ export function TablaSolicitudes() {
             filters.estado = estadoFilter
         }
 
-        // Crear clave única para los filtros
         const filtersKey = JSON.stringify(filters)
 
-        // Evitar llamadas duplicadas
         if (lastFetchedFiltersRef.current === filtersKey) {
-            console.log('TablaSolicitudes: Skipping duplicate fetch for filters:', filters)
             return
         }
 
-        // Cancelar petición anterior si existe
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort()
-        }
+        lastFetchedFiltersRef.current = filtersKey
+        fetchSolicitudes(filters)
 
-        // Crear nuevo AbortController
-        abortControllerRef.current = new AbortController()
-
-        // Debounce de 300ms
-        const timeoutId = setTimeout(() => {
-            lastFetchedFiltersRef.current = filtersKey
-            console.log('TablaSolicitudes: Fetching with filters:', filters)
-            fetchSolicitudes(filters)
-        }, 300)
-
-        return () => {
-            clearTimeout(timeoutId)
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort()
-                abortControllerRef.current = null
-            }
-        }
     }, [selectedAreaId, estadoFilter, fetchSolicitudes, loadingUserData, userData])
 
     // Efecto para mantener solicitudes ordenadas
@@ -227,6 +202,7 @@ export function TablaSolicitudes() {
         } else {
             // Si no hay filtros guardados, marcar como restaurado para permitir fetch normal
             filtersRestoredRef.current = true
+                fetchUserData()
         }
     }, [location.state])
 

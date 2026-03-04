@@ -32,7 +32,7 @@
  */
 
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { ArrowLeft, Calendar, User as UserIcon, MapPin, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import CalendarWidget from './CalendarWidget'
@@ -104,13 +104,16 @@ export default function SolicitudDetallePage() {
         setAreaOptions(unique)
     }, [user, solicitud?.areaEmpleado])
 
+    const areaGroupsLoadedRef = useRef(false)
+
     // Si no hay grupos (por permisos/401), intentar cargarlos desde getAreas
     useEffect(() => {
         const loadAreaGroups = async () => {
+            if (areaGroupsLoadedRef.current) return
             if (!solicitud?.areaEmpleado) return
             const hasGroups = areaOptions.some(a => Array.isArray(a.grupos) && a.grupos.length > 0)
             if (hasGroups) return
-
+            areaGroupsLoadedRef.current = true
             try {
                 const all = await areasService.getAreas()
                 const targetName = solicitud.areaEmpleado.toLowerCase().trim()
@@ -135,8 +138,10 @@ export default function SolicitudDetallePage() {
 
         loadAreaGroups()
     }, [areaOptions, solicitud?.areaEmpleado, selectedAreaId])
-
+    const loadedRef = useRef(false)
     useEffect(() => {
+        if (loadedRef.current) return
+        loadedRef.current = true
         const loadSolicitud = async () => {
             if (!id) return
 

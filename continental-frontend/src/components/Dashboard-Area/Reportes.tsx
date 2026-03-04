@@ -429,6 +429,18 @@ export const Reportes = () => {
     }
   };
 
+    const handleDownload = async (reportId: number) => {
+        if (reportId === 1) {
+            await handleDownloadVacacionesAsignadas();
+        } else if (reportId === 5) {
+            await handleDownloadConstancia();
+        } else if (reportId === 11) {
+            await handleReprogGeneral();
+        } else {
+            toast.info("Funcionalidad en desarrollo para este tipo de reporte");
+        }
+    };
+
     const filteredReports = selectedCategory === 'all'
         ? reportCards
         : reportCards.filter(r => r.category === selectedCategory);

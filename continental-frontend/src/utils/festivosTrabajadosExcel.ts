@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { SolicitudFestivoTrabajado } from '../interfaces/Solicitudes.interface';
+import type { SolicitudFestivoTrabajado } from '../services/festivosTrabajadosService';
 
 export const exportarExcelFestivosTrabajados = (
     solicitudes: SolicitudFestivoTrabajado[],
