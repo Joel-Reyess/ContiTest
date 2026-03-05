@@ -73,14 +73,28 @@ var allowedOrigins = new[] {
     "http://localhost:5175",
     "http://slas052a:5173",
     "https://x5xc1dsr-5173.usw3.devtunnels.ms",
+    "https://848g8g8w-5173.usw3.devtunnels.ms" 
     // Agrega aquí otros orígenes permitidos
 };
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
-        policy.WithOrigins(allowedOrigins)
-                .AllowAnyHeader()
-                .AllowAnyMethod()
+        policy.SetIsOriginAllowed(origin =>
+        {
+            if (string.IsNullOrEmpty(origin)) return false;
+            
+            // Permitir localhost en cualquier puerto
+            if (origin.StartsWith("http://localhost") || 
+                origin.StartsWith("http://slas052a")) return true;
+            
+            // Permitir cualquier subdominio de devtunnels.ms
+            if (origin.Contains(".devtunnels.ms")) return true;
+            
+            return false;
+        })
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()
     );
 });
 

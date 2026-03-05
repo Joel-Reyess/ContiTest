@@ -237,12 +237,18 @@ namespace tiempo_libre.Controllers
                 }
 
                 var vacacionesProgramadas = await _db.VacacionesProgramadas
-                    .Where(v => empleadosIds.Contains(v.EmpleadoId)
-                                && v.FechaVacacion >= DateOnly.FromDateTime(inicio)
-                                && v.FechaVacacion <= DateOnly.FromDateTime(fin)
-                                && v.EstadoVacacion != "Cancelada")
-                    .Select(v => new { v.EmpleadoId, v.FechaVacacion })
-                    .ToListAsync();
+                 .Where(v => empleadosIds.Contains(v.EmpleadoId)
+                             && v.FechaVacacion >= DateOnly.FromDateTime(inicio)
+                             && v.FechaVacacion <= DateOnly.FromDateTime(fin)
+                             && v.EstadoVacacion != "Cancelada")
+                 .Select(v => new { v.Id, v.EmpleadoId, v.FechaVacacion })
+                 .ToListAsync();
+
+                var vacacionesConSolicitudPendiente = await _db.SolicitudesReprogramacion
+                .Where(s => s.EstadoSolicitud == "Pendiente"
+                         && empleadosIds.Contains(s.EmpleadoId))
+                .Select(s => s.VacacionOriginalId)
+                .ToListAsync();
 
                 var vacacionesLegacy = await _db.Vacaciones
                     .Where(v => empleadosIds.Contains(v.IdUsuarioEmpleadoSindicalizado)
@@ -260,13 +266,15 @@ namespace tiempo_libre.Controllers
 
                 foreach (var vac in vacacionesProgramadas)
                 {
+                    // NO mostrar como vacación si tiene solicitud pendiente de reprogramación
+                    if (vacacionesConSolicitudPendiente.Contains(vac.Id)) continue; // <-- AGREGA ESTA LÍNEA
+
                     var fecha = vac.FechaVacacion.ToString("yyyy-MM-dd");
                     if (empleadosPorId.ContainsKey(vac.EmpleadoId))
                     {
                         vacacionesSet.Add((vac.EmpleadoId, fecha));
                         continue;
                     }
-
                     var empleadoPorNomina = empleadosPorNomina.GetValueOrDefault(vac.EmpleadoId.ToString());
                     if (empleadoPorNomina != null)
                     {

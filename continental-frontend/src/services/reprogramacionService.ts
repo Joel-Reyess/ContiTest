@@ -164,6 +164,11 @@ export class ReprogramacionService {
             return result;
         } catch (error: any) {
             console.error('Error en solicitarReprogramacion:', error);
+            // TEMPORAL: Ver el detalle completo del error
+            console.error('❌ ERROR COMPLETO:', JSON.stringify(error, null, 2));
+            console.error('❌ details:', JSON.stringify(error?.details, null, 2));
+            console.error('❌ details.errorMsg:', error?.details?.errorMsg);
+            console.error('❌ details.message:', error?.details?.message);
 
             // Si el error ya tiene un mensaje personalizado, usarlo
             if (error?.message) {
