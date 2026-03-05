@@ -290,10 +290,15 @@ namespace tiempo_libre.Controllers
                     }
                 }
 
+                // Códigos que representan turnos normales (NO incidencias)
+                var turnosNormales = new HashSet<string> { "1", "2", "3", "D", "" };
+
                 foreach (var entry in semana)
                 {
-                    if (vacacionesSet.Contains((entry.Empleado.Id, entry.Fecha)))
+                    if (vacacionesSet.Contains((entry.Empleado.Id, entry.Fecha))
+                        && turnosNormales.Contains(entry.CodigoTurno))
                     {
+                        // Solo sobreescribir con "V" si NO tiene ya un permiso/incapacidad asignado
                         entry.CodigoTurno = "V";
                     }
                 }

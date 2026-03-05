@@ -19,11 +19,17 @@ export const SolicitudesPermisos = () => {
     const cargarSolicitudes = async () => {
         setLoading(true);
         try {
-            const response = await solicitudesPermisosService.obtenerSolicitudesPendientes();
-            const filtradas = response.solicitudes.filter(
-                s => filtroEstado === '' || s.estado === filtroEstado
-            );
-            setSolicitudes(filtradas);
+            let response;
+            if (filtroEstado === 'Pendiente') {
+                // Endpoint rápido solo para pendientes
+                response = await solicitudesPermisosService.obtenerSolicitudesPendientes();
+            } else {
+                // Consultar con filtro de estado (todas, aprobadas, rechazadas)
+                response = await solicitudesPermisosService.consultarSolicitudes({
+                    estado: filtroEstado || undefined
+                });
+            }
+            setSolicitudes(response.solicitudes || []);
         } catch (error) {
             console.error('Error cargando solicitudes:', error);
             toast.error('Error al cargar solicitudes de permisos');
