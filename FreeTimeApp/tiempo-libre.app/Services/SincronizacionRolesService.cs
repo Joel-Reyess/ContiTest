@@ -8,16 +8,16 @@ using tiempo_libre.Models;
 
 namespace tiempo_libre.Services
 {
-	public class SincronizacionRolesService
-	{
-		private readonly FreeTimeDbContext _context;
-		private readonly ILogger<SincronizacionRolesService> _logger;
+    public class SincronizacionRolesService
+    {
+        private readonly FreeTimeDbContext _context;
+        private readonly ILogger<SincronizacionRolesService> _logger;
 
-		public SincronizacionRolesService(FreeTimeDbContext context, ILogger<SincronizacionRolesService> logger)
-		{
-			_context = context;
-			_logger = logger;
-		}
+        public SincronizacionRolesService(FreeTimeDbContext context, ILogger<SincronizacionRolesService> logger)
+        {
+            _context = context;
+            _logger = logger;
+        }
 
         public async Task<int> SincronizarRolesDesdeRegla()
         {
@@ -63,7 +63,6 @@ namespace tiempo_libre.Services
 
                 if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
                 {
-                    // PASO 1: Normalizar y buscar grupos por Rol
                     var reglaLimpia = rolSAP.Regla.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper();
 
                     var todosGrupos = await _context.Grupos
@@ -83,7 +82,6 @@ namespace tiempo_libre.Services
 
                     Grupo? grupoCorrect = null;
 
-                    // PASO 2: Filtrar por UnidadOrganizativa
                     if (gruposPosibles.Count > 1 && !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
                     {
                         var gruposMismaUnidad = gruposPosibles
@@ -96,7 +94,6 @@ namespace tiempo_libre.Services
                         }
                         else if (gruposMismaUnidad.Count > 1 && !string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
                         {
-                            // PASO 3: Buscar por JefeId usando EncargadoRegistro
                             int? jefeIdBuscado = null;
 
                             if (int.TryParse(rolSAP.EncargadoRegistro.Trim(), out int nominaJefe))
@@ -118,9 +115,7 @@ namespace tiempo_libre.Services
                                     .FirstOrDefault();
 
                                 if (userEncontrado != null)
-                                {
                                     jefeIdBuscado = userEncontrado.Id;
-                                }
                             }
 
                             if (jefeIdBuscado.HasValue)
@@ -141,9 +136,7 @@ namespace tiempo_libre.Services
                                         RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim() == encargadoNormalizado);
 
                                     if (grupoCorrect != null)
-                                    {
                                         _logger.LogInformation($"✅ Grupo encontrado por JefeId + EncargadoRegistro: GrupoId={grupoCorrect.GrupoId}");
-                                    }
                                     else
                                     {
                                         grupoCorrect = gruposConJefeCorrecto.First();
@@ -177,8 +170,6 @@ namespace tiempo_libre.Services
                         grupoCorrect = gruposPosibles.First();
                     }
 
-                    // PASO 4: Actualizar usuario
-                    // PASO 4: Actualizar usuario
                     if (grupoCorrect != null)
                     {
                         if (user.GrupoId != grupoCorrect.GrupoId || user.AreaId != grupoCorrect.AreaId)
@@ -210,11 +201,11 @@ namespace tiempo_libre.Services
                 await RegenerarCalendarioFuturo(user.Id);
             }
 
-            // ✅ ELIMINAR EMPLEADOS Y USUARIOS INACTIVOS
-            await EliminarEmpleadosInactivos();
+            // ⛔ ELIMINACIÓN DESACTIVADA TEMPORALMENTE - Reactivar solo cuando SAP sea estable
+            // await EliminarEmpleadosInactivos();
+            _logger.LogInformation("⏸️ EliminarEmpleadosInactivos desactivado temporalmente.");
 
             _logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} registros actualizados.");
-            // Sincronizar Users desde Empleados (flujo directo por UnidadOrganizativa y Rol)
             var usersActualizados = await SincronizarUsersDesdeEmpleados();
             registrosActualizados += usersActualizados;
             return registrosActualizados;
@@ -224,19 +215,16 @@ namespace tiempo_libre.Services
         {
             int actualizados = 0;
 
-            // Traer todos los empleados con su UnidadOrganizativa y Rol
             var empleados = await _context.Empleados
                 .Where(e => !string.IsNullOrEmpty(e.UnidadOrganizativa) && !string.IsNullOrEmpty(e.Rol))
                 .ToListAsync();
 
-            // Traer todas las áreas indexadas por UnidadOrganizativaSap
             var areas = await _context.Areas.ToListAsync();
             var areasPorUnidad = areas
                 .GroupBy(a => a.UnidadOrganizativaSap?.Trim().ToUpper())
                 .Where(g => g.Key != null)
                 .ToDictionary(g => g.Key!, g => g.ToList());
 
-            // Traer todos los grupos indexados por Rol
             var grupos = await _context.Grupos.ToListAsync();
             var gruposPorRol = grupos
                 .GroupBy(g => g.Rol?.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper())
@@ -245,7 +233,6 @@ namespace tiempo_libre.Services
 
             foreach (var empleado in empleados)
             {
-                // Buscar el usuario por Username == Nomina
                 var user = await _context.Users
                     .FirstOrDefaultAsync(u => u.Username == empleado.Nomina.ToString());
 
@@ -255,7 +242,6 @@ namespace tiempo_libre.Services
                     continue;
                 }
 
-                // Resolver AreaId desde UnidadOrganizativa
                 var unidadKey = empleado.UnidadOrganizativa?.Trim().ToUpper();
                 if (!areasPorUnidad.TryGetValue(unidadKey!, out var areasCandiatas) || !areasCandiatas.Any())
                 {
@@ -263,7 +249,6 @@ namespace tiempo_libre.Services
                     continue;
                 }
 
-                // Si hay más de un área con esa UnidadOrg, elegir por EncargadoRegistro
                 Area? areaCorrecta = null;
                 if (areasCandiatas.Count == 1)
                 {
@@ -283,7 +268,6 @@ namespace tiempo_libre.Services
                     areaCorrecta = areasCandiatas.First();
                 }
 
-                // Resolver GrupoId desde Rol dentro del área correcta
                 var rolKey = empleado.Rol?.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper();
                 if (!gruposPorRol.TryGetValue(rolKey!, out var gruposCanditatos) || !gruposCanditatos.Any())
                 {
@@ -291,16 +275,13 @@ namespace tiempo_libre.Services
                     continue;
                 }
 
-                // Filtrar grupos que pertenezcan al área correcta
                 var grupoEnArea = gruposCanditatos.FirstOrDefault(g => g.AreaId == areaCorrecta.AreaId);
                 if (grupoEnArea == null)
                 {
-                    // Fallback: usar cualquier grupo con ese Rol
                     grupoEnArea = gruposCanditatos.First();
                     _logger.LogWarning($"⚠️ Nomina={empleado.Nomina}: Grupo Rol={empleado.Rol} no pertenece al Area={areaCorrecta.AreaId}, usando fallback GrupoId={grupoEnArea.GrupoId}");
                 }
 
-                // Actualizar solo si hay cambios
                 if (user.AreaId != areaCorrecta.AreaId || user.GrupoId != grupoEnArea.GrupoId)
                 {
                     _logger.LogInformation($"🔄 Nomina={empleado.Nomina}: AreaId {user.AreaId}→{areaCorrecta.AreaId} | GrupoId {user.GrupoId}→{grupoEnArea.GrupoId}");
@@ -318,6 +299,9 @@ namespace tiempo_libre.Services
             return actualizados;
         }
 
+        // ⛔ MÉTODO DESACTIVADO TEMPORALMENTE
+        // Para reactivar: descomentar "await EliminarEmpleadosInactivos();" en SincronizarRolesDesdeRegla
+        // IMPORTANTE: Las protecciones 1 y 2 evitan eliminación masiva si SAP está vacío o incompleto
         public async Task<int> EliminarEmpleadosInactivos()
         {
             int empleadosEliminados = 0;
@@ -325,13 +309,26 @@ namespace tiempo_libre.Services
 
             try
             {
-                // Obtener nóminas activas en RolesEmpleadosSAP
                 var nominasActivas = await _context.RolesEmpleadosSAP
                     .Select(r => r.Nomina)
                     .Distinct()
                     .ToListAsync();
 
-                // Encontrar empleados que ya no están en RolesEmpleadosSAP
+                // ✅ PROTECCIÓN 1: Tabla SAP vacía = SAP está actualizando, no eliminar nada
+                if (!nominasActivas.Any())
+                {
+                    _logger.LogWarning("⚠️ PROTECCIÓN 1: RolesEmpleadosSAP está vacía. SAP posiblemente actualizando. No se elimina nada.");
+                    return 0;
+                }
+
+                // ✅ PROTECCIÓN 2: Si SAP tiene menos del 10% de empleados actuales, algo está mal
+                var totalEmpleadosActuales = await _context.Empleados.CountAsync();
+                if (totalEmpleadosActuales > 0 && nominasActivas.Count < totalEmpleadosActuales * 0.1)
+                {
+                    _logger.LogWarning($"⚠️ PROTECCIÓN 2: Solo {nominasActivas.Count} nóminas en SAP vs {totalEmpleadosActuales} empleados actuales. Carga parcial detectada. No se elimina nada.");
+                    return 0;
+                }
+
                 var empleadosAEliminar = await _context.Empleados
                     .Where(e => !nominasActivas.Contains(e.Nomina))
                     .ToListAsync();
@@ -343,7 +340,6 @@ namespace tiempo_libre.Services
                     _logger.LogInformation($"🗑️ Marcados para eliminar {empleadosEliminados} empleados inactivos");
                 }
 
-                // Buscar el rol Empleado_Sindicalizado
                 var rolSindicalizado = await _context.Roles
                     .FirstOrDefaultAsync(r => r.Name == "Empleado_Sindicalizado" || r.Name == "Empleado Sindicalizado");
 
@@ -358,141 +354,77 @@ namespace tiempo_libre.Services
 
                     if (usuariosAEliminar.Any())
                     {
-                        // ✅ PASO CRÍTICO: Eliminar primero las relaciones/datos dependientes
                         foreach (var usuario in usuariosAEliminar)
                         {
-
-                            // 1. Eliminar Notificaciones (tanto como emisor como receptor) ⭐ NUEVO
                             var notificacionesComoEmisor = await _context.Notificaciones
-                                .Where(n => n.IdUsuarioEmisor == usuario.Id)
-                                .ToListAsync();
+                                .Where(n => n.IdUsuarioEmisor == usuario.Id).ToListAsync();
                             if (notificacionesComoEmisor.Any())
-                            {
                                 _context.Notificaciones.RemoveRange(notificacionesComoEmisor);
-                                _logger.LogInformation($"🗑️ Eliminando {notificacionesComoEmisor.Count} notificaciones como emisor del usuario {usuario.Nomina}");
-                            }
 
                             var notificacionesComoReceptor = await _context.Notificaciones
-                                .Where(n => n.IdUsuarioReceptor == usuario.Id)
-                                .ToListAsync();
+                                .Where(n => n.IdUsuarioReceptor == usuario.Id).ToListAsync();
                             if (notificacionesComoReceptor.Any())
-                            {
                                 _context.Notificaciones.RemoveRange(notificacionesComoReceptor);
-                                _logger.LogInformation($"🗑️ Eliminando {notificacionesComoReceptor.Count} notificaciones como receptor del usuario {usuario.Nomina}");
-                            }
 
-                            // 1. Eliminar SolicitudesReprogramacion (PRIMERO - depende de VacacionesProgramadas)
                             var solicitudesReprogramacion = await _context.SolicitudesReprogramacion
-                                .Where(sr => sr.EmpleadoId == usuario.Id)
-                                .ToListAsync();
+                                .Where(sr => sr.EmpleadoId == usuario.Id).ToListAsync();
                             if (solicitudesReprogramacion.Any())
-                            {
                                 _context.SolicitudesReprogramacion.RemoveRange(solicitudesReprogramacion);
-                                _logger.LogInformation($"🗑️ Eliminando {solicitudesReprogramacion.Count} solicitudes de reprogramación del usuario {usuario.Nomina}");
-                            }
 
-                            // 2. Eliminar SolicitudesFestivosTrabajados
                             var solicitudesFestivos = await _context.SolicitudesFestivosTrabajados
-                                .Where(sf => sf.EmpleadoId == usuario.Id)
-                                .ToListAsync();
+                                .Where(sf => sf.EmpleadoId == usuario.Id).ToListAsync();
                             if (solicitudesFestivos.Any())
-                            {
                                 _context.SolicitudesFestivosTrabajados.RemoveRange(solicitudesFestivos);
-                                _logger.LogInformation($"🗑️ Eliminando {solicitudesFestivos.Count} solicitudes de festivos del usuario {usuario.Nomina}");
-                            }
 
-                            // 3. Eliminar AsignacionesBloque ⭐ NUEVO
                             var asignacionesBloque = await _context.AsignacionesBloque
-                                .Where(ab => ab.EmpleadoId == usuario.Id)
-                                .ToListAsync();
+                                .Where(ab => ab.EmpleadoId == usuario.Id).ToListAsync();
                             if (asignacionesBloque.Any())
-                            {
                                 _context.AsignacionesBloque.RemoveRange(asignacionesBloque);
-                                _logger.LogInformation($"🗑️ Eliminando {asignacionesBloque.Count} asignaciones de bloque del usuario {usuario.Nomina}");
-                            }
 
-                            // 3.1 Eliminar CambiosBloque ⭐ NUEVO
                             var cambiosBloque = await _context.CambiosBloque
-                                .Where(cb => cb.EmpleadoId == usuario.Id)
-                                .ToListAsync();
+                                .Where(cb => cb.EmpleadoId == usuario.Id).ToListAsync();
                             if (cambiosBloque.Any())
-                            {
                                 _context.CambiosBloque.RemoveRange(cambiosBloque);
-                                _logger.LogInformation($"🗑️ Eliminando {cambiosBloque.Count} cambios de bloque del usuario {usuario.Nomina}");
-                            }
 
-                            // 4. Eliminar VacacionesProgramadas
                             var vacaciones = await _context.VacacionesProgramadas
-                                .Where(v => v.EmpleadoId == usuario.Id)
-                                .ToListAsync();
+                                .Where(v => v.EmpleadoId == usuario.Id).ToListAsync();
                             if (vacaciones.Any())
-                            {
                                 _context.VacacionesProgramadas.RemoveRange(vacaciones);
-                                _logger.LogInformation($"🗑️ Eliminando {vacaciones.Count} vacaciones programadas del usuario {usuario.Nomina}");
-                            }
 
-                            // 5. Eliminar DiasCalendarioEmpleado
                             var diasCalendario = await _context.DiasCalendarioEmpleado
-                                .Where(d => d.IdUsuarioEmpleadoSindicalizado == usuario.Id)
-                                .ToListAsync();
+                                .Where(d => d.IdUsuarioEmpleadoSindicalizado == usuario.Id).ToListAsync();
                             if (diasCalendario.Any())
-                            {
                                 _context.DiasCalendarioEmpleado.RemoveRange(diasCalendario);
-                                _logger.LogInformation($"🗑️ Eliminando {diasCalendario.Count} días de calendario del usuario {usuario.Nomina}");
-                            }
 
-                            // 6. Eliminar CalendarioEmpleado
                             var calendarios = await _context.CalendarioEmpleados
-                                .Where(c => c.IdUsuarioEmpleadoSindicalizado == usuario.Id)
-                                .ToListAsync();
+                                .Where(c => c.IdUsuarioEmpleadoSindicalizado == usuario.Id).ToListAsync();
                             if (calendarios.Any())
-                            {
                                 _context.CalendarioEmpleados.RemoveRange(calendarios);
-                                _logger.LogInformation($"🗑️ Eliminando {calendarios.Count} calendarios del usuario {usuario.Nomina}");
-                            }
 
-                            // 7. Eliminar DiasFestivosTrabajados
                             var festivosTrabajados = await _context.DiasFestivosTrabajados
-                                .Where(d => d.IdUsuarioEmpleadoSindicalizado == usuario.Id)
-                                .ToListAsync();
+                                .Where(d => d.IdUsuarioEmpleadoSindicalizado == usuario.Id).ToListAsync();
                             if (festivosTrabajados.Any())
-                            {
                                 _context.DiasFestivosTrabajados.RemoveRange(festivosTrabajados);
-                                _logger.LogInformation($"🗑️ Eliminando {festivosTrabajados.Count} festivos trabajados del usuario {usuario.Nomina}");
-                            }
 
-                            // 8. Eliminar ReservacionesDeVacacionesPorEmpleado
                             var reservaciones = await _context.ReservacionesDeVacacionesPorEmpleado
-                                .Where(r => r.IdEmpleadoSindicalizado == usuario.Id)
-                                .ToListAsync();
+                                .Where(r => r.IdEmpleadoSindicalizado == usuario.Id).ToListAsync();
                             if (reservaciones.Any())
-                            {
                                 _context.ReservacionesDeVacacionesPorEmpleado.RemoveRange(reservaciones);
-                                _logger.LogInformation($"🗑️ Eliminando {reservaciones.Count} reservaciones del usuario {usuario.Nomina}");
-                            }
 
-                            // 9. Eliminar EmpleadosXBloquesDeTurnos
                             var bloquesTurnos = await _context.EmpleadosXBloquesDeTurnos
-                                .Where(e => e.IdEmpleadoSindicalAgendara == usuario.Id)
-                                .ToListAsync();
+                                .Where(e => e.IdEmpleadoSindicalAgendara == usuario.Id).ToListAsync();
                             if (bloquesTurnos.Any())
-                            {
                                 _context.EmpleadosXBloquesDeTurnos.RemoveRange(bloquesTurnos);
-                                _logger.LogInformation($"🗑️ Eliminando {bloquesTurnos.Count} bloques de turnos del usuario {usuario.Nomina}");
-                            }
                         }
 
-                        // Guardar cambios de eliminación de dependencias
                         await _context.SaveChangesAsync();
 
-                        // Ahora sí eliminar los usuarios
                         _context.Users.RemoveRange(usuariosAEliminar);
                         usuariosEliminados = usuariosAEliminar.Count;
                         _logger.LogInformation($"🗑️ Marcados para eliminar {usuariosEliminados} usuarios sindicalizados inactivos");
                     }
                 }
 
-                // Guardar cambios finales
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation($"✅ Limpieza completada. Empleados: {empleadosEliminados}, Usuarios: {usuariosEliminados}");
@@ -510,7 +442,6 @@ namespace tiempo_libre.Services
             if (string.IsNullOrEmpty(texto))
                 return string.Empty;
 
-            // Normalizar y remover acentos
             var textoNormalizado = texto.Normalize(System.Text.NormalizationForm.FormD);
             var resultado = new System.Text.StringBuilder();
 
@@ -518,34 +449,22 @@ namespace tiempo_libre.Services
             {
                 var categoriaUnicode = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
                 if (categoriaUnicode != System.Globalization.UnicodeCategory.NonSpacingMark)
-                {
                     resultado.Append(c);
-                }
             }
 
             var limpio = resultado.ToString()
                 .Normalize(System.Text.NormalizationForm.FormC)
-                .Replace("é", "e")
-                .Replace("É", "E")
-                .Replace("á", "a")
-                .Replace("Á", "A")
-                .Replace("í", "i")
-                .Replace("Í", "I")
-                .Replace("ó", "o")
-                .Replace("Ó", "O")
-                .Replace("ú", "u")
-                .Replace("Ú", "U")
-                .Replace("\u00A0", " ")  // Non-breaking space
-                .Replace("\u200B", "")   // Zero-width space
-                .Replace("\u2009", " ")  // Thin space
-                .Replace("\u202F", " ")  // Narrow no-break space
+                .Replace("é", "e").Replace("É", "E")
+                .Replace("á", "a").Replace("Á", "A")
+                .Replace("í", "i").Replace("Í", "I")
+                .Replace("ó", "o").Replace("Ó", "O")
+                .Replace("ú", "u").Replace("Ú", "U")
+                .Replace("\u00A0", " ").Replace("\u200B", "")
+                .Replace("\u2009", " ").Replace("\u202F", " ")
                 .Trim();
 
-            // Limpiar espacios múltiples
             while (limpio.Contains("  "))
-            {
                 limpio = limpio.Replace("  ", " ");
-            }
 
             return limpio;
         }
@@ -556,7 +475,6 @@ namespace tiempo_libre.Services
             {
                 var fechaHoy = DateOnly.FromDateTime(DateTime.Today);
 
-                // Eliminar solo registros FUTUROS del calendario viejo
                 var diasFuturos = await _context.DiasCalendarioEmpleado
                     .Where(d => d.IdUsuarioEmpleadoSindicalizado == userId && d.FechaDelDia >= fechaHoy)
                     .ToListAsync();
@@ -565,25 +483,21 @@ namespace tiempo_libre.Services
                 {
                     _context.DiasCalendarioEmpleado.RemoveRange(diasFuturos);
                     await _context.SaveChangesAsync();
-
                     _logger.LogInformation($"Eliminados {diasFuturos.Count} días futuros para usuario {userId}");
                 }
-
-                // NOTA: Aquí podrías llamar a EmployeesCalendarsGenerator si necesitas regenerar
-                // O esperar a que el proceso de generación automática lo haga
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error al regenerar calendario para usuario {userId}");
             }
         }
+
         public async Task ActualizarEncargadoRegistroEnAreas()
         {
             try
             {
                 _logger.LogInformation("🔄 Iniciando actualización de EncargadoRegistro en Areas basado en JefeId...");
 
-                // Obtener todas las áreas con sus jefes
                 var areas = await _context.Areas
                     .Include(a => a.Jefe)
                     .ToListAsync();
@@ -594,52 +508,34 @@ namespace tiempo_libre.Services
                 {
                     string nuevoEncargado = null;
 
-                    // PRIORIDAD 1: Si tiene JefeId asignado, usar el FullName del jefe
                     if (area.JefeId.HasValue && area.Jefe != null)
                     {
                         nuevoEncargado = area.Jefe.FullName;
-                        _logger.LogInformation($"🎯 Area {area.AreaId} ({area.UnidadOrganizativaSap}): " +
-                            $"Usando Jefe.FullName='{nuevoEncargado}' (JefeId={area.JefeId})");
                     }
-                    // PRIORIDAD 2: Si NO tiene JefeId, buscar el encargado más frecuente en RolesEmpleadosSAP
                     else
                     {
                         var encargadosConFrecuencia = await _context.RolesEmpleadosSAP
                             .Where(r => r.UnidadOrganizativa == area.UnidadOrganizativaSap &&
                                        !string.IsNullOrEmpty(r.EncargadoRegistro))
                             .GroupBy(r => r.EncargadoRegistro)
-                            .Select(g => new {
-                                EncargadoRegistro = g.Key,
-                                Frecuencia = g.Count()
-                            })
+                            .Select(g => new { EncargadoRegistro = g.Key, Frecuencia = g.Count() })
                             .OrderByDescending(x => x.Frecuencia)
                             .ToListAsync();
 
                         if (encargadosConFrecuencia.Any())
-                        {
                             nuevoEncargado = encargadosConFrecuencia.First().EncargadoRegistro;
-                            _logger.LogInformation($"📊 Area {area.AreaId} ({area.UnidadOrganizativaSap}): " +
-                                $"Sin JefeId, usando más frecuente='{nuevoEncargado}' " +
-                                $"(Frecuencia: {encargadosConFrecuencia.First().Frecuencia})");
-                        }
                         else
                         {
-                            _logger.LogWarning($"⚠️ Area {area.AreaId} ({area.UnidadOrganizativaSap}): " +
-                                $"Sin JefeId y sin EncargadoRegistro en RolesEmpleadosSAP");
+                            _logger.LogWarning($"⚠️ Area {area.AreaId} ({area.UnidadOrganizativaSap}): Sin JefeId y sin EncargadoRegistro en RolesEmpleadosSAP");
                             continue;
                         }
                     }
 
-                    // Normalizar para comparación
                     var encargadoActualNormalizado = RemoverAcentos(area.EncargadoRegistro ?? "").ToLower().Trim();
                     var encargadoNuevoNormalizado = RemoverAcentos(nuevoEncargado).ToLower().Trim();
 
-                    // Actualizar si es diferente
                     if (encargadoActualNormalizado != encargadoNuevoNormalizado)
                     {
-                        _logger.LogInformation($"📝 Actualizando Area {area.AreaId}: " +
-                            $"'{area.EncargadoRegistro}' → '{nuevoEncargado}'");
-
                         area.EncargadoRegistro = nuevoEncargado;
                         areasActualizadas++;
                     }
@@ -660,6 +556,5 @@ namespace tiempo_libre.Services
                 _logger.LogError(ex, "❌ Error al actualizar EncargadoRegistro en Areas");
             }
         }
-
     }
 }
