@@ -247,7 +247,7 @@ namespace tiempo_libre.Services
             // Incluye reprogramaciones aprobadas (PeriodoProgramacion == "Reprogramacion")
             var vacaciones = await _db.VacacionesProgramadas
                 .Where(v => v.FechaVacacion == fecha && v.EstadoVacacion == "Activa")
-                .Join(_db.Users.Where(u => u.GrupoId == grupoId),
+                .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == Models.Enums.UserStatus.Activo),
                       v => v.EmpleadoId,
                       u => u.Id,
                       (v, u) => new { Vacacion = v, Usuario = u })
@@ -270,7 +270,7 @@ namespace tiempo_libre.Services
             var permisosIncapacidades = await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Desde <= fecha && p.Hasta >= fecha
                     && (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-                .Join(_db.Users.Where(u => u.GrupoId == grupoId),
+                .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == Models.Enums.UserStatus.Activo),
                       p => p.Nomina,
                       u => u.Nomina,
                       (p, u) => new { Permiso = p, Usuario = u })
