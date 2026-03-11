@@ -24,14 +24,243 @@ namespace tiempo_libre.Services
         {
             try
             {
-                var resultados = new List<AusenciaPorFechaResponse>();
-
-                // Generar las fechas del rango
                 var fechas = GenerarFechasDelRango(request.FechaInicio, request.FechaFin);
+                if (!fechas.Any())
+                    return new ApiResponse<List<AusenciaPorFechaResponse>>
+                        (true, new List<AusenciaPorFechaResponse>(), null);
+
+                var fechaMin = fechas.Min();
+                var fechaMax = fechas.Max();
+
+                // ─── 1. Cargar grupos una sola vez ───────────────────────────────────
+                var gruposQuery = _db.Grupos.Include(g => g.Area).AsQueryable();
+                if (request.GrupoId.HasValue)
+                    gruposQuery = gruposQuery.Where(g => g.GrupoId == request.GrupoId.Value);
+                if (request.AreaId.HasValue)
+                    gruposQuery = gruposQuery.Where(g => g.AreaId == request.AreaId.Value);
+                var grupos = await gruposQuery.ToListAsync();
+
+                if (!grupos.Any())
+                    return new ApiResponse<List<AusenciaPorFechaResponse>>
+                        (true, new List<AusenciaPorFechaResponse>(), null);
+
+                var grupoIds = grupos.Select(g => g.GrupoId).ToList();
+                var areaIds = grupos.Select(g => g.AreaId).Distinct().ToList();
+                var anios = fechas.Select(f => f.Year).Distinct().ToList();
+                var meses = fechas.Select(f => new { f.Year, f.Month }).Distinct().ToList();
+
+                // ─── 2. Empleados activos de todos los grupos (1 query) ──────────────
+                var empleadosPorGrupo = await _db.Users
+                    .Where(u => grupoIds.Contains(u.GrupoId ?? 0) &&
+                                u.Status == Models.Enums.UserStatus.Activo)
+                    .Select(u => new { u.Id, u.GrupoId, u.FullName, u.Nomina, u.Maquina })
+                    .ToListAsync();
+
+                var nominasActivas = empleadosPorGrupo
+                    .Where(e => e.Nomina.HasValue)
+                    .Select(e => e.Nomina!.Value)
+                    .Distinct().ToList();
+
+                var empleadoIdSet = empleadosPorGrupo.Select(e => e.Id).ToHashSet();
+
+                // ─── 3. Vacaciones del rango completo (1 query) ──────────────────────
+                var vacacionesBatch = await _db.VacacionesProgramadas
+                    .Where(v => empleadoIdSet.Contains(v.EmpleadoId) &&
+                                v.FechaVacacion >= fechaMin &&
+                                v.FechaVacacion <= fechaMax &&
+                                v.EstadoVacacion == "Activa")
+                    .Select(v => new {
+                        v.EmpleadoId,
+                        v.FechaVacacion,
+                        v.PeriodoProgramacion,
+                        v.TipoVacacion
+                    })
+                    .ToListAsync();
+
+                // ─── 4. Permisos e incapacidades SAP del rango (1 query) ────────────
+                var permisosBatch = await _db.PermisosEIncapacidadesSAP
+                    .Where(p => nominasActivas.Contains(p.Nomina) &&
+                                p.Desde <= fechaMax &&
+                                p.Hasta >= fechaMin &&
+                                (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                    .Select(p => new { p.Nomina, p.Desde, p.Hasta, p.ClaseAbsentismo })
+                    .ToListAsync();
+
+                // ─── 5. Festivos trabajados del rango (1 query) ──────────────────────
+                var festivosBatch = await _db.SolicitudesFestivosTrabajados
+                    .Where(f => nominasActivas.Contains(f.Nomina) &&
+                                f.FechaNuevaSolicitada >= fechaMin &&
+                                f.FechaNuevaSolicitada <= fechaMax &&
+                                f.EstadoSolicitud == "Aprobada")
+                    .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada, f.Nomina })
+                    .ToListAsync();
+
+                // ─── 6. Manning: excepciones + área base (1+1 queries) ───────────────
+                var excepcionesManning = await _db.ExcepcionesManning
+                    .Where(e => areaIds.Contains(e.AreaId) &&
+                                anios.Contains(e.Anio) &&
+                                e.Activa)
+                    .ToListAsync();
+
+                // ─── 7. Porcentaje máximo: excepciones + config global (1+1 queries) ─
+                var excepcionesPorcentaje = await _db.ExcepcionesPorcentaje
+                    .Where(e => grupoIds.Contains(e.GrupoId) &&
+                                e.Fecha >= fechaMin && e.Fecha <= fechaMax)
+                    .ToListAsync();
+
+                var configGlobal = await _db.ConfiguracionVacaciones
+                    .OrderByDescending(c => c.Id)
+                    .Select(c => c.PorcentajeAusenciaMaximo)
+                    .FirstOrDefaultAsync();
+                var porcentajeDefault = configGlobal > 0 ? configGlobal : PORCENTAJE_AUSENCIA_MAXIMO_DEFAULT;
+
+                // ─── 8. Mapas auxiliares para lookups O(1) ───────────────────────────
+                var nominaToEmpleado = empleadosPorGrupo
+                    .Where(e => e.Nomina.HasValue)
+                    .GroupBy(e => e.Nomina!.Value)
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                var empleadoToGrupo = empleadosPorGrupo
+                    .ToDictionary(e => e.Id, e => e.GrupoId ?? 0);
+
+                var areaManningBase = grupos
+                    .GroupBy(g => g.AreaId)
+                    .ToDictionary(g => g.Key, g => g.First().Area?.Manning ?? 0);
+
+                // ─── 9. Construir resultados en memoria (sin más queries) ────────────
+                var resultados = new List<AusenciaPorFechaResponse>();
 
                 foreach (var fecha in fechas)
                 {
-                    var ausenciasPorGrupo = await CalcularAusenciasPorGruposAsync(fecha, request.GrupoId, request.AreaId);
+                    var ausenciasPorGrupo = new List<AusenciaPorGrupoDto>();
+
+                    foreach (var grupo in grupos)
+                    {
+                        // Empleados del grupo
+                        var empGrupo = empleadosPorGrupo
+                            .Where(e => e.GrupoId == grupo.GrupoId).ToList();
+                        var personalTotal = empGrupo.Count;
+                        var empIdsGrupo = empGrupo.Select(e => e.Id).ToHashSet();
+                        var nominasGrupo = empGrupo
+                            .Where(e => e.Nomina.HasValue)
+                            .Select(e => e.Nomina!.Value).ToHashSet();
+
+                        // Manning
+                        var excManning = excepcionesManning
+                            .FirstOrDefault(e => e.AreaId == grupo.AreaId &&
+                                                 e.Anio == fecha.Year &&
+                                                 e.Mes == fecha.Month);
+                        var manning = excManning?.ManningRequeridoExcepcion
+                                      ?? areaManningBase.GetValueOrDefault(grupo.AreaId, 1);
+                        if (manning <= 0) manning = 1;
+
+                        // Porcentaje máximo
+                        var excPct = excepcionesPorcentaje
+                            .FirstOrDefault(e => e.GrupoId == grupo.GrupoId && e.Fecha == fecha);
+                        var porcentajeMaximo = excPct?.PorcentajeMaximoPermitido ?? porcentajeDefault;
+
+                        // Ausentes del día (de memoria)
+                        var ausentesVac = vacacionesBatch
+                            .Where(v => empIdsGrupo.Contains(v.EmpleadoId) && v.FechaVacacion == fecha)
+                            .Select(v => new EmpleadoAusenteDto
+                            {
+                                EmpleadoId = v.EmpleadoId,
+                                NombreCompleto = empGrupo.First(e => e.Id == v.EmpleadoId).FullName ?? "",
+                                Nomina = empGrupo.First(e => e.Id == v.EmpleadoId).Nomina,
+                                Maquina = empGrupo.First(e => e.Id == v.EmpleadoId).Maquina,
+                                TipoAusencia = v.PeriodoProgramacion == "Reprogramacion" ? "Reprogramacion" : "Vacacion",
+                                TipoVacacion = v.PeriodoProgramacion == "Reprogramacion" ? "Reprogramacion" : v.TipoVacacion
+                            }).ToList();
+
+                        var ausentesPermisos = permisosBatch
+                            .Where(p => nominasGrupo.Contains(p.Nomina) &&
+                                        p.Desde <= fecha && p.Hasta >= fecha)
+                            .Select(p => {
+                                var emp = nominaToEmpleado.GetValueOrDefault(p.Nomina);
+                                if (emp == null) return null!;
+                                return new EmpleadoAusenteDto
+                                {
+                                    EmpleadoId = emp.Id,
+                                    NombreCompleto = emp.FullName ?? "",
+                                    Nomina = emp.Nomina,
+                                    Maquina = emp.Maquina,
+                                    TipoAusencia = (p.ClaseAbsentismo ?? "").Contains("Incapacidad") ? "Incapacidad" : "Permiso",
+                                    TipoVacacion = p.ClaseAbsentismo ?? "Permiso"
+                                };
+                            })
+                            .Where(x => x != null).ToList();
+
+                        var ausentesFestivos = festivosBatch
+                            .Where(f => nominasGrupo.Contains(f.Nomina) && f.FechaNuevaSolicitada == fecha)
+                            .Select(f => {
+                                var emp = nominaToEmpleado.GetValueOrDefault(f.Nomina);
+                                if (emp == null) return null!;
+                                return new EmpleadoAusenteDto
+                                {
+                                    EmpleadoId = emp.Id,
+                                    NombreCompleto = emp.FullName ?? "",
+                                    Nomina = emp.Nomina,
+                                    Maquina = emp.Maquina,
+                                    TipoAusencia = "Festivo Trabajado",
+                                    TipoVacacion = "Descanso compensatorio"
+                                };
+                            })
+                            .Where(x => x != null).ToList();
+
+                        // Deduplicar por EmpleadoId (prioridad: vac > festivo > permiso)
+                        var todosAusentes = ausentesVac
+                            .Concat(ausentesFestivos)
+                            .Concat(ausentesPermisos)
+                            .GroupBy(a => a.EmpleadoId)
+                            .Select(g => g.First())
+                            .ToList();
+
+                        var idsAusentes = todosAusentes.Select(a => a.EmpleadoId).ToHashSet();
+                        var disponibles = empGrupo
+                            .Where(e => !idsAusentes.Contains(e.Id))
+                            .Select(e => new EmpleadoDisponibleDto
+                            {
+                                EmpleadoId = e.Id,
+                                NombreCompleto = e.FullName ?? "",
+                                Nomina = e.Nomina,
+                                Maquina = e.Maquina,
+                                Rol = grupo.Rol
+                            }).ToList();
+
+                        var personalNoDisponible = todosAusentes.Count;
+                        var personalDisponible = Math.Max(0, personalTotal - personalNoDisponible);
+
+                        // Cálculos de porcentajes
+                        var pctCobertura = manning > 0
+                            ? Math.Clamp(Math.Round((decimal)personalDisponible / manning * 100m, 2), 0m, 100m)
+                            : 0m;
+                        var pctAusencia = personalTotal > 0
+                            ? Math.Clamp(Math.Round((decimal)personalNoDisponible / personalTotal * 100m, 2), 0m, 100m)
+                            : 0m;
+
+                        var minimoEmp = _validadorPorcentaje.CalcularMinimoEmpleadosParaPorcentaje(porcentajeMaximo);
+                        var esSmall = personalTotal < minimoEmp;
+                        var excedeLimite = !esSmall && pctAusencia > porcentajeMaximo;
+
+                        ausenciasPorGrupo.Add(new AusenciaPorGrupoDto
+                        {
+                            GrupoId = grupo.GrupoId,
+                            NombreGrupo = grupo.Rol ?? $"Grupo {grupo.GrupoId}",
+                            AreaId = grupo.AreaId,
+                            NombreArea = grupo.Area?.NombreGeneral ?? "Sin área",
+                            ManningRequerido = (int)manning,
+                            PersonalTotal = personalTotal,
+                            PersonalNoDisponible = personalNoDisponible,
+                            PersonalDisponible = personalDisponible,
+                            PorcentajeDisponible = pctCobertura,
+                            PorcentajeAusencia = pctAusencia,
+                            PorcentajeMaximoPermitido = porcentajeMaximo,
+                            ExcedeLimite = excedeLimite,
+                            PuedeReservar = !excedeLimite,
+                            EmpleadosAusentes = todosAusentes,
+                            EmpleadosDisponibles = disponibles
+                        });
+                    }
 
                     resultados.Add(new AusenciaPorFechaResponse
                     {
@@ -44,7 +273,8 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                return new ApiResponse<List<AusenciaPorFechaResponse>>(false, null, $"Error al calcular ausencias: {ex.Message}");
+                return new ApiResponse<List<AusenciaPorFechaResponse>>
+                    (false, null, $"Error al calcular ausencias: {ex.Message}");
             }
         }
 

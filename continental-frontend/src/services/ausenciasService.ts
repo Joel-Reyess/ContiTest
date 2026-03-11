@@ -33,64 +33,36 @@ class AusenciasService {
      * @param request Parámetros para el cálculo de ausencias
      * @returns Promise con los datos de ausencias calculados
      */
-    async calcularAusencias(request: CalcularAusenciasRequest): Promise<AusenciasResponse> {
+    // Agrega signal opcional a calcularAusencias
+    async calcularAusencias(request: CalcularAusenciasRequest, signal?: AbortSignal): Promise<AusenciasResponse> {
         try {
-            logger.info('Calculating ausencias', request, 'AUSENCIAS_SERVICE');
-            
             const apiResponse = await httpClient.post<AusenciasResponse>(
                 `${this.baseUrl}/calcular`,
-                request
+                request,
+                { signal }  // pasa el signal si tu httpClient lo soporta
             );
-
-            logger.info('Ausencias calculated successfully', apiResponse, 'AUSENCIAS_SERVICE');
-            
-            // El httpClient devuelve ApiResponse<T>, pero la API devuelve {success: true, data: Array} directamente
-            // Por lo tanto, apiResponse ya ES la respuesta de la API
             return apiResponse as unknown as AusenciasResponse;
         } catch (error: any) {
-            logger.error('Error calculating ausencias', { 
-                error: error.message || error, 
-                request,
-                status: error.status,
-                details: error.details 
-            }, 'AUSENCIAS_SERVICE');
-            
-            // Proporcionar información más específica del error
-            if (error.status === 400) {
-                throw new Error(`Error en los parámetros de la solicitud: ${error.message || 'Parámetros inválidos'}`);
-            } else if (error.status === 404) {
-                throw new Error('Endpoint de ausencias no encontrado');
-            } else if (error.status >= 500) {
-                throw new Error('Error interno del servidor al calcular ausencias');
-            }
-            
+            if (error?.name === 'AbortError') throw error; // re-throw para que CalendarWidget lo capture
+            // ... resto del catch igual
             throw error;
         }
     }
 
-    /**
-     * Calcula ausencias para un rango de fechas basado en filtros del calendario
-     * @param filters Filtros del calendario (vista, fecha, grupos, área)
-     * @returns Promise con los datos de ausencias
-     */
-    async calcularAusenciasParaCalendario(filters: AusenciasFilters): Promise<AusenciasPorFecha[]> {
+    async calcularAusenciasParaCalendario(filters: AusenciasFilters, signal?: AbortSignal): Promise<AusenciasPorFecha[]> {
         try {
             const request = this.buildRequestFromFilters(filters);
-            logger.info('Built ausencias request', request, 'AUSENCIAS_SERVICE');
-            
-            const response = await this.calcularAusencias(request);
-            
+            const response = await this.calcularAusencias(request, signal);
             if (!response.success || !response.data) {
                 throw new Error(response.message || 'Error al calcular ausencias');
             }
-
             return response.data;
         } catch (error) {
+            if ((error as any)?.name === 'AbortError') throw error;
             logger.error('Error calculating ausencias for calendar', error, 'AUSENCIAS_SERVICE');
             throw error;
         }
     }
-
     /**
      * Construye el request para el endpoint basado en los filtros del calendario
      * @param filters Filtros del calendario

@@ -54,6 +54,7 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import './Calendar.css';
 import { userService } from '@/services/userService';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface CalendarWidgetProps {
     showTabs?: boolean;
@@ -87,6 +88,11 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
         selectedGroups: [],
         view: 'monthly'
     });
+    const abortRef = useRef<AbortController | null>(null);
+
+    // Debounce de 300ms para evitar llamadas en ráfaga al navegar rápido
+    const debouncedDate = useDebounce(currentDate, 300);
+    const debouncedView = useDebounce(filters.view, 300);
     const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
     const [ausenciasData, setAusenciasData] = useState<AusenciasPorFecha[]>([]);
     // Carga interna del calendario; no bloquea la UI para evitar flasheo
@@ -158,7 +164,6 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
         generateBasicCalendarData();
     }, [currentDate, selectedArea]);
 
-    // Cargar datos reales de ausencias cuando cambien fecha, vista o grupos
     useEffect(() => {
         const loadAusenciasData = async () => {
             if (safeCurrentGroups.length === 0) {
@@ -166,42 +171,35 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
                 return;
             }
 
-            try {
-                // Para vista diaria, usar la fecha específica del día seleccionado
-                // Para vistas mensual/semanal, usar currentDate como base
-                let fechaParaAusencias = currentDate;
-                if (filters.view === 'daily') {
-                    // En vista diaria, currentDate ya debería ser la fecha específica seleccionada
-                    fechaParaAusencias = currentDate;
-                }
+            // Cancelar request anterior si sigue en vuelo
+            if (abortRef.current) {
+                abortRef.current.abort();
+            }
+            abortRef.current = new AbortController();
 
+            try {
                 const ausenciasFilters: AusenciasFilters = {
-                    fechaInicio: currentDate,
+                    fechaInicio: debouncedDate,
                     grupoIds: safeCurrentGroups.map((g: any) => g.grupoId).filter(id => typeof id === 'number'),
                     areaId: selectedArea ? parseInt(selectedArea) : undefined,
-                    view: filters.view
+                    view: debouncedView
                 };
-
-                console.log('🔍 Loading ausencias for date:', {
-                    originalDate: currentDate.toISOString(),
-                    fechaParaAusencias: fechaParaAusencias.toISOString(),
-                    view: filters.view,
-                    day: fechaParaAusencias.getDate(),
-                    month: fechaParaAusencias.getMonth() + 1,
-                    year: fechaParaAusencias.getFullYear()
-                });
 
                 const data = await ausenciasService.calcularAusenciasParaCalendario(ausenciasFilters);
                 setAusenciasData(data);
-
-            } catch (error) {
+            } catch (error: any) {
+                if (error?.name === 'AbortError') return; // request cancelado, ignorar
                 console.error('❌ Error loading ausencias data:', error);
                 setAusenciasData([]);
             }
         };
 
         loadAusenciasData();
-    }, [currentDate.toISOString(), filters.view, selectedArea, JSON.stringify(safeCurrentGroups.map((g: any) => g.grupoId))]);
+
+        return () => {
+            abortRef.current?.abort();
+        };
+    }, [debouncedDate.toISOString(), debouncedView, selectedArea, JSON.stringify(safeCurrentGroups.map((g: any) => g.grupoId))]);
 
     // Cargar nombres de líderes por grupo (usa caché local para evitar llamadas repetidas)
     useEffect(() => {
