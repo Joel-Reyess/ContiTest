@@ -48,6 +48,7 @@ import { PeriodOptions, type Period } from "@/interfaces/Calendar.interface";
 import WeeklyRoles from "../Dashboard-Empleados/WeeklyRoles";
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/interfaces/User.interface';
+import FestivoDetallePage from './FestivoDetallePage';
 
 // Manager subroute components
 
@@ -114,6 +115,7 @@ const AreaDashboard = (): JSX.Element => {
                             <Route path="solicitudes" element={<SolicitudesComponent />} />
                             <Route path="solicitudes/:id" element={<SolicitudDetallePage />} />
                             <Route path="solicitudes-permisos/:id" element={<SolicitudPermisoDetalle />} />
+                            <Route path="festivos/:id" element={<FestivoDetallePage />} />
                         </>
                     )}
 

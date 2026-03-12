@@ -435,6 +435,111 @@ namespace tiempo_libre.Services
                     .OrderByDescending(s => s.FechaSolicitud)
                     .ToListAsync();
 
+                // Precalcular porcentajes del día (igual que ReprogramacionService)
+                var porcentajesDelDia = new Dictionary<int, decimal>();
+
+                var solicitudInfos = solicitudes
+                    .Select(s => new {
+                        s.Id,
+                        FechaNueva = s.FechaNuevaSolicitada,
+                        AreaId = s.Empleado?.Grupo?.Area?.AreaId ?? s.Empleado?.AreaId
+                    })
+                    .Where(x => x.AreaId.HasValue)
+                    .ToList();
+
+                var areasUnicas = solicitudInfos.Select(x => x.AreaId!.Value).Distinct().ToList();
+                var fechasUnicas = solicitudInfos.Select(x => x.FechaNueva).Distinct().ToList();
+
+                var gruposPorArea = await _db.Grupos
+                    .Where(g => areasUnicas.Contains(g.AreaId))
+                    .Select(g => new { g.GrupoId, g.AreaId })
+                    .ToListAsync();
+
+                var grupoIdsPorArea = gruposPorArea
+                    .GroupBy(g => g.AreaId)
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.GrupoId).ToList());
+
+                var todosGrupoIds = gruposPorArea.Select(g => g.GrupoId).Distinct().ToList();
+
+                var empleadosActivos = await _db.Users
+                    .Where(u => todosGrupoIds.Contains(u.GrupoId ?? 0) && u.Status == UserStatus.Activo)
+                    .Select(u => new { u.Id, u.GrupoId, u.Nomina, u.AreaId })
+                    .ToListAsync();
+
+                var ausentesVacacionesBatch = await _db.VacacionesProgramadas
+                    .Where(v => fechasUnicas.Contains(v.FechaVacacion)
+                             && v.EstadoVacacion == "Activa"
+                             && todosGrupoIds.Contains(
+                                    _db.Users.Where(u => u.Id == v.EmpleadoId)
+                                              .Select(u => u.GrupoId ?? 0)
+                                              .FirstOrDefault()))
+                    .Select(v => new { v.EmpleadoId, v.FechaVacacion })
+                    .Distinct()
+                    .ToListAsync();
+
+                var nominasActivas = empleadosActivos.Select(e => e.Nomina).Distinct().ToList();
+
+                var permisosRaw = await _db.PermisosEIncapacidadesSAP
+                    .Where(p => nominasActivas.Contains(p.Nomina)
+                             && fechasUnicas.Any(f => p.Desde <= f && p.Hasta >= f))
+                    .Select(p => new { p.Nomina, p.Desde, p.Hasta })
+                    .ToListAsync();
+
+                var festivosRaw = await _db.SolicitudesFestivosTrabajados
+                    .Where(f => fechasUnicas.Contains(f.FechaNuevaSolicitada)
+                             && f.EstadoSolicitud == "Aprobada"
+                             && nominasActivas.Contains(f.Nomina))
+                    .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada, f.Nomina })
+                    .Distinct()
+                    .ToListAsync();
+
+                var nominaToEmpleadoId = empleadosActivos
+                    .Where(e => e.Nomina.HasValue)
+                    .GroupBy(e => e.Nomina!.Value)
+                    .ToDictionary(g => g.Key, g => g.First().Id);
+
+                foreach (var info in solicitudInfos)
+                {
+                    if (!grupoIdsPorArea.TryGetValue(info.AreaId!.Value, out var gruposDelArea)) continue;
+
+                    var empleadosDelArea = empleadosActivos
+                        .Where(e => gruposDelArea.Contains(e.GrupoId ?? 0))
+                        .ToList();
+
+                    var totalEmpleados = empleadosDelArea.Count;
+                    if (totalEmpleados == 0) continue;
+
+                    var idsDelArea = empleadosDelArea.Select(e => e.Id).ToHashSet();
+                    var nominasDelArea = empleadosDelArea
+                        .Where(e => e.Nomina.HasValue)
+                        .Select(e => e.Nomina!.Value)
+                        .ToHashSet();
+
+                    var ausentesVac = ausentesVacacionesBatch
+                        .Where(v => v.FechaVacacion == info.FechaNueva && idsDelArea.Contains(v.EmpleadoId))
+                        .Select(v => v.EmpleadoId).ToHashSet();
+
+                    var ausentesPermisos = permisosRaw
+                        .Where(p => nominasDelArea.Contains(p.Nomina)
+                                 && p.Desde <= info.FechaNueva
+                                 && p.Hasta >= info.FechaNueva
+                                 && nominaToEmpleadoId.TryGetValue(p.Nomina, out _))
+                        .Select(p => nominaToEmpleadoId[p.Nomina]).ToHashSet();
+
+                    var ausentesFestivos = festivosRaw
+                        .Where(f => f.FechaNuevaSolicitada == info.FechaNueva
+                                 && nominasDelArea.Contains(f.Nomina)
+                                 && nominaToEmpleadoId.TryGetValue(f.Nomina, out _))
+                        .Select(f => nominaToEmpleadoId[f.Nomina]).ToHashSet();
+
+                    var totalAusentes = ausentesVac
+                        .Union(ausentesPermisos)
+                        .Union(ausentesFestivos)
+                        .Count();
+
+                    porcentajesDelDia[info.Id] = Math.Round(((decimal)totalAusentes / totalEmpleados) * 100m, 2);
+                }
+
                 // Mapear a DTOs
                 var solicitudesDto = solicitudes.Select(s => new SolicitudFestivoDto
                 {
@@ -451,6 +556,7 @@ namespace tiempo_libre.Services
                     EstadoSolicitud = s.EstadoSolicitud,
                     RequiereAprobacion = s.EstadoSolicitud == "Pendiente",
                     PorcentajeCalculado = s.PorcentajeCalculado,
+                    PorcentajeDelDia = porcentajesDelDia.TryGetValue(s.Id, out var pctDia) ? pctDia : (decimal?)null,
                     FechaSolicitud = s.FechaSolicitud,
                     SolicitadoPor = s.SolicitadoPor?.FullName ?? "",
                     FechaAprobacion = s.FechaRespuesta,

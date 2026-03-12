@@ -219,31 +219,65 @@ export function TablaFestivosTrabajados() {
         },
         {
             key: 'porcentajeCalculado',
-            label: 'Porcentaje',
+            label: '% Turno',
             sortable: true,
-            render: (value) => <div className="text-xs text-gray-900 font-semibold text-center">{Number(value).toFixed(1)}%</div>
+            className: 'w-[90px]',
+            render: (value) => {
+                const pct = Number(value)
+                const colorClass = pct > 4.5 ? 'text-red-600 font-bold' : pct > 3 ? 'text-yellow-600 font-semibold' : 'text-gray-900 font-semibold'
+                return (
+                    <div className={`text-xs text-center px-1 ${colorClass}`}>
+                        {pct.toFixed(1)}%
+                        <div className="text-gray-400 font-normal text-xs">del turno</div>
+                    </div>
+                )
+            }
+        },
+        {
+            key: 'porcentajeDelDia',
+            label: '% Día',
+            sortable: true,
+            className: 'w-[90px]',
+            render: (value) => {
+                const pct = Number(value ?? 0)
+                const colorClass = pct > 4.5 ? 'text-red-600 font-bold' : pct > 3 ? 'text-yellow-600 font-semibold' : 'text-gray-900 font-semibold'
+                return (
+                    <div className={`text-xs text-center px-1 ${colorClass}`}>
+                        {pct > 0 ? `${pct.toFixed(1)}%` : '—'}
+                        <div className="text-gray-400 font-normal text-xs">del día</div>
+                    </div>
+                )
+            }
         },
         {
             key: 'acciones',
             label: 'Acciones',
             sortable: false,
+            className: 'w-[120px] min-w-[120px] max-w-[120px]',
             render: (_, row) => (
-                <div className="w-[130px]">
+                <div className="flex flex-col gap-1 py-1">
+                    <Link
+                        to={`/area/festivos/${row.id}`}
+                        state={{ filters: { selectedAreaId, estadoFilter, query } }}
+                        className="inline-flex h-7 w-full items-center justify-center rounded-lg bg-[var(--color-continental-yellow,#FDB41C)] px-2 text-xs font-semibold text-black hover:opacity-90 whitespace-nowrap"
+                    >
+                        Ver solicitud
+                    </Link>
                     {row.estadoSolicitud === 'Pendiente' && (
-                        <div className="flex items-center gap-2 mb-2">
+                        <>
                             <button
                                 onClick={() => handleAprobar(row.id)}
-                                className="inline-flex h-7 max-w-[60px] items-center justify-center rounded-lg bg-emerald-500 px-3 text-xs font-semibold text-white hover:bg-emerald-600 cursor-pointer"
+                                className="inline-flex h-7 w-full items-center justify-center rounded-lg bg-emerald-500 px-2 text-xs font-semibold text-white hover:bg-emerald-600 cursor-pointer whitespace-nowrap"
                             >
                                 Aprobar
                             </button>
                             <button
                                 onClick={() => handleRechazar(row.id)}
-                                className="inline-flex h-7 max-w-[60px] items-center justify-center rounded-lg border border-rose-500 bg-white px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                className="inline-flex h-7 w-full items-center justify-center rounded-lg border border-rose-500 bg-white px-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer whitespace-nowrap"
                             >
                                 Rechazar
                             </button>
-                        </div>
+                        </>
                     )}
                 </div>
             )
@@ -254,6 +288,15 @@ export function TablaFestivosTrabajados() {
     const pendientes = solicitudes.filter(s => s.estadoSolicitud === 'Pendiente').length
     const aprobadas = solicitudes.filter(s => s.estadoSolicitud === 'Aprobada').length
     const rechazadas = solicitudes.filter(s => s.estadoSolicitud === 'Rechazada').length
+
+    const filteredSolicitudes = solicitudes.filter((s) => {
+        if (!query) return true
+        const q = query.toLowerCase()
+        return (
+            s.nominaEmpleado?.toString().toLowerCase().includes(q) ||
+            s.nombreEmpleado?.toLowerCase().includes(q)
+        )
+    })
 
     return (
         <>
@@ -317,7 +360,13 @@ export function TablaFestivosTrabajados() {
                     {loading || loadingUserData ? (
                         <div className="p-8 text-center"><div className="text-gray-600">Cargando solicitudes...</div></div>
                     ) : (
-                        <DataTable<SolicitudFestivoTrabajado> columns={columns} data={solicitudes} keyField="id" emptyMessage="No hay solicitudes de festivos trabajados" onSort={() => { }} className="border-t border-gray-200" />
+                            <DataTable<SolicitudFestivoTrabajado> columns={columns}
+                                data={filteredSolicitudes}
+                                keyField="id"
+                                emptyMessage="No hay solicitudes de festivos trabajados"
+                                onSort={() => { }}
+                                className="border-t border-gray-200"
+                            />
                     )}
                 </div>
             </section>

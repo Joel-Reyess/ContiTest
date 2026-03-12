@@ -78,6 +78,7 @@ export interface SolicitudFestivoTrabajado {
   motivo: string
   estadoSolicitud: string
   porcentajeCalculado: number
+  porcentajeDelDia?: number | null
   fechaSolicitud: string
   fechaAprobacion?: string
   aprobadoPor?: string
@@ -309,7 +310,14 @@ class FestivosTrabajadosService {
       console.error('Error fetching solicitudes pendientes:', error)
       return []
     }
-  }
+    }
+
+    async getSolicitudById(id: number): Promise<SolicitudFestivoTrabajado> {
+        const all = await this.getSolicitudes({})
+        const found = all.find(s => s.id === id)
+        if (!found) throw new Error(`Solicitud festivo ${id} no encontrada`)
+        return found
+    }
 }
 
 // ============================================================================
