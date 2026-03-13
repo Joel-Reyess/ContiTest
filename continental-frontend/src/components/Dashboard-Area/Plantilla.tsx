@@ -51,6 +51,11 @@ export const Plantilla = () => {
     const [allAreasPage, setAllAreasPage] = useState(1);
     const [allAreasPageSize, setAllAreasPageSize] = useState(25);
 
+    const [deleteModal, setDeleteModal] = useState<{ open: boolean; row: TableRow | null }>({ open: false, row: null });
+    const [deletePassword, setDeletePassword] = useState('');
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
+
     const {
         empleados,
         loading,
@@ -174,7 +179,7 @@ export const Plantilla = () => {
         return () => {
             cancelled = true;
         };
-    }, [user?.id, hasRole, areas, user?.area?.areaId]);
+    }, [user?.id, user?.area?.areaId]);
 
     // Si el valor seleccionado no existe en las opciones actuales, forzamos a la primera disponible
     useEffect(() => {
@@ -452,13 +457,23 @@ export const Plantilla = () => {
             label: 'Acciones',
             sortable: false,
             render: (_: any, row: TableRow) => (
-                <Button
-                    variant="continental"
-                    size="sm"
-                    onClick={() => navigate(`/area/plantilla/${row.id}`)}
-                >
-                    Ver empleado
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant="continental"
+                        size="sm"
+                        onClick={() => navigate(`/area/plantilla/${row.id}`)}
+                    >
+                        Ver empleado
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-300 hover:bg-red-50"
+                        onClick={() => setDeleteModal({ open: true, row })}
+                    >
+                        Eliminar
+                    </Button>
+                </div>
             )
         }
     ], [navigate]);
@@ -532,6 +547,22 @@ export const Plantilla = () => {
         }
     }, [selectedArea, selectedGroup, allAreasPage, allAreasPageSize, fetchAllAreas, refetch]);
 
+    const handleDeleteConfirm = useCallback(async () => {
+        if (!deleteModal.row) return;
+        setDeleteLoading(true);
+        setDeleteError('');
+        try {
+            await empleadosService.deleteSindicalizado(deleteModal.row.id, deletePassword);
+            setDeleteModal({ open: false, row: null });
+            setDeletePassword('');
+            await handleRefetch();
+        } catch (e: any) {
+            setDeleteError(e?.response?.data?.message ?? 'Error al eliminar');
+        } finally {
+            setDeleteLoading(false);
+        }
+    }, [deleteModal.row, deletePassword, handleRefetch]);
+
     return (
         <div className="p-6 bg-white min-h-screen">
             <div className="max-w-7xl mx-auto w-full space-y-6">
@@ -564,6 +595,44 @@ export const Plantilla = () => {
                     {searchTerm.trim() && (
                         <div className="text-xs text-gray-500 mt-2">
                             Buscando en {filteredRows.length.toLocaleString('es-MX')} empleados.
+                        </div>
+                    )}
+                    {deleteModal.open && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+                                <h2 className="text-lg font-bold mb-2">Eliminar empleado</h2>
+                                <p className="text-sm text-gray-600 mb-4">
+                                    ¿Confirmas que deseas eliminar a <strong>{deleteModal.row?.nombre}</strong>?
+                                    Esta acción eliminará al empleado de Users y Empleados. Ingresa tu contraseña para confirmar.
+                                </p>
+                                <input
+                                    type="password"
+                                    placeholder="Tu contraseña"
+                                    className="w-full border rounded px-3 py-2 mb-3 text-sm"
+                                    value={deletePassword}
+                                    onChange={e => setDeletePassword(e.target.value)}
+                                />
+                                {deleteError && <p className="text-red-600 text-sm mb-3">{deleteError}</p>}
+                                <div className="flex justify-end gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => { setDeleteModal({ open: false, row: null }); setDeletePassword(''); setDeleteError(''); }}
+                                        disabled={deleteLoading}
+                                    >
+                                        Cancelar
+                                    </Button>
+                                    <Button
+                                        variant="continental"
+                                        size="sm"
+                                        className="bg-red-600 hover:bg-red-700 text-white"
+                                        onClick={handleDeleteConfirm}
+                                        disabled={deleteLoading || !deletePassword}
+                                    >
+                                        {deleteLoading ? 'Eliminando...' : 'Confirmar eliminación'}
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </ContentContainer>

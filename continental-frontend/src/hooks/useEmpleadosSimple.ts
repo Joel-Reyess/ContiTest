@@ -137,19 +137,11 @@ export const useEmpleadosSimple = (
     const refetch = useCallback(async () => {
         setState(prev => ({ ...prev, loading: true, error: null }));
         try {
-            // ✅ CRÍTICO: Primero limpiar el caché
+            // Limpiar caché y recargar datos frescos directamente
             globalEmpleadosCache.clear();
-
-            // ✅ CRÍTICO: Esperar a que termine la sincronización
-            await empleadosService.syncEmpleadosSindicalizados();
-
-            // ✅ CRÍTICO: Pequeño delay para que el backend termine de procesar
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Ahora sí, recargar datos frescos
             await fetchEmpleados();
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al sincronizar empleados';
+            const errorMessage = error instanceof Error ? error.message : 'Error al recargar empleados';
             setState(prev => ({ ...prev, loading: false, error: errorMessage }));
         }
     }, [fetchEmpleados]);

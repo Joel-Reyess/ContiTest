@@ -766,18 +766,18 @@ namespace tiempo_libre.app.Controllers
                         };
 
                         _dbContext.SuplentePeriodos.Add(nuevoPeriodo);
-                        
+
                         // Desactivar periodos anteriores activos del mismo tipo para evitar conflictos
                         // Esto es opcional, pero recomendable para mantener consistencia
                         var periodosAnteriores = await _dbContext.SuplentePeriodos
-                            .Where(sp => sp.UsuarioId == currentUser.Id 
-                                      && sp.Activo 
-                                      && sp.Rol == request.Rol 
-                                      && sp.AreaId == request.AreaId 
+                            .Where(sp => sp.UsuarioId == currentUser.Id
+                                      && sp.Activo
+                                      && sp.Rol == request.Rol
+                                      && sp.AreaId == request.AreaId
                                       && sp.GrupoId == request.GrupoId)
                             .ToListAsync();
-                        
-                        foreach(var p in periodosAnteriores)
+
+                        foreach (var p in periodosAnteriores)
                         {
                             p.Activo = false;
                         }
@@ -1225,6 +1225,105 @@ namespace tiempo_libre.app.Controllers
             _logger.LogInformation("BuildConsolidatedAreas para usuario {UserId} devolvió {Count} áreas",
                 userId, consolidatedAreas.Count);
             return consolidatedAreas;
+        }
+
+        // EP: Eliminar empleado sindicalizado (tabla Users + tabla Empleados)
+        [HttpPost("delete-sindicalizado/{id}")]
+        [RolesAllowedAttribute("SuperUsuario", "Jefe De Area", "JefeDeArea")]
+        public async Task<IActionResult> DeleteSindicalizado(int id, [FromBody] DeleteUserRequest request)
+        {
+            var userToDelete = await _dbContext.Users
+                .Include(u => u.Roles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (userToDelete == null)
+                return NotFound(new ApiResponse<object>(false, null, "Empleado no encontrado"));
+
+            // Verificar que sea Empleado_Sindicalizado
+            int rolId = (int)RolEnum.Empleado_Sindicalizado;
+            if (!userToDelete.Roles.Any(r => r.Id == rolId))
+                return BadRequest(new ApiResponse<object>(false, null, "El usuario no es un empleado sindicalizado"));
+
+            // Verificar identidad del admin
+            var currentUsername = User.Identity?.Name;
+            var currentUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Username == currentUsername);
+            if (currentUser == null)
+                return Unauthorized(new ApiResponse<object>(false, null, "No hay sesión iniciada"));
+
+            var hashedInput = PasswordHasher.HashPassword(request.AdminPassword, currentUser.PasswordSalt);
+            if (hashedInput != currentUser.PasswordHash)
+                return BadRequest(new ApiResponse<object>(false, null, "Contraseña incorrecta"));
+
+            try
+            {
+                // Eliminar registro en tabla Empleados por Nomina
+                if (userToDelete.Nomina.HasValue)
+                {
+                    var empleado = await _dbContext.Empleados
+                        .FirstOrDefaultAsync(e => e.Nomina == userToDelete.Nomina.Value);
+                    if (empleado != null)
+                        _dbContext.Empleados.Remove(empleado);
+                }
+
+                // Limpiar dependencias del User
+                var notificaciones = await _dbContext.Notificaciones
+                    .Where(n => n.IdUsuarioEmisor == id || n.IdUsuarioReceptor == id)
+                    .ToListAsync();
+                if (notificaciones.Any()) _dbContext.Notificaciones.RemoveRange(notificaciones);
+
+                var solicitudesReprog = await _dbContext.SolicitudesReprogramacion
+                    .Where(sr => sr.EmpleadoId == id).ToListAsync();
+                if (solicitudesReprog.Any()) _dbContext.SolicitudesReprogramacion.RemoveRange(solicitudesReprog);
+
+                var solicitudesFestivos = await _dbContext.SolicitudesFestivosTrabajados
+                    .Where(sf => sf.EmpleadoId == id).ToListAsync();
+                if (solicitudesFestivos.Any()) _dbContext.SolicitudesFestivosTrabajados.RemoveRange(solicitudesFestivos);
+
+                var asignacionesBloque = await _dbContext.AsignacionesBloque
+                    .Where(ab => ab.EmpleadoId == id).ToListAsync();
+                if (asignacionesBloque.Any()) _dbContext.AsignacionesBloque.RemoveRange(asignacionesBloque);
+
+                var cambiosBloque = await _dbContext.CambiosBloque
+                    .Where(cb => cb.EmpleadoId == id).ToListAsync();
+                if (cambiosBloque.Any()) _dbContext.CambiosBloque.RemoveRange(cambiosBloque);
+
+                var vacaciones = await _dbContext.VacacionesProgramadas
+                    .Where(v => v.EmpleadoId == id).ToListAsync();
+                if (vacaciones.Any()) _dbContext.VacacionesProgramadas.RemoveRange(vacaciones);
+
+                var diasCalendario = await _dbContext.DiasCalendarioEmpleado
+                    .Where(d => d.IdUsuarioEmpleadoSindicalizado == id).ToListAsync();
+                if (diasCalendario.Any()) _dbContext.DiasCalendarioEmpleado.RemoveRange(diasCalendario);
+
+                var calendarios = await _dbContext.CalendarioEmpleados
+                    .Where(c => c.IdUsuarioEmpleadoSindicalizado == id).ToListAsync();
+                if (calendarios.Any()) _dbContext.CalendarioEmpleados.RemoveRange(calendarios);
+
+                var festivosTrabajados = await _dbContext.DiasFestivosTrabajados
+                    .Where(d => d.IdUsuarioEmpleadoSindicalizado == id).ToListAsync();
+                if (festivosTrabajados.Any()) _dbContext.DiasFestivosTrabajados.RemoveRange(festivosTrabajados);
+
+                var reservaciones = await _dbContext.ReservacionesDeVacacionesPorEmpleado
+                    .Where(r => r.IdEmpleadoSindicalizado == id).ToListAsync();
+                if (reservaciones.Any()) _dbContext.ReservacionesDeVacacionesPorEmpleado.RemoveRange(reservaciones);
+
+                var bloquesTurnos = await _dbContext.EmpleadosXBloquesDeTurnos
+                    .Where(e => e.IdEmpleadoSindicalAgendara == id).ToListAsync();
+                if (bloquesTurnos.Any()) _dbContext.EmpleadosXBloquesDeTurnos.RemoveRange(bloquesTurnos);
+
+                await _dbContext.SaveChangesAsync();
+
+                _dbContext.Users.Remove(userToDelete);
+                await _dbContext.SaveChangesAsync();
+
+                _logger.LogInformation("Empleado sindicalizado {Id} eliminado por {Admin}", id, currentUsername);
+                return Ok(new ApiResponse<object>(true, null, "Empleado eliminado correctamente"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al eliminar empleado sindicalizado {Id}", id);
+                return StatusCode(500, new ApiResponse<object>(false, null, "Error interno: " + ex.Message));
+            }
         }
     }
 

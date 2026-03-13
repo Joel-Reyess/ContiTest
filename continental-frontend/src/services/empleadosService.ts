@@ -143,6 +143,23 @@ class EmpleadosService {
       throw error;
     }
   }
+
+    // ✅ Esto es correcto:
+    async deleteSindicalizado(id: number, adminPassword: string): Promise<void> {
+        try {
+            const response: ApiResponse<object> = await httpClient.post<object>(
+                `/api/User/delete-sindicalizado/${id}`,
+                { adminPassword }
+            );
+            if (!response.success) {
+                throw new Error(response.errorMsg || 'Error al eliminar empleado');
+            }
+            globalEmpleadosCache.clear();
+        } catch (error) {
+            logger.error('Error deleting empleado sindicalizado', error, 'EMPLEADOS_SERVICE');
+            throw error;
+        }
+    }
 }
 
 export const empleadosService = new EmpleadosService();
