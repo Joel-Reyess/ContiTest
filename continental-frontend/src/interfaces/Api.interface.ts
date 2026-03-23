@@ -449,6 +449,7 @@ export interface UsuarioInfoDto {
     rol: string;
     fechaIngreso: string;
     nomina: string;
+    maquina?: string;
     area: Area;
     grupo: Grupo;
 }

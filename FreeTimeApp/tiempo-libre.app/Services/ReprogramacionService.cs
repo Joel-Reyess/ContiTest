@@ -373,19 +373,33 @@ namespace tiempo_libre.Services
                 if (request.Aprobada)
                 {
                     var vacacion = solicitud.VacacionOriginal;
-                    vacacion.FechaVacacion = solicitud.FechaNuevaSolicitada;
-                    vacacion.PeriodoProgramacion = "Reprogramacion";
+
+                    // Cancelar la vacación original en la fecha original
+                    vacacion.EstadoVacacion = "Cancelada";
                     vacacion.UpdatedAt = DateTime.Now;
                     vacacion.UpdatedBy = usuarioAprobadorId;
 
-                    var detalleObservacion = $"Reprogramada via solicitud {solicitud.Id}. Motivo: {solicitud.ObservacionesEmpleado}";
-                    vacacion.Observaciones = string.IsNullOrWhiteSpace(vacacion.Observaciones)
-                        ? detalleObservacion
-                        : $"{vacacion.Observaciones} | {detalleObservacion}";
+                    // Crear nueva vacación en la fecha nueva
+                    var nuevaVacacion = new VacacionesProgramadas
+                    {
+                        EmpleadoId = solicitud.EmpleadoId,
+                        FechaVacacion = solicitud.FechaNuevaSolicitada,
+                        TipoVacacion = vacacion.TipoVacacion,
+                        OrigenAsignacion = vacacion.OrigenAsignacion,
+                        EstadoVacacion = "Activa",
+                        PeriodoProgramacion = "Reprogramacion",
+                        FechaProgramacion = vacacion.FechaProgramacion,
+                        PuedeSerIntercambiada = vacacion.PuedeSerIntercambiada,
+                        Observaciones = $"Reprogramada via solicitud {solicitud.Id}. Motivo: {solicitud.ObservacionesEmpleado}",
+                        CreatedAt = DateTime.Now,
+                        CreatedBy = usuarioAprobadorId,
+                        UpdatedAt = DateTime.Now,
+                        UpdatedBy = usuarioAprobadorId
+                    };
 
+                    _db.VacacionesProgramadas.Add(nuevaVacacion);
                     vacacionActualizada = true;
                 }
-
                 await _db.SaveChangesAsync();
 
                 await _notificacionesService.NotificarRespuestaReprogramacionAsync(

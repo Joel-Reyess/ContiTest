@@ -310,6 +310,7 @@ const WeeklyRoles = () => {
             id: e.id,
             nomina: e.nomina,
             fullName: e.fullName,
+            maquina: undefined as string | undefined,
         }));
     }, [groupEmployees, weeklyData]);
 

@@ -19,19 +19,19 @@ export const exportarExcelFestivosTrabajados = (
     filtros?: { area?: string; fechaDesde?: string; fechaHasta?: string }
 ) => {
     // Formato SAP: Nomina, Festivo Trabajado (DDMMYYYY), Dia Solicitado (DDMMYYYY), Clave (2310)
-    const datos = solicitudes.map((s) => ({
-        Nomina: s.nominaEmpleado,
-        'Festivo Trabajado': formatFechaSAP(s.festivoOriginal),
-        'Dia Solicitado': formatFechaSAP(s.fechaNueva),
-        'DiaSolicitado': formatFechaSAP(s.fechaNueva),
-        Clave: '2310',
-    }));
+    const datos = solicitudes.map((s) => [
+         s.nominaEmpleado,
+        formatFechaSAP(s.festivoOriginal),
+        formatFechaSAP(s.fechaNueva),
+        formatFechaSAP(s.fechaNueva),
+        '2310',
+    ]);
 
-    const hoja = XLSX.utils.json_to_sheet(datos);
+    const hoja = XLSX.utils.aoa_to_sheet(datos);
 
     // Forzar todas las columnas de fecha como texto para respetar ceros al inicio
     const range = XLSX.utils.decode_range(hoja['!ref'] || 'A1');
-    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+    for (let R = range.s.r; R <= range.e.r; ++R) {
         // Columnas B (Festivo Trabajado), C (Dia Solicitado), D (Clave) como texto
         for (const col of [1, 2, 3]) {
             const cellRef = XLSX.utils.encode_cell({ r: R, c: col });

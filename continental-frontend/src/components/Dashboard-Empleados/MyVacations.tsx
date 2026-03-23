@@ -145,10 +145,18 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 setVacacionesData(resp);
 
                 // Separar vacaciones por tipo
-                const automaticas = resp.vacaciones.filter(v => v.tipoVacacion === "Automatica").map(v => ({ date: v.fechaVacacion }));
-                const festivosTrabajados = resp.vacaciones.filter(v => v.tipoVacacion === "FestivoTrabajado").map(v => ({ date: v.fechaVacacion }));
-                const reprogramacionesYAnuales = resp.vacaciones.filter(v => v.tipoVacacion === "Reprogramacion" || v.tipoVacacion === "Anual").map(v => ({ date: v.fechaVacacion }));
-
+                const automaticas = resp.vacaciones
+                    .filter(v => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
+                    .map(v => ({ date: v.fechaVacacion }));
+                const festivosTrabajados = resp.vacaciones
+                    .filter(v => v.tipoVacacion === "FestivoTrabajado" && v.estadoVacacion === "Activa")
+                    .map(v => ({ date: v.fechaVacacion }));
+                const reprogramacionesYAnuales = resp.vacaciones
+                    .filter(v =>
+                        (v.tipoVacacion === "Reprogramacion" || v.tipoVacacion === "Anual") &&
+                        v.estadoVacacion === "Activa"
+                    )
+                    .map(v => ({ date: v.fechaVacacion }));
                 console.log('ðŸ“… Vacaciones automÃ¡ticas:', automaticas);
                 console.log('ðŸŽ‰ Festivos trabajados:', festivosTrabajados);
                 console.log('ðŸ”„ Reprogramaciones y anuales:', reprogramacionesYAnuales);
