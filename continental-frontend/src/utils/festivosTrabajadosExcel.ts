@@ -29,14 +29,12 @@ export const exportarExcelFestivosTrabajados = (
 
     const hoja = XLSX.utils.aoa_to_sheet(datos);
 
-    // Forzar todas las columnas de fecha como texto para respetar ceros al inicio
     const range = XLSX.utils.decode_range(hoja['!ref'] || 'A1');
     for (let R = range.s.r; R <= range.e.r; ++R) {
-        // Columnas B (Festivo Trabajado), C (Dia Solicitado), D (Clave) como texto
         for (const col of [1, 2, 3]) {
             const cellRef = XLSX.utils.encode_cell({ r: R, c: col });
             if (hoja[cellRef]) {
-                hoja[cellRef].t = 's'; // forzar tipo string
+                hoja[cellRef].t = 's';
             }
         }
     }

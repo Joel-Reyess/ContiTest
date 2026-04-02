@@ -1,5 +1,42 @@
-import { httpClient } from "@/services/httpClient";
+ï»¿import { httpClient } from "@/services/httpClient";
 import type { ApiResponse } from "@/interfaces/Api.interface";
+
+//export interface TransferirEmpleadoRequest {
+//    empleadoId: number;
+//    grupoDestinoId: number;
+//    motivo?: string;
+//}
+
+//export interface TransferirEmpleadoResponse {
+//    exito: boolean;
+//    mensaje: string;
+//    advertenciaManning: boolean;
+//    detallesManning?: string;
+//    transferenciaId: number;
+//    nombreEmpleado: string;
+//    nominaEmpleado: number;
+//    grupoOrigen: string;
+//    grupoDestino: string;
+//    areaDestino: string;
+//    diasCalendarioActualizados: number;
+//}
+
+//export interface HistorialTransferenciaDto {
+//    id: number;
+//    empleadoId: number;
+//    nombreEmpleado: string;
+//    nominaEmpleado: number;
+//    grupoOrigenId: number;
+//    grupoOrigen: string;
+//    areaOrigen: string;
+//    grupoDestinoId: number;
+//    grupoDestino: string;
+//    areaDestino: string;
+//    nombreRealizadoPor: string;
+//    fechaTransferencia: string;
+//    motivo?: string;
+//    huboAdvertenciaManning: boolean;
+//}
 
 export interface UpdateGroupLeaderRequest {
     userId: number;
@@ -15,7 +52,7 @@ export const groupService = {
         try {
             console.log(`Updating group ${groupId} leader to user ${userId}`);
 
-            // El backend espera solo el número, no un objeto
+            // El backend espera solo el nï¿½mero, no un objeto
             const response = await httpClient.put<ApiResponse<void>>(
                 `/api/Grupo/${groupId}/Lider`,
                 userId
@@ -55,6 +92,27 @@ export const groupService = {
             throw error;
         }
     },
+
+    //async transferirEmpleado(request: TransferirEmpleadoRequest): Promise<TransferirEmpleadoResponse> {
+    //    const response = await httpClient.post<TransferirEmpleadoResponse>(
+    //        '/api/Grupo/transferir-empleado',
+    //        request
+    //    );
+    //    if (!response.success || !response.data) {
+    //        throw new Error(response.errorMsg || 'Error al transferir empleado');
+    //    }
+    //    return response.data;
+    //},
+
+    //async getHistorialTransferencias(): Promise<HistorialTransferenciaDto[]> {
+    //    const response = await httpClient.get<HistorialTransferenciaDto[]>(
+    //        '/api/Grupo/historial-transferencias'
+    //    );
+    //    if (!response.success || !response.data) {
+    //        throw new Error(response.errorMsg || 'Error al obtener historial');
+    //    }
+    //    return response.data;
+    //},
 
     async updateGroupShift(groupId: number, shiftData: UpdateGroupShiftRequest): Promise<void> {
         try {

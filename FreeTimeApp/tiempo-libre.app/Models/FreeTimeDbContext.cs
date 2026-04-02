@@ -47,7 +47,7 @@ public partial class FreeTimeDbContext : DbContext
     public virtual DbSet<DiasFestivosTrabajadosOriginalTable> DiasFestivosTrabajadosOriginalTable { get; set; }
     public virtual DbSet<CalendarioEmpleado> CalendarioEmpleados { get; set; }
     public virtual DbSet<DiasCalendarioEmpleado> DiasCalendarioEmpleado { get; set; }
-    
+
     // Nuevas tablas del sistema de vacaciones unificado
     public virtual DbSet<ConfiguracionVacaciones> ConfiguracionVacaciones { get; set; }
     public virtual DbSet<ExcepcionesPorcentaje> ExcepcionesPorcentaje { get; set; }
@@ -72,6 +72,9 @@ public partial class FreeTimeDbContext : DbContext
 
     // Sistema de códigos de verificación
     public virtual DbSet<CodigoVerificacion> CodigosVerificacion { get; set; }
+
+    // Transferencias de personal entre grupos
+    public virtual DbSet<TransferenciaGrupo> TransferenciasGrupo { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -869,7 +872,7 @@ public partial class FreeTimeDbContext : DbContext
                 .HasMaxLength(200);
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("GETDATE()");
-            
+
             // Relación con Grupo
             entity.HasOne(e => e.Grupo)
                 .WithMany()
@@ -923,7 +926,7 @@ public partial class FreeTimeDbContext : DbContext
                 .HasDefaultValueSql("GETDATE()");
             entity.Property(e => e.Observaciones)
                 .HasMaxLength(500);
-            
+
             // Relaciones con DeleteBehavior.Restrict para evitar cascadas
             entity.HasOne(e => e.Empleado)
                 .WithMany()
@@ -957,7 +960,7 @@ public partial class FreeTimeDbContext : DbContext
                 .HasMaxLength(500);
             entity.Property(e => e.ObservacionesJefe)
                 .HasMaxLength(500);
-            
+
             // Relaciones con DeleteBehavior.Restrict para evitar cascadas múltiples
             entity.HasOne(e => e.Empleado)
                 .WithMany()
@@ -1138,6 +1141,51 @@ public partial class FreeTimeDbContext : DbContext
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        // Configuración para TransferenciasGrupo
+        //modelBuilder.Entity<TransferenciaGrupo>(entity =>
+        //{
+        //    entity.HasKey(e => e.Id);
+
+        //    entity.Property(e => e.FechaTransferencia)
+        //        .HasDefaultValueSql("GETUTCDATE()");
+
+        //    entity.Property(e => e.Motivo)
+        //        .HasMaxLength(500);
+
+        //    entity.Property(e => e.HuboAdvertenciaManning)
+        //        .HasDefaultValue(false);
+
+        //    entity.HasOne(e => e.Empleado)
+        //        .WithMany()
+        //        .HasForeignKey(e => e.EmpleadoId)
+        //        .OnDelete(DeleteBehavior.Restrict)
+        //        .HasConstraintName("FK_TransferenciaGrupo_Empleado");
+
+        //    entity.HasOne(e => e.GrupoOrigen)
+        //        .WithMany()
+        //        .HasForeignKey(e => e.GrupoOrigenId)
+        //        .OnDelete(DeleteBehavior.Restrict)
+        //        .HasConstraintName("FK_TransferenciaGrupo_GrupoOrigen");
+
+        //    entity.HasOne(e => e.GrupoDestino)
+        //        .WithMany()
+        //        .HasForeignKey(e => e.GrupoDestinoId)
+        //        .OnDelete(DeleteBehavior.Restrict)
+        //        .HasConstraintName("FK_TransferenciaGrupo_GrupoDestino");
+
+        //    entity.HasOne(e => e.RealizadoPor)
+        //        .WithMany()
+        //        .HasForeignKey(e => e.RealizadoPorId)
+        //        .OnDelete(DeleteBehavior.Restrict)
+        //        .HasConstraintName("FK_TransferenciaGrupo_RealizadoPor");
+
+        //    entity.HasIndex(e => e.EmpleadoId)
+        //        .HasDatabaseName("IX_TransferenciaGrupo_EmpleadoId");
+
+        //    entity.HasIndex(e => e.FechaTransferencia)
+        //        .HasDatabaseName("IX_TransferenciaGrupo_Fecha");
+        //});
 
         OnModelCreatingPartial(modelBuilder);
     }

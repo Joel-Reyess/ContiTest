@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using tiempo_libre.Models;
 using tiempo_libre.DTOs;
+//using tiempo_libre.Logic;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
+//using System.Security.Claims;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -168,6 +170,149 @@ public class GrupoController : ControllerBase
         )).ToListAsync();
         return Ok(new ApiResponse<List<GrupoDetail>>(true, grupos));
     }
+
+    // POST: api/Grupo/transferir-empleado
+    //[HttpPost("transferir-empleado")]
+    //[Authorize(Roles = "SuperUsuario,Ingeniero Industrial")]
+    //public async Task<IActionResult> TransferirEmpleado([FromBody] TransferirEmpleadoRequest request)
+    //{
+    //    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    //    if (!int.TryParse(userIdClaim, out int realizadoPorId))
+    //        return Unauthorized(new ApiResponse<TransferirEmpleadoResponse>(false, null, "No autorizado"));
+
+    //    if (request.EmpleadoId <= 0 || request.GrupoDestinoId <= 0)
+    //        return BadRequest(new ApiResponse<TransferirEmpleadoResponse>(false, null, "Datos inválidos"));
+
+    //    var empleado = await _db.Users
+    //        .Include(u => u.Grupo)
+    //        .FirstOrDefaultAsync(u => u.Id == request.EmpleadoId);
+
+    //    if (empleado == null)
+    //        return NotFound(new ApiResponse<TransferirEmpleadoResponse>(false, null, "Empleado no encontrado"));
+
+    //    if (empleado.GrupoId == null)
+    //        return BadRequest(new ApiResponse<TransferirEmpleadoResponse>(false, null, "El empleado no está asignado a ningún grupo"));
+
+    //    if (empleado.GrupoId == request.GrupoDestinoId)
+    //        return BadRequest(new ApiResponse<TransferirEmpleadoResponse>(false, null, "El empleado ya pertenece al grupo destino"));
+
+    //    var grupoDestino = await _db.Grupos
+    //        .Include(g => g.Area)
+    //        .FirstOrDefaultAsync(g => g.GrupoId == request.GrupoDestinoId);
+
+    //    if (grupoDestino == null)
+    //        return NotFound(new ApiResponse<TransferirEmpleadoResponse>(false, null, "Grupo destino no encontrado"));
+
+    //    var grupoOrigenId = empleado.GrupoId.Value;
+    //    var grupoOrigen = await _db.Grupos
+    //        .Include(g => g.Area)
+    //        .FirstOrDefaultAsync(g => g.GrupoId == grupoOrigenId);
+
+    //    // Verificar manning en grupo destino (solo advertencia)
+    //    bool huboAdvertenciaManning = false;
+    //    string? detallesManning = null;
+    //    try
+    //    {
+    //        var manning = new CalculosSobreManning(_db);
+    //        var porcentajeNoDisponible = manning.CalculaElPorcentajeNoDisponibleDelDia(request.GrupoDestinoId);
+    //        if (porcentajeNoDisponible > 4.5m)
+    //        {
+    //            huboAdvertenciaManning = true;
+    //            detallesManning = $"El grupo destino tiene {porcentajeNoDisponible:F1}% de ausencia hoy (máximo permitido: 4.5%)";
+    //        }
+    //    }
+    //    catch { /* La verificación de manning es informativa, no bloquea */ }
+
+    //    await using var transaction = await _db.Database.BeginTransactionAsync();
+    //    try
+    //    {
+    //        // Actualizar grupo y área del empleado
+    //        empleado.GrupoId = request.GrupoDestinoId;
+    //        empleado.AreaId = grupoDestino.AreaId;
+    //        _db.Users.Update(empleado);
+
+    //        // Actualizar registros futuros de DiasCalendarioEmpleado
+    //        var hoy = DateOnly.FromDateTime(DateTime.Now);
+    //        var diasFuturos = await _db.DiasCalendarioEmpleado
+    //            .Where(d => d.IdUsuarioEmpleadoSindicalizado == request.EmpleadoId && d.FechaDelDia >= hoy)
+    //            .ToListAsync();
+
+    //        foreach (var dia in diasFuturos)
+    //        {
+    //            dia.IdGrupo = request.GrupoDestinoId;
+    //            dia.IdArea = grupoDestino.AreaId;
+    //        }
+
+    //        // Registrar la transferencia
+    //        var transferencia = new TransferenciaGrupo
+    //        {
+    //            EmpleadoId = request.EmpleadoId,
+    //            GrupoOrigenId = grupoOrigenId,
+    //            GrupoDestinoId = request.GrupoDestinoId,
+    //            RealizadoPorId = realizadoPorId,
+    //            FechaTransferencia = DateTime.UtcNow,
+    //            Motivo = request.Motivo,
+    //            HuboAdvertenciaManning = huboAdvertenciaManning
+    //        };
+    //        _db.TransferenciasGrupo.Add(transferencia);
+
+    //        await _db.SaveChangesAsync();
+    //        await transaction.CommitAsync();
+
+    //        return Ok(new ApiResponse<TransferirEmpleadoResponse>(true, new TransferirEmpleadoResponse
+    //        {
+    //            Exito = true,
+    //            Mensaje = $"Empleado {empleado.FullName} transferido exitosamente al grupo {grupoDestino.Rol}",
+    //            AdvertenciaManning = huboAdvertenciaManning,
+    //            DetallesManning = detallesManning,
+    //            TransferenciaId = transferencia.Id,
+    //            NombreEmpleado = empleado.FullName,
+    //            NominaEmpleado = empleado.Nomina ?? 0,
+    //            GrupoOrigen = grupoOrigen?.Rol ?? grupoOrigenId.ToString(),
+    //            GrupoDestino = grupoDestino.Rol,
+    //            AreaDestino = grupoDestino.Area?.NombreGeneral ?? string.Empty,
+    //            DiasCalendarioActualizados = diasFuturos.Count
+    //        }));
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        await transaction.RollbackAsync();
+    //        return StatusCode(500, new ApiResponse<TransferirEmpleadoResponse>(false, null, $"Error al realizar la transferencia: {ex.Message}"));
+    //    }
+    //}
+
+    //// GET: api/Grupo/historial-transferencias
+    //[HttpGet("historial-transferencias")]
+    //[Authorize(Roles = "SuperUsuario,Ingeniero Industrial")]
+    //public async Task<IActionResult> HistorialTransferencias()
+    //{
+    //    var historial = await _db.TransferenciasGrupo
+    //        .Include(t => t.Empleado)
+    //        .Include(t => t.GrupoOrigen).ThenInclude(g => g.Area)
+    //        .Include(t => t.GrupoDestino).ThenInclude(g => g.Area)
+    //        .Include(t => t.RealizadoPor)
+    //        .OrderByDescending(t => t.FechaTransferencia)
+    //        .Select(t => new HistorialTransferenciaDto
+    //        {
+    //            Id = t.Id,
+    //            EmpleadoId = t.EmpleadoId,
+    //            NombreEmpleado = t.Empleado.FullName,
+    //            NominaEmpleado = t.Empleado.Nomina ?? 0,
+    //            GrupoOrigenId = t.GrupoOrigenId,
+    //            GrupoOrigen = t.GrupoOrigen.Rol,
+    //            AreaOrigen = t.GrupoOrigen.Area != null ? t.GrupoOrigen.Area.NombreGeneral : string.Empty,
+    //            GrupoDestinoId = t.GrupoDestinoId,
+    //            GrupoDestino = t.GrupoDestino.Rol,
+    //            AreaDestino = t.GrupoDestino.Area != null ? t.GrupoDestino.Area.NombreGeneral : string.Empty,
+    //            NombreRealizadoPor = t.RealizadoPor.FullName,
+    //            FechaTransferencia = t.FechaTransferencia,
+    //            Motivo = t.Motivo,
+    //            HuboAdvertenciaManning = t.HuboAdvertenciaManning
+    //        })
+    //        .ToListAsync();
+
+    //    return Ok(new ApiResponse<List<HistorialTransferenciaDto>>(true, historial));
+    //}
 
     // GET: api/Grupo/Area/{areaId}
     [HttpGet("Area/{areaId}")]

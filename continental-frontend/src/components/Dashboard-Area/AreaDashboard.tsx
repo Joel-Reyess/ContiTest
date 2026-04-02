@@ -36,7 +36,7 @@
 import { useState, type JSX } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
 import { Navbar } from "../Navbar/Navbar";
-import { Calendar, File, FileChartColumn, Users, CalendarClock } from "lucide-react";
+import { Calendar, File, FileChartColumn, Users, CalendarClock, ArrowLeftRight } from "lucide-react";
 import CalendarComponent from "./CalendarComponent";
 import SolicitudesComponent from "./SolicitudesComponent";
 import SolicitudDetallePage from "./SolicitudDetallePage";
@@ -49,6 +49,7 @@ import WeeklyRoles from "../Dashboard-Empleados/WeeklyRoles";
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/interfaces/User.interface';
 import FestivoDetallePage from './FestivoDetallePage';
+//import { TransferenciaPersonal } from '../TransferenciaPersonal/TransferenciaPersonal';
 
 // Manager subroute components
 
@@ -75,6 +76,8 @@ const AreaDashboard = (): JSX.Element => {
         { to: "/area/plantilla", label: "Plantilla", icon: <Users /> },
         // Solo mostrar Reportes si NO es LEADER
         ...(!isLeader ? [{ to: "/area/reportes", label: "Reportes", icon: <FileChartColumn /> }] : []),
+        //// Transferencia de personal solo para INDUSTRIAL
+        //...(isIndustrial ? [{ to: "/area/transferencia-personal", label: "Transferencia", icon: <ArrowLeftRight /> }] : []),
     ];
 
     return (
@@ -90,8 +93,8 @@ const AreaDashboard = (): JSX.Element => {
                                 key={item.to}
                                 to={item.to}
                                 className={`rounded-lg flex items-center gap-2 px-4 py-2 transition-colors ${isActive
-                                        ? 'bg-continental-yellow text-continental-black'
-                                        : 'hover:bg-continental-yellow hover:text-continental-black'
+                                    ? 'bg-continental-yellow text-continental-black'
+                                    : 'hover:bg-continental-yellow hover:text-continental-black'
                                     }`}
                             >
                                 {item.icon}
@@ -124,6 +127,9 @@ const AreaDashboard = (): JSX.Element => {
 
                     {/* Solo LEADER no puede ver */}
                     {!isLeader && <Route path="reportes" element={<Reportes />} />}
+
+                    {/* Transferencia de personal solo para INDUSTRIAL */}
+                    {/*{isIndustrial && <Route path="transferencia-personal" element={<TransferenciaPersonal />} />}*/}
                 </Routes>
             </div>
         </div>
