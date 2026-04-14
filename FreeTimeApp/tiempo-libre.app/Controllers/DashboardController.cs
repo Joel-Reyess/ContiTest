@@ -22,34 +22,54 @@ namespace tiempo_libre.Controllers
         /// Retorna ausencias agrupadas por mes para un año dado
         /// </summary>
         [HttpGet("ausencias-anuales")]
-        public async Task<IActionResult> GetAusenciasAnuales([FromQuery] int anio = 0)
+        public async Task<IActionResult> GetAusenciasAnuales([FromQuery] int anio = 0, [FromQuery] int? areaId = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
 
             var inicio = new DateOnly(anio, 1, 1);
             var fin = new DateOnly(anio, 12, 31);
 
+            var empleadosQuery = _db.Users
+                .Where(u => u.Status == tiempo_libre.Models.Enums.UserStatus.Activo && u.GrupoId != null);
+            if (areaId.HasValue)
+                empleadosQuery = empleadosQuery.Where(u => u.AreaId == areaId.Value);
+
+            var empleadoIds = await empleadosQuery.Select(u => u.Id).ToListAsync();
+            var totalEmpleados = empleadoIds.Count;
+
+            var nominasArea = await empleadosQuery
+                .Where(u => u.Nomina.HasValue)
+                .Select(u => u.Nomina!.Value)
+                .ToListAsync();
+            var nominasSet = nominasArea.ToHashSet();
+
             var vacaciones = await _db.VacacionesProgramadas
-                .Where(v => v.FechaVacacion >= inicio && v.FechaVacacion <= fin && v.EstadoVacacion == "Activa")
+                .Where(v => empleadoIds.Contains(v.EmpleadoId) &&
+                            v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
+                            v.EstadoVacacion == "Activa")
                 .GroupBy(v => new { v.FechaVacacion.Month, v.TipoVacacion })
                 .Select(g => new { g.Key.Month, g.Key.TipoVacacion, Total = g.Count() })
                 .ToListAsync();
 
-            var permisos = await _db.PermisosEIncapacidadesSAP
+            var permisosRaw = await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Desde >= inicio && p.Desde <= fin &&
                             (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-                .GroupBy(p => new { p.Desde.Month, p.ClaseAbsentismo })
-                .Select(g => new { g.Key.Month, Tipo = g.Key.ClaseAbsentismo ?? "Permiso", Total = g.Count() })
+                .Select(p => new { p.Desde.Month, Tipo = p.ClaseAbsentismo ?? "Permiso", p.Nomina })
                 .ToListAsync();
+
+            var permisos = areaId.HasValue
+                ? permisosRaw.Where(p => nominasSet.Contains(p.Nomina)).ToList()
+                : permisosRaw;
 
             var resultado = Enumerable.Range(1, 12).Select(mes => new
             {
                 mes,
+                totalEmpleados,
                 vacacion = vacaciones.Where(v => v.Month == mes && v.TipoVacacion == "Anual").Sum(v => v.Total),
                 reprogramacion = vacaciones.Where(v => v.Month == mes && v.TipoVacacion == "Reprogramacion").Sum(v => v.Total),
                 festivoTrabajado = vacaciones.Where(v => v.Month == mes && v.TipoVacacion == "FestivoTrabajado").Sum(v => v.Total),
-                permiso = permisos.Where(p => p.Month == mes && p.Tipo.Contains("Permiso")).Sum(p => p.Total),
-                incapacidad = permisos.Where(p => p.Month == mes && p.Tipo.Contains("Incapacidad")).Sum(p => p.Total),
+                permiso = permisos.Where(p => p.Month == mes && p.Tipo.Contains("Permiso")).Sum(p => 1),
+                incapacidad = permisos.Where(p => p.Month == mes && p.Tipo.Contains("Incapacidad")).Sum(p => 1),
             }).ToList();
 
             return Ok(new ApiResponse<object>(true, resultado));
@@ -59,7 +79,7 @@ namespace tiempo_libre.Controllers
         /// Retorna ausencias por semana del mes actual
         /// </summary>
         [HttpGet("ausencias-semanales")]
-        public async Task<IActionResult> GetAusenciasSemanales([FromQuery] int anio = 0, [FromQuery] int mes = 0)
+        public async Task<IActionResult> GetAusenciasSemanales([FromQuery] int anio = 0, [FromQuery] int mes = 0, [FromQuery] int? areaId = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
             if (mes == 0) mes = DateTime.Today.Month;
@@ -67,23 +87,43 @@ namespace tiempo_libre.Controllers
             var inicio = new DateOnly(anio, mes, 1);
             var fin = new DateOnly(anio, mes, DateTime.DaysInMonth(anio, mes));
 
+            var empleadosQuery = _db.Users
+                .Where(u => u.Status == tiempo_libre.Models.Enums.UserStatus.Activo && u.GrupoId != null);
+            if (areaId.HasValue)
+                empleadosQuery = empleadosQuery.Where(u => u.AreaId == areaId.Value);
+
+            var empleadoIds = await empleadosQuery.Select(u => u.Id).ToListAsync();
+            var totalEmpleados = empleadoIds.Count;
+
+            var nominasArea = await empleadosQuery
+                .Where(u => u.Nomina.HasValue)
+                .Select(u => u.Nomina!.Value)
+                .ToListAsync();
+            var nominasSet = nominasArea.ToHashSet();
+
             var vacaciones = await _db.VacacionesProgramadas
-                .Where(v => v.FechaVacacion >= inicio && v.FechaVacacion <= fin && v.EstadoVacacion == "Activa")
+                .Where(v => empleadoIds.Contains(v.EmpleadoId) &&
+                            v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
+                            v.EstadoVacacion == "Activa")
                 .Select(v => new { v.FechaVacacion, v.TipoVacacion })
                 .ToListAsync();
 
-            var permisos = await _db.PermisosEIncapacidadesSAP
+            var permisosRaw = await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Desde >= inicio && p.Desde <= fin &&
                             (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-                .Select(p => new { Fecha = p.Desde, Tipo = p.ClaseAbsentismo ?? "Permiso" })
+                .Select(p => new { Fecha = p.Desde, Tipo = p.ClaseAbsentismo ?? "Permiso", p.Nomina })
                 .ToListAsync();
 
-            // Agrupar por semana del mes (1-5)
+            var permisos = areaId.HasValue
+                ? permisosRaw.Where(p => nominasSet.Contains(p.Nomina)).ToList()
+                : permisosRaw;
+
             static int GetWeek(DateOnly d) => (d.Day - 1) / 7 + 1;
 
             var resultado = Enumerable.Range(1, 5).Select(semana => new
             {
                 semana,
+                totalEmpleados,
                 vacacion = vacaciones.Count(v => GetWeek(v.FechaVacacion) == semana && v.TipoVacacion == "Anual"),
                 reprogramacion = vacaciones.Count(v => GetWeek(v.FechaVacacion) == semana && v.TipoVacacion == "Reprogramacion"),
                 festivoTrabajado = vacaciones.Count(v => GetWeek(v.FechaVacacion) == semana && v.TipoVacacion == "FestivoTrabajado"),

@@ -22,15 +22,16 @@ const COLORES_MOTIVOS: Record<string, string> = {
     Vacacion: '#22c55e',
 };
 
-type AnualRow = { mes: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
-type SemanalRow = { semana: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
+type AnualRow = { mes: number; totalEmpleados: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
+type SemanalRow = { semana: number; totalEmpleados: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
 type MotivoRow = { motivo: string; total: number };
 type TiempoExtraRow = { semana: number; horasExtra: number; horasNormales: number; pctExtra: number };
 
 // ── Tooltip personalizado para barras apiladas con porcentaje ──────────────
 const TooltipBarras = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
-    const total = payload.reduce((sum: number, p: any) => sum + (p.value ?? 0), 0);
+    const totalAusentes = payload.reduce((sum: number, p: any) => sum + (p.value ?? 0), 0);
+    const totalEmpleados = payload[0]?.payload?._totalEmpleados ?? totalAusentes;
     return (
         <div style={{
             background: 'white', border: '1px solid #e5e7eb', borderRadius: 8,
@@ -45,14 +46,14 @@ const TooltipBarras = ({ active, payload, label }: any) => {
                     </span>
                     <span style={{ fontWeight: 500, color: '#111827' }}>
                         {p.value} <span style={{ color: '#6b7280', fontWeight: 400 }}>
-                            ({total > 0 ? ((p.value / total) * 100).toFixed(1) : 0}%)
+                            ({totalEmpleados > 0 ? ((p.value / totalEmpleados) * 100).toFixed(1) : 0}%)
                         </span>
                     </span>
                 </div>
             ))}
             <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 12 }}>
-                <span style={{ color: '#374151' }}>Total</span>
-                <span style={{ color: '#111827' }}>{total}</span>
+                <span style={{ color: '#374151' }}>Total ausentes</span>
+                <span style={{ color: '#111827' }}>{totalAusentes} / {totalEmpleados}</span>
             </div>
         </div>
     );
@@ -208,9 +209,20 @@ export const Dashboard: React.FC = () => {
             .finally(() => setLoadingTE(false));
     }, [vistaMode, anioSel, mesSel, buildAreaParam]);
 
+    const tiempoExtraForChart = useMemo(() => tiempoExtraData.map(r => {
+        const primerDia = (r.semana - 1) * 7 + 1;
+        const fecha = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
+        const startOfYear = new Date(fecha.getFullYear(), 0, 1);
+        const weekNum = Math.ceil(
+            ((fecha.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7
+        );
+        return { ...r, semanaAnual: weekNum };
+    }), [tiempoExtraData, anioSel, mesSel]);
+
     // ── Datos derivados para gráficas ────────────────────────────────────────
     const anualForChart = useMemo(() => anualData.map(r => ({
         name: MESES[r.mes - 1],
+        _totalEmpleados: r.totalEmpleados,
         Vacación: r.vacacion,
         Reprogramación: r.reprogramacion,
         'Festivo Trab.': r.festivoTrabajado,
@@ -230,6 +242,7 @@ export const Dashboard: React.FC = () => {
             const weekNum = Math.ceil(((fecha.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
             return ({
                 name: `Sem ${weekNum}`,
+                _totalEmpleados: r.totalEmpleados,
                 Vacación: r.vacacion,
                 Reprogramación: r.reprogramacion,
                 'Festivo Trab.': r.festivoTrabajado,
@@ -730,9 +743,9 @@ export const Dashboard: React.FC = () => {
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin datos</div>
                         ) : (
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={tiempoExtraData} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                                <BarChart data={tiempoExtraForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="semana" tickFormatter={(v) => `Sem ${v}`} tick={{ fontSize: 12 }} />
+                                    <XAxis dataKey="semanaAnual" tickFormatter={(v) => `Sem ${v}`} tick={{ fontSize: 12 }} />
                                     <YAxis allowDecimals={false} tick={{ fontSize: 12 }} label={{ value: 'Horas', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
                                     <Tooltip content={<TooltipTE />} />
                                     <Legend />
@@ -774,9 +787,9 @@ export const Dashboard: React.FC = () => {
                             <div className="flex items-center justify-center h-[260px] text-gray-400 text-sm">Sin datos</div>
                         ) : (
                             <ResponsiveContainer width="100%" height={260}>
-                                <BarChart data={tiempoExtraData} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                                <BarChart data={tiempoExtraForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="semana" tickFormatter={(v) => `Sem ${v}`} tick={{ fontSize: 12 }} />
+                                    <XAxis dataKey="semanaAnual" tickFormatter={(v) => `Sem ${v}`} tick={{ fontSize: 12 }} />
                                     <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
                                     <Tooltip content={<TooltipTE />} />
                                     <Legend />
@@ -842,6 +855,108 @@ export const Dashboard: React.FC = () => {
                             </div>
                         </div>
                     )}
+
+                    {/* TABLA: Detalle por grupo — Tiempo Extra */}
+                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                        <h2 className="text-base font-semibold text-gray-700 mb-4">
+                            Detalle por grupo — {MESES[mesSel - 1]} {anioSel}
+                        </h2>
+                        {loadingHoy ? (
+                            <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
+                        ) : (
+                            <div className="overflow-auto max-h-[380px]">
+                                <table className="w-full text-sm">
+                                    <thead className="sticky top-0 bg-white">
+                                        <tr className="bg-gray-50 text-gray-600">
+                                            <th className="text-left px-3 py-2">Grupo</th>
+                                            <th className="text-center px-3 py-2">Total</th>
+                                            <th className="text-center px-3 py-2">Disp.</th>
+                                            <th className="text-center px-3 py-2">Aus.</th>
+                                            <th className="text-center px-3 py-2">%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {grupos.map(g => (
+                                            <React.Fragment key={g.grupoId}>
+                                                <tr
+                                                    className={`border-t cursor-pointer hover:bg-gray-50 transition-colors
+                                    ${g.excedeLimite ? 'bg-red-50' : ''}
+                                    ${grupoExpandido === g.grupoId ? 'bg-blue-50' : ''}`}
+                                                    onClick={() => setGrupoExpandido(p => p === g.grupoId ? null : g.grupoId)}
+                                                >
+                                                    <td className="px-3 py-2 font-medium">
+                                                        <span className="text-gray-400 text-xs mr-1">
+                                                            {grupoExpandido === g.grupoId ? '▼' : '▶'}
+                                                        </span>
+                                                        {g.nombreGrupo}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-center">{g.personalTotal}</td>
+                                                    <td className="px-3 py-2 text-center text-green-600">{g.personalDisponible}</td>
+                                                    <td className="px-3 py-2 text-center text-red-600">{g.personalNoDisponible}</td>
+                                                    <td className={`px-3 py-2 text-center font-semibold ${g.excedeLimite ? 'text-red-600' : 'text-gray-700'}`}>
+                                                        {g.porcentajeAusencia.toFixed(1)}%
+                                                        {g.excedeLimite && <span className="ml-1">⚠️</span>}
+                                                    </td>
+                                                </tr>
+                                                {grupoExpandido === g.grupoId && (
+                                                    <tr>
+                                                        <td colSpan={5} className="px-4 py-3 bg-gray-50 border-b">
+                                                            {/* mismo contenido expandible que en vista ausencias */}
+                                                            {g.empleadosAusentes?.length > 0 ? (
+                                                                <>
+                                                                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                                                                        Empleados ausentes ({g.personalNoDisponible})
+                                                                    </p>
+                                                                    <table className="w-full text-xs mb-3">
+                                                                        <thead>
+                                                                            <tr className="text-gray-400">
+                                                                                <th className="text-left py-1 pr-3">Nombre</th>
+                                                                                <th className="text-left py-1 pr-3">Nómina</th>
+                                                                                <th className="text-left py-1 pr-3">Motivo</th>
+                                                                                <th className="text-left py-1">Subtipo</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {g.empleadosAusentes.map(emp => (
+                                                                                <tr key={emp.empleadoId} className="border-t border-gray-200">
+                                                                                    <td className="py-1 pr-3 font-medium text-gray-800">{emp.nombreCompleto}</td>
+                                                                                    <td className="py-1 pr-3 text-gray-500">{emp.nomina ?? '—'}</td>
+                                                                                    <td className="py-1 pr-3">
+                                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${emp.tipoAusencia === 'Vacacion' ? 'bg-green-100 text-green-700'
+                                                                                                : emp.tipoAusencia === 'Reprogramacion' ? 'bg-blue-100 text-blue-700'
+                                                                                                    : emp.tipoAusencia === 'Incapacidad' ? 'bg-red-100 text-red-700'
+                                                                                                        : emp.tipoAusencia === 'Permiso' ? 'bg-purple-100 text-purple-700'
+                                                                                                            : 'bg-gray-100 text-gray-700'
+                                                                                            }`}>
+                                                                                            {emp.tipoAusencia}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                    <td className="py-1 text-gray-400">{emp.tipoVacacion ?? '—'}</td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </>
+                                                            ) : (
+                                                                <p className="text-xs text-gray-400 mb-3">Sin empleados ausentes</p>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        ))}
+                                        {grupos.length === 0 && (
+                                            <tr>
+                                                <td colSpan={5} className="px-3 py-8 text-center text-gray-400">
+                                                    Sin datos para el periodo seleccionado
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </>
             )}
         </div>
