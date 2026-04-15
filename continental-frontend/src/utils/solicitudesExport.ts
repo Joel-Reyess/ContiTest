@@ -33,6 +33,15 @@ interface ExportMeta {
 
 const formatDate = (value?: string | null): string => {
     if (!value) return '';
+
+    // Si es solo fecha (YYYY-MM-DD), parsear como local para evitar desfase UTC
+    const soloFecha = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (soloFecha) {
+        const [year, month, day] = value.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // constructor local, sin UTC
+        return format(date, 'dd/MM/yyyy', { locale: es });
+    }
+
     return format(new Date(value), 'dd/MM/yyyy', { locale: es });
 };
 

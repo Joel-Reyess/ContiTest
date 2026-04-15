@@ -45,9 +45,7 @@ const TooltipBarras = ({ active, payload, label }: any) => {
                         {p.name ?? p.dataKey}
                     </span>
                     <span style={{ fontWeight: 500, color: '#111827' }}>
-                        {p.value} <span style={{ color: '#6b7280', fontWeight: 400 }}>
-                            ({totalEmpleados > 0 ? ((p.value / totalEmpleados) * 100).toFixed(1) : 0}%)
-                        </span>
+                        {p.value} ({totalEmpleados > 0 ? ((p.value / totalEmpleados) * 100).toFixed(1) : 0}%)
                     </span>
                 </div>
             ))}
@@ -128,10 +126,13 @@ export const Dashboard: React.FC = () => {
     const [semanalData, setSemanalData] = useState<SemanalRow[]>([]);
     const [motivosData, setMotivosData] = useState<MotivoRow[]>([]);
     const [tiempoExtraData, setTiempoExtraData] = useState<TiempoExtraRow[]>([]);
+    const [loadingTEAnual, setLoadingTEAnual] = useState(false);
     const [loadingHoy, setLoadingHoy] = useState(true);
     const [loadingHist, setLoadingHist] = useState(true);
     const [loadingTE, setLoadingTE] = useState(false);
     const [grupoExpandido, setGrupoExpandido] = useState<number | null>(null);
+
+    const [tiempoExtraAnualData, setTiempoExtraAnualData] = useState<any[]>([]);
 
     // ── Cargar áreas ─────────────────────────────────────────────────────────
     useEffect(() => {
@@ -187,7 +188,7 @@ export const Dashboard: React.FC = () => {
         Promise.all([
             httpClient.get<any>(`/api/dashboard/ausencias-anuales?anio=${anioSel}${areaParam}`),
             httpClient.get<any>(`/api/dashboard/ausencias-semanales?anio=${anioSel}&mes=${mesSel}${areaParam}`),
-            httpClient.get<any>(`/api/dashboard/ausencias-motivos?fecha=${fechaEfectiva}${areaParam}`),
+            httpClient.get<any>(`/api/dashboard/ausencias-motivos?fecha=${anioSel}-${String(mesSel).padStart(2, '0')}-01&fechaFin=${anioSel}-${String(mesSel).padStart(2, '0')}-${String(new Date(anioSel, mesSel, 0).getDate()).padStart(2, '0')}${areaParam}`),
         ])
             .then(([anual, semanal, motivos]) => {
                 setAnualData(anual?.data ?? anual ?? []);
@@ -199,25 +200,37 @@ export const Dashboard: React.FC = () => {
     }, [anioSel, mesSel, fechaEfectiva, buildAreaParam]);
 
     // ── Cargar datos de tiempo extra ──────────────────────────────────────────
+    // Reemplaza el useEffect de tiempo extra completo por este:
     useEffect(() => {
         if (vistaMode !== 'tiempoExtra') return;
-        setLoadingTE(true);
         const areaParam = buildAreaParam();
-        httpClient.get<any>(`/api/dashboard/resumen-tiempo-extra?anio=${anioSel}&mes=${mesSel}${areaParam}`)
+
+        setLoadingTE(true);
+        httpClient.get<any>(`/api/dashboard/resumen-tiempo-extra-semanal-v2?anio=${anioSel}&mes=${mesSel}${areaParam}`)
             .then(data => setTiempoExtraData(data?.data ?? data ?? []))
             .catch(console.error)
             .finally(() => setLoadingTE(false));
+
+        setLoadingTEAnual(true);
+        httpClient.get<any>(`/api/dashboard/resumen-tiempo-extra-anual?anio=${anioSel}${areaParam}`)
+            .then(data => setTiempoExtraAnualData(data?.data ?? data ?? []))
+            .catch(console.error)
+            .finally(() => setLoadingTEAnual(false));
     }, [vistaMode, anioSel, mesSel, buildAreaParam]);
 
-    const tiempoExtraForChart = useMemo(() => tiempoExtraData.map(r => {
-        const primerDia = (r.semana - 1) * 7 + 1;
-        const fecha = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
-        const startOfYear = new Date(fecha.getFullYear(), 0, 1);
-        const weekNum = Math.ceil(
-            ((fecha.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7
-        );
-        return { ...r, semanaAnual: weekNum };
-    }), [tiempoExtraData, anioSel, mesSel]);
+    const tiempoExtraForChart = useMemo(() => {
+        const seen = new Set<number>();
+        return tiempoExtraData
+            .map(r => ({
+                ...r,
+                semanaLabel: `Sem ${(r as any).semanaAnual ?? r.semana}` // Sem 14, 15...
+            }))
+            .filter(r => {
+                if (seen.has(r.semana)) return false;
+                seen.add(r.semana);
+                return true;
+            });
+    }, [tiempoExtraData]);
 
     // ── Datos derivados para gráficas ────────────────────────────────────────
     const anualForChart = useMemo(() => anualData.map(r => ({
@@ -263,16 +276,73 @@ export const Dashboard: React.FC = () => {
         }));
     }, [motivosData]);
 
-    const totales = useMemo(() => grupos.reduce(
+    const gruposUnicos = useMemo(() => {
+        if (areaSelId !== 'all') {
+            // Con área seleccionada: deduplicar por grupoId
+            const map = new Map<number, AusenciasPorGrupo>();
+            grupos.forEach(g => {
+                if (!map.has(g.grupoId)) map.set(g.grupoId, g);
+            });
+            return Array.from(map.values());
+        }
+
+        // Sin área (todas): agrupar por nombreGrupo y sumar
+        const map = new Map<string, AusenciasPorGrupo>();
+        grupos.forEach(g => {
+            const key = g.nombreGrupo;
+            if (!map.has(key)) {
+                map.set(key, {
+                    ...g,
+                    empleadosAusentes: [...(g.empleadosAusentes ?? [])],
+                    empleadosDisponibles: [...(g.empleadosDisponibles ?? [])],
+                });
+            } else {
+                const existing = map.get(key)!;
+                existing.personalTotal += g.personalTotal;
+                existing.personalDisponible += g.personalDisponible;
+                existing.personalNoDisponible += g.personalNoDisponible;
+                existing.porcentajeAusencia = existing.personalTotal > 0
+                    ? (existing.personalNoDisponible / existing.personalTotal) * 100
+                    : 0;
+                existing.excedeLimite = existing.excedeLimite || g.excedeLimite;
+                existing.empleadosAusentes = [
+                    ...(existing.empleadosAusentes ?? []),
+                    ...(g.empleadosAusentes ?? []),
+                ];
+                existing.empleadosDisponibles = [
+                    ...(existing.empleadosDisponibles ?? []),
+                    ...(g.empleadosDisponibles ?? []),
+                ];
+            }
+        });
+        return Array.from(map.values());
+    }, [grupos, areaSelId]);
+
+    // Total ausentes del mes seleccionado (desde anualData)
+    const totalesMes = useMemo(() => {
+        const mesRow = anualData.find(r => r.mes === mesSel);
+        if (!mesRow) return { disponible: 0, ausente: 0, total: 0 };
+        const ausente = mesRow.vacacion + mesRow.reprogramacion + mesRow.festivoTrabajado + mesRow.permiso + mesRow.incapacidad;
+        return {
+            ausente,
+            total: mesRow.totalEmpleados,
+            disponible: Math.max(0, mesRow.totalEmpleados - ausente),
+        };
+    }, [anualData, mesSel]);
+
+    // Para el pie del día (tabla de grupos sigue usando el snapshot diario)
+    const totales = useMemo(() => gruposUnicos.reduce(
         (acc, g) => ({ disponible: acc.disponible + g.personalDisponible, ausente: acc.ausente + g.personalNoDisponible }),
         { disponible: 0, ausente: 0 }
-    ), [grupos]);
+    ), [gruposUnicos]);
 
-    const totalPersonal = totales.disponible + totales.ausente;
+    const totalPersonal = totalesMes.total > 0 ? totalesMes.total : (totales.disponible + totales.ausente);
+    const ausentesPie = totalesMes.total > 0 ? totalesMes.ausente : totales.ausente;
+    const disponiblesPie = totalesMes.total > 0 ? totalesMes.disponible : totales.disponible;
 
     const piePersonal = [
-        { name: 'Disponible', value: totales.disponible, percent: totalPersonal > 0 ? totales.disponible / totalPersonal : 0, fill: '#22c55e' },
-        { name: 'Ausente', value: totales.ausente, percent: totalPersonal > 0 ? totales.ausente / totalPersonal : 0, fill: '#ef4444' },
+        { name: 'Disponible', value: disponiblesPie, percent: totalPersonal > 0 ? disponiblesPie / totalPersonal : 0, fill: '#22c55e' },
+        { name: 'Ausente', value: ausentesPie, percent: totalPersonal > 0 ? ausentesPie / totalPersonal : 0, fill: '#ef4444' },
     ];
 
     const diasDelMes = useMemo(() => {
@@ -480,16 +550,16 @@ export const Dashboard: React.FC = () => {
                                 <div className="flex gap-4 mb-4">
                                     <div className="flex-1 bg-green-50 rounded-lg p-3 text-center">
                                         <p className="text-xs text-green-600 font-medium">Disponibles</p>
-                                        <p className="text-2xl font-bold text-green-700">{totales.disponible}</p>
+                                        <p className="text-2xl font-bold text-green-700">{disponiblesPie}</p>
                                         <p className="text-xs text-green-500">
-                                            {totalPersonal > 0 ? ((totales.disponible / totalPersonal) * 100).toFixed(1) : 0}%
+                                            {totalPersonal > 0 ? ((disponiblesPie / totalPersonal) * 100).toFixed(1) : 0}%
                                         </p>
                                     </div>
                                     <div className="flex-1 bg-red-50 rounded-lg p-3 text-center">
                                         <p className="text-xs text-red-600 font-medium">Ausentes</p>
-                                        <p className="text-2xl font-bold text-red-700">{totales.ausente}</p>
+                                        <p className="text-2xl font-bold text-red-700">{ausentesPie}</p>
                                         <p className="text-xs text-red-500">
-                                            {totalPersonal > 0 ? ((totales.ausente / totalPersonal) * 100).toFixed(1) : 0}%
+                                            {totalPersonal > 0 ? ((ausentesPie / totalPersonal) * 100).toFixed(1) : 0}%
                                         </p>
                                     </div>
                                 </div>
@@ -620,7 +690,7 @@ export const Dashboard: React.FC = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {grupos.map(g => (
+                                            {gruposUnicos.map(g => (
                                                 <React.Fragment key={g.grupoId}>
                                                     <tr
                                                         className={`border-t cursor-pointer hover:bg-gray-50 transition-colors
@@ -707,7 +777,7 @@ export const Dashboard: React.FC = () => {
                                                 </React.Fragment>
                                             ))}
 
-                                            {grupos.length === 0 && (
+                                            {gruposUnicos.length === 0 && (
                                                 <tr>
                                                     <td colSpan={5} className="px-3 py-8 text-center text-gray-400">
                                                         Sin datos para el periodo seleccionado
@@ -726,6 +796,58 @@ export const Dashboard: React.FC = () => {
             {/* ── VISTA TIEMPO EXTRA ──────────────────────────────────────────────── */}
             {vistaMode === 'tiempoExtra' && (
                 <>
+
+                    {/* GRÁFICA: Horas normales vs horas extra por mes (anual) */}
+                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                        <h2 className="text-base font-semibold text-gray-700 mb-1">
+                            Horas normales vs tiempo extra por mes — {anioSel}
+                        </h2>
+                        <p className="text-xs text-gray-400 mb-4">
+                            Resumen anual basado en déficit de manning
+                            {areaSelId !== 'all' && (
+                                <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>
+                            )}
+                        </p>
+                        {loadingTEAnual ? (
+                            <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
+                        ) : tiempoExtraAnualData.length === 0 ? (
+                            <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin datos</div>
+                        ) : (
+                            <ResponsiveContainer width="100%" height={300}>
+                                <BarChart
+                                    data={tiempoExtraAnualData.map((r: any) => ({
+                                        ...r,
+                                        name: MESES[r.mes - 1]
+                                    }))}
+                                    margin={{ top: 20, right: 16, left: 0, bottom: 0 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }}
+                                        label={{ value: 'Horas', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
+                                    <Tooltip content={<TooltipTE />} />
+                                    <Legend />
+                                    <Bar dataKey="horasNormales" name="Horas normales" fill="#22c55e">
+                                        <LabelList
+                                            dataKey="horasNormales"
+                                            position="inside"
+                                            style={{ fontSize: 10, fill: '#fff', fontWeight: 500 }}
+                                            formatter={(v: number) => v > 0 ? v : ''}
+                                        />
+                                    </Bar>
+                                    <Bar dataKey="horasExtra" name="Horas extra" fill="#ef4444">
+                                        <LabelList
+                                            dataKey="horasExtra"
+                                            position="top"
+                                            style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
+                                            formatter={(v: number) => v > 0 ? v : ''}
+                                        />
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </div>
+
                     {/* GRÁFICA: Horas normales vs horas extra por semana */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-1">
@@ -745,7 +867,7 @@ export const Dashboard: React.FC = () => {
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={tiempoExtraForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="semanaAnual" tickFormatter={(v) => `Sem ${v}`} tick={{ fontSize: 12 }} />
+                                            <XAxis dataKey="semanaLabel" tick={{ fontSize: 12 }} />
                                     <YAxis allowDecimals={false} tick={{ fontSize: 12 }} label={{ value: 'Horas', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
                                     <Tooltip content={<TooltipTE />} />
                                     <Legend />
@@ -789,7 +911,7 @@ export const Dashboard: React.FC = () => {
                             <ResponsiveContainer width="100%" height={260}>
                                 <BarChart data={tiempoExtraForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="semanaAnual" tickFormatter={(v) => `Sem ${v}`} tick={{ fontSize: 12 }} />
+                                    <XAxis dataKey="semanaLabel" tick={{ fontSize: 12 }} />
                                     <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
                                     <Tooltip content={<TooltipTE />} />
                                     <Legend />
@@ -806,55 +928,6 @@ export const Dashboard: React.FC = () => {
                         )}
                     </div>
 
-                    {/* TABLA: Resumen numérico de tiempo extra */}
-                    {tiempoExtraData.length > 0 && (
-                        <div className="bg-white border border-gray-200 rounded-lg p-6">
-                            <h2 className="text-base font-semibold text-gray-700 mb-4">
-                                Resumen numérico — {MESES[mesSel - 1]} {anioSel}
-                            </h2>
-                            <div className="overflow-auto">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="bg-gray-50 text-gray-600">
-                                            <th className="text-left px-3 py-2">Semana</th>
-                                            <th className="text-center px-3 py-2">Horas normales</th>
-                                            <th className="text-center px-3 py-2">Horas extra</th>
-                                            <th className="text-center px-3 py-2">% Extra</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {tiempoExtraData.map((row) => (
-                                            <tr key={row.semana} className="border-t border-gray-100">
-                                                <td className="px-3 py-2 font-medium text-gray-700">Semana {row.semana}</td>
-                                                <td className="px-3 py-2 text-center text-green-600">{row.horasNormales} hrs</td>
-                                                <td className="px-3 py-2 text-center text-red-600">{row.horasExtra} hrs</td>
-                                                <td className={`px-3 py-2 text-center font-semibold ${row.pctExtra > 6 ? 'text-red-600' : row.pctExtra > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                                                    {row.pctExtra > 0 ? `${row.pctExtra}%` : '—'}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {/* Fila de totales */}
-                                        <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-                                            <td className="px-3 py-2 text-gray-700">Total</td>
-                                            <td className="px-3 py-2 text-center text-green-700">
-                                                {tiempoExtraData.reduce((s, r) => s + r.horasNormales, 0)} hrs
-                                            </td>
-                                            <td className="px-3 py-2 text-center text-red-700">
-                                                {tiempoExtraData.reduce((s, r) => s + r.horasExtra, 0)} hrs
-                                            </td>
-                                            <td className="px-3 py-2 text-center text-gray-700">
-                                                {(() => {
-                                                    const totalNorm = tiempoExtraData.reduce((s, r) => s + r.horasNormales, 0);
-                                                    const totalExtra = tiempoExtraData.reduce((s, r) => s + r.horasExtra, 0);
-                                                    return totalNorm > 0 ? `${((totalExtra / totalNorm) * 100).toFixed(1)}%` : '—';
-                                                })()}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
 
                     {/* TABLA: Detalle por grupo — Tiempo Extra */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
