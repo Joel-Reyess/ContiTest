@@ -25,22 +25,25 @@ export const TabContainer = ({
   return (
     <div className={`space-y-6 ${className}`}>
       {/* Tab Buttons */}
-      <div className="bg-continental-gray-3 p-1 rounded-md w-full">
-        <div className="flex w-full">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => onTabChange(tab.key)}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/2 ${
-                activeTab === tab.key
-                  ? 'bg-white text-continental-black shadow-sm'
-                  : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
-              }`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
+      <div className="border-b border-continental-gray-3 w-full">
+        <div className="flex w-full -mb-px">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => onTabChange(tab.key)}
+                className={`flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold tracking-tight transition-colors w-1/2 border-b-2 cursor-pointer ${
+                  isActive
+                    ? 'border-continental-yellow text-continental-black'
+                    : 'border-transparent text-continental-gray-1 hover:text-continental-black hover:border-continental-gray-3'
+                }`}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -81,9 +81,9 @@ const AreaDashboard = (): JSX.Element => {
     ];
 
     return (
-        <div className="flex flex-col h-screen">
+        <div className="flex flex-col h-screen bg-continental-bg">
             <Navbar>
-                <nav className="flex gap-2">
+                <nav className="flex gap-1 h-full items-stretch">
                     {navItems.map((item) => {
                         const isActive = location.pathname === item.to ||
                             (location.pathname === '/area' && item.to === '/area/calendario');
@@ -92,13 +92,17 @@ const AreaDashboard = (): JSX.Element => {
                             <Link
                                 key={item.to}
                                 to={item.to}
-                                className={`rounded-lg flex items-center gap-2 px-4 py-2 transition-colors ${isActive
-                                    ? 'bg-continental-yellow text-continental-black'
-                                    : 'hover:bg-continental-yellow hover:text-continental-black'
+                                className={`relative flex items-center gap-2 px-3 text-sm font-medium tracking-tight transition-colors ${isActive
+                                    ? 'text-continental-black'
+                                    : 'text-continental-gray-1 hover:text-continental-black'
                                     }`}
                             >
-                                {item.icon}
+                                <span className="[&_svg]:size-4">{item.icon}</span>
                                 <span>{item.label}</span>
+                                <span
+                                    aria-hidden="true"
+                                    className={`absolute left-2 right-2 -bottom-px h-0.5 rounded-t-sm transition-colors ${isActive ? 'bg-continental-yellow' : 'bg-transparent'}`}
+                                />
                             </Link>
                         );
                     })}
@@ -106,7 +110,7 @@ const AreaDashboard = (): JSX.Element => {
             </Navbar>
 
             {/* Main Content */}
-            <div className="flex-1 bg-gray-100 w-full overflow-x-hidden">
+            <div className="flex-1 bg-continental-bg w-full overflow-x-hidden">
                 <Routes>
                     <Route index element={<Navigate to="/area/calendario" replace />} />
                     <Route path="calendario" element={<CalendarComponent />} />

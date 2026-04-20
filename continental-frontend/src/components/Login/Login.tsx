@@ -130,107 +130,120 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-continental-bg">
-      <div className="w-[500px] min-h-[520px] bg-continental-white rounded-lg shadow-lg flex flex-col items-center p-8">
-        {/* Logo - 1/3 del contenedor */}
-        <div className="h-1/3 flex items-center justify-center mb-6">
-          <img
-            src={Logo}
-            alt="Continental Logo"
-            className="max-h-full max-w-full object-contain"
-          />
+    <div className="min-h-screen flex items-center justify-center bg-continental-bg bg-industrial-grid p-4">
+      <div className="relative w-full max-w-[460px] bg-white rounded-md shadow-industrial-lg border border-continental-gray-3 overflow-hidden">
+        {/* Industrial accent rail */}
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-continental-yellow" aria-hidden="true" />
+
+        <div className="px-10 pt-10 pb-9">
+          {/* Brand header */}
+          <div className="flex flex-col items-center mb-8">
+            <img
+              src={Logo}
+              alt="Continental"
+              className="h-14 object-contain mb-5"
+            />
+            <div className="industrial-eyebrow mb-1">Portal · Vacaciones</div>
+            <h1 className="text-xl font-bold tracking-tight text-continental-black">
+              Acceso administrativo
+            </h1>
+          </div>
+
+          <div className="industrial-divider mb-7" aria-hidden="true" />
+
+          {/* Form Container */}
+          {showFirstTimeReset ? (
+            <FirstTimePasswordReset
+              onBack={handleBackToLogin}
+              onPasswordReset={handleFirstTimePasswordReset}
+              userIdentifier={credentials.username}
+              isEmployee={false}
+            />
+          ) : (
+            <form onSubmit={handleSubmit} className="w-full flex flex-col gap-6">
+              {/* Email Input */}
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-xs font-semibold uppercase tracking-wider text-continental-gray-1">
+                  Correo
+                </Label>
+                <Input
+                  id="username"
+                  placeholder="nombre@continental.com"
+                  type="text"
+                  value={credentials.username}
+                  onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
+                  className="w-full"
+                  required
+                  autoComplete="username"
+                />
+              </div>
+
+              {/* Password Input */}
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-continental-gray-1">
+                  Contraseña
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    placeholder="••••••••"
+                    type={isVisible ? "text" : "password"}
+                    value={credentials.password}
+                    onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
+                    className="w-full pr-10"
+                    required
+                    autoComplete="current-password"
+                  />
+                  <button
+                    className="absolute inset-y-0 right-0 flex h-full w-10 items-center justify-center text-continental-gray-2 hover:text-continental-black transition-colors rounded-r-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-continental-yellow/40"
+                    type="button"
+                    onClick={toggleVisibility}
+                    aria-label={isVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  >
+                    {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-continental-gray-1 hover:text-continental-black underline underline-offset-4 decoration-continental-gray-3 hover:decoration-continental-yellow transition-colors"
+                    onClick={async () => navigate('/restablecer-acceso')}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 text-sm text-continental-red bg-[color-mix(in_srgb,var(--color-continental-red)_8%,white)] p-3 rounded-md border border-[color-mix(in_srgb,var(--color-continental-red)_30%,white)]"
+                >
+                  <span className="mt-0.5 block h-2 w-2 rounded-full bg-continental-red shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                variant="continental"
+                size="lg"
+                className="w-full mt-1"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Entrando…' : 'Entrar'}
+              </Button>
+            </form>
+          )}
         </div>
 
-        {/* Form Container */}
-        {showFirstTimeReset ? (
-          <FirstTimePasswordReset
-            onBack={handleBackToLogin}
-            onPasswordReset={handleFirstTimePasswordReset}
-            userIdentifier={credentials.username}
-            isEmployee={false}
-          />
-        ) : (
-          <form onSubmit={handleSubmit} className="w-full flex-1 flex flex-col justify-between">
-          <div className="space-y-6">
-            {/* Email Input */}
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium text-continental-gray-1">
-                Correo
-              </Label>
-              <Input
-                id="username"
-                placeholder="Ingresa tu correo"
-                //TODO: Validar que sea un correo electronico
-                type="text"
-                value={credentials.username}
-                onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
-                className="w-full"
-                required
-              />
-            </div>
-
-            {/* Password Input */}
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium text-continental-gray-1">
-                Contraseña
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  placeholder="Ingresa tu contraseña"
-                  type={isVisible ? "text" : "password"}
-                  value={credentials.password}
-                  onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-                  className="w-full pr-10"
-                  required
-                />
-                <button
-                  className="absolute inset-y-0 right-0 flex h-full w-10 items-center justify-center text-continental-gray-2 hover:text-continental-gray-1 transition-colors"
-                  type="button"
-                  onClick={toggleVisibility}
-                  aria-label={isVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
-                >
-                  {isVisible ? (
-                    <EyeOff size={16} />
-                  ) : (
-                    <Eye size={16} />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="text-continental-red text-sm text-center bg-red-50 p-3 rounded-lg border border-red-200">
-                {error}
-              </div>
-            )}
-
-            {/* Forgot Password Link */}
-            <div className="text-right">
-              <button
-                type="button"
-                className="text-sm text-continental-yellow hover:underline transition-all"
-                onClick={async () => navigate('/restablecer-acceso')}
-              >
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          <div className="text-right mt-6">
-            <Button
-              type="submit"
-              variant="continental"
-              className="w-[70px] h-[45px] font-medium rounded-lg"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Entrando...' : 'Entrar'}
-            </Button>
-          </div>
-        </form>
-        )}
+        {/* Footer strip */}
+        <div className="px-10 py-3 bg-continental-gray-5 border-t border-continental-gray-3 text-[11px] uppercase tracking-wider text-continental-gray-2 flex justify-between">
+          <span>Continental</span>
+          <span>Secure access</span>
+        </div>
       </div>
     </div>
   );

@@ -18,11 +18,14 @@ const EmployeeDashboard = (): JSX.Element => {
     // Mostrar loading mientras se obtiene la configuración
     if (loading) {
         return (
-            <div className="flex flex-col min-h-screen w-full">
-                <div className="flex-1 bg-gray-100 min-h-screen h-full flex items-center justify-center">
-                    <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                        <p className="text-gray-600">Cargando configuración...</p>
+            <div className="flex flex-col min-h-screen w-full bg-continental-bg">
+                <div className="flex-1 min-h-screen h-full flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="relative h-10 w-10">
+                            <div className="absolute inset-0 rounded-full border-2 border-continental-gray-3" />
+                            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-continental-yellow animate-spin" />
+                        </div>
+                        <p className="text-sm font-medium text-continental-gray-1 uppercase tracking-wider">Cargando configuración</p>
                     </div>
                 </div>
             </div>
@@ -32,19 +35,19 @@ const EmployeeDashboard = (): JSX.Element => {
     // Mostrar error si hay problemas al cargar la configuración
     if (error) {
         return (
-            <div className="flex flex-col min-h-screen w-full">
-                <div className="flex-1 bg-gray-100 min-h-screen h-full flex items-center justify-center">
-                    <div className="text-center">
-                        <div className="text-red-500 mb-4">
-                            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex flex-col min-h-screen w-full bg-continental-bg">
+                <div className="flex-1 min-h-screen h-full flex items-center justify-center p-6">
+                    <div className="industrial-surface max-w-md w-full p-8 text-center">
+                        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[color-mix(in_srgb,var(--color-continental-red)_10%,white)] text-continental-red mb-5">
+                            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Error al cargar configuración</h3>
-                        <p className="text-gray-600 mb-4">{error}</p>
+                        <h3 className="text-lg font-bold tracking-tight text-continental-black mb-2">Error al cargar configuración</h3>
+                        <p className="text-sm text-continental-gray-1 mb-6">{error}</p>
                         <button
                             onClick={() => window.location.reload()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                            className="inline-flex items-center justify-center px-5 h-10 bg-continental-yellow text-continental-black text-sm font-semibold rounded-md shadow-industrial-sm hover:bg-[#f79400] transition-colors cursor-pointer"
                         >
                             Reintentar
                         </button>
@@ -55,10 +58,10 @@ const EmployeeDashboard = (): JSX.Element => {
     }
 
     return (
-        <div className="flex flex-col min-h-screen w-full">
+        <div className="flex flex-col min-h-screen w-full bg-continental-bg">
 
             {/* Main Content */}
-            <div className="flex-1 bg-gray-100 min-h-screen h-full">
+            <div className="flex-1 min-h-screen h-full">
                 <Routes>
                     <Route index element={<EmployeeHome currentPeriod={currentPeriod} />} />
 
