@@ -255,12 +255,6 @@ namespace tiempo_libre.Controllers
                  .Select(v => new { v.Id, v.EmpleadoId, v.FechaVacacion })
                  .ToListAsync();
 
-                var vacacionesConSolicitudPendiente = await _db.SolicitudesReprogramacion
-                .Where(s => s.EstadoSolicitud == "Pendiente"
-                         && empleadosIds.Contains(s.EmpleadoId))
-                .Select(s => s.VacacionOriginalId)
-                .ToListAsync();
-
                 var vacacionesLegacy = await _db.Vacaciones
                     .Where(v => empleadosIds.Contains(v.IdUsuarioEmpleadoSindicalizado)
                                 && v.Fecha >= DateOnly.FromDateTime(inicio)
@@ -277,9 +271,11 @@ namespace tiempo_libre.Controllers
 
                 foreach (var vac in vacacionesProgramadas)
                 {
-                    // NO mostrar como vacación si tiene solicitud pendiente de reprogramación
-                    if (vacacionesConSolicitudPendiente.Contains(vac.Id)) continue; // <-- AGREGA ESTA LÍNEA
-
+                    // Una solicitud de reprogramación PENDIENTE no cambia la vacación
+                    // original: el empleado sigue de vacaciones en esa fecha hasta que
+                    // el jefe apruebe. Mantener la vacación visible en el rol evita
+                    // que se asigne tiempo extra a empleados aún ausentes (coincide
+                    // con el reporte de reprogramaciones).
                     var fecha = vac.FechaVacacion.ToString("yyyy-MM-dd");
                     if (empleadosPorId.ContainsKey(vac.EmpleadoId))
                     {
