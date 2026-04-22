@@ -405,6 +405,27 @@ export const Reportes = () => {
             subtitle: "Nómina, nombre, fecha trabajada y fecha de intercambio aprobada.",
             category: 'reprogramacion'
         },
+        {
+            id: 16,
+            icon: FileText,
+            title: "Reporte SAP Permutas (Eliminar)",
+            subtitle: "Días de permuta que se quitarán de la programación original.",
+            category: 'reprogramacion'
+        },
+        {
+            id: 17,
+            icon: FileSpreadsheet,
+            title: "Reporte SAP Festivos Trabajados (Nuevos)",
+            subtitle: "Días de festivos trabajados aprobados que se agregarán.",
+            category: 'reprogramacion'
+        },
+        {
+            id: 18,
+            icon: FileSpreadsheet,
+            title: "Reporte SAP Festivos Trabajados (Eliminar)",
+            subtitle: "Días de festivos trabajados que se quitarán.",
+            category: 'reprogramacion'
+        },
     ];
 
     const filteredReports = selectedCategory === 'all'
@@ -502,6 +523,67 @@ export const Reportes = () => {
                         ? error.message
                         : "No se pudo generar el reporte de faltantes de capturar vacaciones"
                 );
+            }
+        }
+        else if (reportId === 16) {
+            // Permutas Eliminar
+            try {
+                if (!selectedYear) { toast.error("Selecciona el año"); return; }
+                const loadingToast = toast.loading("Generando Reporte SAP Permutas (Eliminar)...");
+                await reportesService.exportarReporteSAPPermutasEliminar({
+                    year: parseInt(selectedYear),
+                    areaId: selectedArea ? parseInt(selectedArea) : undefined,
+                    gruposRol: selectedGroups.length > 0 ? selectedGroups : undefined,
+                    fechaResolucionDesde: dateRangeFrom || singleDate || undefined,
+                    fechaResolucionHasta: dateRangeTo || singleDate || undefined,
+                    horaDesde: timeFrom || undefined,
+                    horaHasta: timeTo || undefined,
+                });
+                toast.dismiss(loadingToast);
+                toast.success("Reporte SAP Permutas (Eliminar) descargado");
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+            }
+        } else if (reportId === 17) {
+            // Festivos Nuevos
+            try {
+                if (!selectedYear) { toast.error("Selecciona el año"); return; }
+                const loadingToast = toast.loading("Generando Reporte SAP Festivos (Nuevos)...");
+                await reportesService.exportarReporteSAPFestivosNuevos({
+                    year: parseInt(selectedYear),
+                    areaId: selectedArea ? parseInt(selectedArea) : undefined,
+                    gruposRol: selectedGroups.length > 0 ? selectedGroups : undefined,
+                    fechaResolucionDesde: dateRangeFrom || singleDate || undefined,
+                    fechaResolucionHasta: dateRangeTo || singleDate || undefined,
+                    horaDesde: timeFrom || undefined,
+                    horaHasta: timeTo || undefined,
+                });
+                toast.dismiss(loadingToast);
+                toast.success("Reporte SAP Festivos (Nuevos) descargado");
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+            }
+        } else if (reportId === 18) {
+            // Festivos Eliminar
+            try {
+                if (!selectedYear) { toast.error("Selecciona el año"); return; }
+                const loadingToast = toast.loading("Generando Reporte SAP Festivos (Eliminar)...");
+                await reportesService.exportarReporteSAPFestivosEliminar({
+                    year: parseInt(selectedYear),
+                    areaId: selectedArea ? parseInt(selectedArea) : undefined,
+                    gruposRol: selectedGroups.length > 0 ? selectedGroups : undefined,
+                    fechaResolucionDesde: dateRangeFrom || singleDate || undefined,
+                    fechaResolucionHasta: dateRangeTo || singleDate || undefined,
+                    horaDesde: timeFrom || undefined,
+                    horaHasta: timeTo || undefined,
+                });
+                toast.dismiss(loadingToast);
+                toast.success("Reporte SAP Festivos (Eliminar) descargado");
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
             }
         }
         else if (reportId === 14) {

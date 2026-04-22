@@ -229,5 +229,110 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        [HttpGet("reporte-sap-permutas-nuevos")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        public Task<IActionResult> ExportarReporteSapPermutasNuevos(
+            [FromQuery] int year,
+            [FromQuery] int? areaId = null,
+            [FromQuery] List<string>? gruposRol = null,
+            [FromQuery] string? fechaResolucionDesde = null,
+            [FromQuery] string? horaDesde = null,
+            [FromQuery] string? fechaResolucionHasta = null,
+            [FromQuery] string? horaHasta = null)
+            => ExportarReporteSapPermutas(year, areaId, gruposRol, fechaResolucionDesde, horaDesde, fechaResolucionHasta, horaHasta);
+
+        [HttpGet("reporte-sap-permutas-eliminar")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        public async Task<IActionResult> ExportarReporteSapPermutasEliminar(
+            [FromQuery] int year,
+            [FromQuery] int? areaId = null,
+            [FromQuery] List<string>? gruposRol = null,
+            [FromQuery] string? fechaResolucionDesde = null,
+            [FromQuery] string? horaDesde = null,
+            [FromQuery] string? fechaResolucionHasta = null,
+            [FromQuery] string? horaHasta = null)
+        {
+            try
+            {
+                DateTime? desde = ParseFechaHora(fechaResolucionDesde, horaDesde, esInicio: true);
+                DateTime? hasta = ParseFechaHora(fechaResolucionHasta, horaHasta, esInicio: false);
+
+                var (stream, fileName) = await _exportService.GenerarReporteSapPermutasEliminarAsync(year, areaId, gruposRol, desde, hasta);
+                stream.Position = 0;
+                return File(stream, "text/plain", fileName);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al generar el reporte SAP Permutas Eliminar");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("reporte-sap-festivos-nuevos")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        public async Task<IActionResult> ExportarReporteSapFestivosNuevos(
+            [FromQuery] int year,
+            [FromQuery] int? areaId = null,
+            [FromQuery] List<string>? gruposRol = null,
+            [FromQuery] string? fechaResolucionDesde = null,
+            [FromQuery] string? horaDesde = null,
+            [FromQuery] string? fechaResolucionHasta = null,
+            [FromQuery] string? horaHasta = null)
+        {
+            try
+            {
+                DateTime? desde = ParseFechaHora(fechaResolucionDesde, horaDesde, esInicio: true);
+                DateTime? hasta = ParseFechaHora(fechaResolucionHasta, horaHasta, esInicio: false);
+
+                var (stream, fileName) = await _exportService.GenerarReporteSapFestivosNuevosAsync(year, areaId, gruposRol, desde, hasta);
+                stream.Position = 0;
+                return File(stream, "text/plain", fileName);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al generar el reporte SAP Festivos Nuevos");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("reporte-sap-festivos-eliminar")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        public async Task<IActionResult> ExportarReporteSapFestivosEliminar(
+            [FromQuery] int year,
+            [FromQuery] int? areaId = null,
+            [FromQuery] List<string>? gruposRol = null,
+            [FromQuery] string? fechaResolucionDesde = null,
+            [FromQuery] string? horaDesde = null,
+            [FromQuery] string? fechaResolucionHasta = null,
+            [FromQuery] string? horaHasta = null)
+        {
+            try
+            {
+                DateTime? desde = ParseFechaHora(fechaResolucionDesde, horaDesde, esInicio: true);
+                DateTime? hasta = ParseFechaHora(fechaResolucionHasta, horaHasta, esInicio: false);
+
+                var (stream, fileName) = await _exportService.GenerarReporteSapFestivosEliminarAsync(year, areaId, gruposRol, desde, hasta);
+                stream.Position = 0;
+                return File(stream, "text/plain", fileName);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al generar el reporte SAP Festivos Eliminar");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
     }
 }

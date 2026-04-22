@@ -12,8 +12,14 @@ import { Search, Users, ArrowLeftRight, RefreshCw, Info } from "lucide-react";
 const TURNOS_DISPLAY = [
     { label: "Turno 1 (Primero)", value: "1" },
     { label: "Turno 2 (Segundo)", value: "2" },
-    { label: "Turno 3 (Tercero)", value: "3" }
+    { label: "Turno 3 (Tercero)", value: "3" },
+    { label: "Descanso", value: "D" }
 ];
+
+const TURNOS_VALIDOS = ["1", "2", "3", "D"];
+
+const formatTurnoLabel = (codigo: string) =>
+    codigo === "D" ? "Descanso" : `Turno ${codigo}`;
 
 interface PermutaModalProps {
     show: boolean;
@@ -102,7 +108,7 @@ export const PermutaModal = ({
 
                 console.log('👤 Turno origen encontrado:', entryOrigen);
 
-                if (entryOrigen?.codigoTurno && ['1', '2', '3'].includes(entryOrigen.codigoTurno)) {
+                if (entryOrigen?.codigoTurno && TURNOS_VALIDOS.includes(entryOrigen.codigoTurno)) {
                     setTurnoOrigenDetectado(entryOrigen.codigoTurno);
                     setTurnoOrigen(entryOrigen.codigoTurno);
                     console.log('✅ Turno origen asignado:', entryOrigen.codigoTurno);
@@ -147,7 +153,7 @@ export const PermutaModal = ({
 
                     console.log('👥 Turno destino final:', entryDestino);
 
-                    if (entryDestino?.codigoTurno && ['1', '2', '3'].includes(entryDestino.codigoTurno)) {
+                    if (entryDestino?.codigoTurno && TURNOS_VALIDOS.includes(entryDestino.codigoTurno)) {
                         setTurnoDestinoDetectado(entryDestino.codigoTurno);
                         setTurnoDestino(entryDestino.codigoTurno);
                         console.log('✅ Turno destino asignado:', entryDestino.codigoTurno);
@@ -207,8 +213,8 @@ export const PermutaModal = ({
             if (response.exitoso) {
                 toast.success(esCambioIndividual ? "Cambio de turno registrado" : "Permuta solicitada exitosamente", {
                     description: esCambioIndividual
-                        ? `${empleadoOrigen.fullName} cambia a turno ${turnoOrigen}`
-                        : `${empleadoOrigen.fullName} (T${turnoOrigen}) ⇄ ${empleadoDestino!.fullName} (T${turnoDestino})`,
+                        ? `${empleadoOrigen.fullName} cambia a ${formatTurnoLabel(turnoOrigen)}`
+                        : `${empleadoOrigen.fullName} (${formatTurnoLabel(turnoOrigen)}) ⇄ ${empleadoDestino!.fullName} (${formatTurnoLabel(turnoDestino)})`,
                 });
                 handleClose();
             } else {
@@ -393,7 +399,7 @@ export const PermutaModal = ({
                                 <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs flex items-start gap-2">
                                     <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                                     <span className="text-blue-700">
-                                        Turno actual detectado: <strong>Turno {turnoOrigenDetectado}</strong> para esta fecha
+                                        Turno actual detectado: <strong>{formatTurnoLabel(turnoOrigenDetectado)}</strong> para esta fecha
                                     </span>
                                 </div>
                             )}
@@ -422,7 +428,7 @@ export const PermutaModal = ({
                                     <div className="mb-2 p-2 bg-green-50 border border-green-200 rounded text-xs flex items-start gap-2">
                                         <Info className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                                         <span className="text-green-700">
-                                            Turno actual detectado: <strong>Turno {turnoDestinoDetectado}</strong> para esta fecha
+                                            Turno actual detectado: <strong>{formatTurnoLabel(turnoDestinoDetectado)}</strong> para esta fecha
                                         </span>
                                     </div>
                                 )}

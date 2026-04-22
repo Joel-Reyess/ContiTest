@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DataTable, type Column, type PaginationConfig } from '@/components/ui/data-table';
 import { FilterBar, type FilterConfig } from '@/components/ui/filter-bar';
 import { ContentContainer } from '@/components/ui/content-container';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useEmpleadosSindicalizados } from '@/hooks/useEmpleadosSindicalizados';
 import { useAreas } from '@/hooks/useAreas';
 import { useLeaderCache } from '@/hooks/useLeaderCache';
@@ -31,6 +31,7 @@ const BULK_MAX_PAGES = 10;
 
 export const Plantilla = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedArea, setSelectedArea] = useState('all');
   const [selectedGroup, setSelectedGroup] = useState('all');
@@ -154,7 +155,7 @@ export const Plantilla = () => {
             setDeletePassword('');
             refetch();
         } catch (e: any) {
-            setDeleteError(e?.response?.data?.message ?? 'Error al eliminar');
+            setDeleteError(e?.details?.errorMsg ?? e?.response?.data?.errorMsg ?? e?.message ?? 'Error al eliminar');
         } finally {
             setDeleteLoading(false);
         }
@@ -179,7 +180,7 @@ export const Plantilla = () => {
       {
           key: 'acciones', label: 'Acciones', sortable: false, render: (_, row) => (
               <div className="flex gap-2">
-                  <Button variant="continental" size="sm" onClick={() => navigate(`/admin/plantilla/${row.id}`)}>Ver empleado</Button>
+                  <Button variant="continental" size="sm" onClick={() => navigate(`/admin/plantilla/${row.id}`, { state: { from: location.pathname + location.search } })}>Ver empleado</Button>
                   <Button
                       variant="outline"
                       size="sm"

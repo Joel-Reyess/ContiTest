@@ -1,6 +1,6 @@
 import { ArrowLeft, CalendarPlus2, Download, Key, UserCheck, Edit2, Check, X, Clock, FileText } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Button } from "../ui/button";
 import CalendarComponent from "../Calendar/Calendar";
 import type { Sindicalizado } from "@/interfaces/Sindicalizado";
@@ -36,6 +36,17 @@ export const DetallesEmpleado = ({
   const params = useParams();
   const id = params.id;
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleBack = () => {
+    const from = (location.state as { from?: string } | null)?.from;
+    if (from) {
+      navigate(from);
+      return;
+    }
+    const parent = location.pathname.replace(/\/\d+\/?$/, "");
+    navigate(parent || "/");
+  };
   const { config, currentPeriod } = useVacationConfig();
   const anioVigente = config?.anioVigente;
   
@@ -683,7 +694,7 @@ const handleRemoveDay = async (fecha: string) => {
       <div className="p-6 bg-white min-h-screen flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-lg text-red-600">Error: {error}</div>
-          <Button onClick={() => navigate(-1)} variant="outline">
+          <Button onClick={handleBack} variant="outline">
             <ArrowLeft size={16} className="mr-2" />
             Regresar
           </Button>
@@ -701,7 +712,7 @@ const handleRemoveDay = async (fecha: string) => {
           <div className="space-y-2">
             {/* 1. Botón regresar */}
             <button
-              onClick={() => navigate(-1)}
+              onClick={handleBack}
               className="flex items-center gap-2 text-continental-black hover:text-continental-blue-dark transition-colors"
             >
               <ArrowLeft size={20} />

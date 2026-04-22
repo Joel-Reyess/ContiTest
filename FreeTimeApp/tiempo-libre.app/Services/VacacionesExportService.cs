@@ -523,6 +523,198 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Genera el reporte SAP de permutas aprobadas en formato "eliminar" — usa los
+        /// turnos que los empleados tenían ANTES de la permuta (almacenados en el
+        /// modelo Permuta; la relación está invertida porque al guardar se registra
+        /// el turno que cada empleado recibe tras el intercambio).
+        /// </summary>
+        public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapPermutasEliminarAsync(
+            int year,
+            int? areaId = null,
+            List<string>? gruposRol = null,
+            DateTime? fechaResolucionDesde = null,
+            DateTime? fechaResolucionHasta = null)
+        {
+            try
+            {
+                var query = _context.Permutas
+                    .AsNoTracking()
+                    .Include(p => p.EmpleadoOrigen).ThenInclude(e => e.Grupo)
+                    .Include(p => p.EmpleadoDestino).ThenInclude(e => e.Grupo)
+                    .Where(p => p.EstadoSolicitud == "Aprobada" &&
+                                p.FechaPermuta >= new DateOnly(year, 1, 1) &&
+                                p.FechaPermuta <= new DateOnly(year, 12, 31));
+
+                if (areaId.HasValue)
+                    query = query.Where(p => p.EmpleadoOrigen.AreaId == areaId.Value);
+
+                if (gruposRol != null && gruposRol.Any())
+                    query = query.Where(p => p.EmpleadoOrigen.Grupo != null &&
+                                             gruposRol.Contains(p.EmpleadoOrigen.Grupo.Rol));
+
+                if (fechaResolucionDesde.HasValue)
+                    query = query.Where(p => p.FechaRespuesta >= fechaResolucionDesde.Value);
+                if (fechaResolucionHasta.HasValue)
+                    query = query.Where(p => p.FechaRespuesta <= fechaResolucionHasta.Value);
+
+                // Los cambios individuales (EmpleadoDestinoId == null) no tienen un
+                // turno previo almacenado — el frontend manda turnoEmpleadoDestino=null,
+                // por lo que Permuta.TurnoEmpleadoDestino también es null. Para esos
+                // casos obtenemos el turno previo del rol SAP del origen.
+                var permutas = await query
+                    .OrderBy(p => p.EmpleadoOrigen.Nomina)
+                    .ThenBy(p => p.FechaPermuta)
+                    .Select(p => new
+                    {
+                        NominaOrigen = p.EmpleadoOrigen.Nomina,
+                        NominaDestino = p.EmpleadoDestino != null ? p.EmpleadoDestino.Nomina : (int?)null,
+                        Fecha = p.FechaPermuta,
+                        EsCambioIndividual = !p.EmpleadoDestinoId.HasValue,
+                        // Al guardar la permuta, TurnoEmpleadoOrigen = turno que el origen RECIBIRÁ
+                        // (= turno que el destino tenía antes). Por lo tanto el turno ANTES del
+                        // intercambio para el origen es TurnoEmpleadoDestino y para el destino
+                        // es TurnoEmpleadoOrigen. Para cambios individuales queda null aquí.
+                        TurnoPrevioOrigen = p.TurnoEmpleadoDestino,
+                        TurnoPrevioDestino = p.TurnoEmpleadoOrigen
+                    })
+                    .ToListAsync();
+
+                var nominasIndividuales = permutas
+                    .Where(p => p.EsCambioIndividual && p.NominaOrigen.HasValue)
+                    .Select(p => p.NominaOrigen!.Value)
+                    .Distinct()
+                    .ToList();
+
+                var turnosSapPorNomina = nominasIndividuales.Count == 0
+                    ? new Dictionary<int, string>()
+                    : await _context.RolesEmpleadosSAP
+                        .Where(r => nominasIndividuales.Contains(r.Nomina))
+                        .Select(r => new { r.Nomina, r.Turno })
+                        .ToDictionaryAsync(r => r.Nomina, r => r.Turno ?? string.Empty);
+
+                var sb = new StringBuilder(permutas.Count * 64);
+                foreach (var p in permutas)
+                {
+                    var fechaStr = p.Fecha.ToString("ddMMyyyy");
+
+                    string? turnoPrevioOrigen = p.TurnoPrevioOrigen;
+                    if (p.EsCambioIndividual && p.NominaOrigen.HasValue
+                        && turnosSapPorNomina.TryGetValue(p.NominaOrigen.Value, out var turnoSap))
+                    {
+                        turnoPrevioOrigen = turnoSap;
+                    }
+
+                    if (p.NominaOrigen.HasValue && !string.IsNullOrEmpty(turnoPrevioOrigen))
+                    {
+                        sb.Append(p.NominaOrigen.Value).Append(',')
+                          .Append(fechaStr).Append(',').Append(fechaStr)
+                          .Append(",,,,,").Append(turnoPrevioOrigen).Append('\n');
+                    }
+                    if (p.NominaDestino.HasValue && !string.IsNullOrEmpty(p.TurnoPrevioDestino))
+                    {
+                        sb.Append(p.NominaDestino.Value).Append(',')
+                          .Append(fechaStr).Append(',').Append(fechaStr)
+                          .Append(",,,,,").Append(p.TurnoPrevioDestino).Append('\n');
+                    }
+                }
+
+                var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var bytes = encoding.GetBytes(sb.ToString());
+                var stream = new MemoryStream(bytes, writable: false);
+                var fileName = $"ReporteSAP_Permutas_Eliminar_{year}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+                return (stream, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando reporte SAP de permutas (eliminar)");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Genera el reporte SAP de festivos trabajados intercambiados.
+        /// esParaEliminar=true exporta el día festivo original que deja de ser laborable;
+        /// esParaEliminar=false exporta la fecha nueva de vacación que se asigna.
+        /// Formato: NOMINA,FECHA(ddMMyyyy),FECHA(ddMMyyyy),1100
+        /// </summary>
+        public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapFestivosNuevosAsync(
+            int year, int? areaId = null, List<string>? gruposRol = null,
+            DateTime? fechaResolucionDesde = null, DateTime? fechaResolucionHasta = null)
+            => await GenerarReporteSapFestivosBaseAsync(year, false, areaId, gruposRol, fechaResolucionDesde, fechaResolucionHasta);
+
+        public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapFestivosEliminarAsync(
+            int year, int? areaId = null, List<string>? gruposRol = null,
+            DateTime? fechaResolucionDesde = null, DateTime? fechaResolucionHasta = null)
+            => await GenerarReporteSapFestivosBaseAsync(year, true, areaId, gruposRol, fechaResolucionDesde, fechaResolucionHasta);
+
+        private async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapFestivosBaseAsync(
+            int year,
+            bool esParaEliminar,
+            int? areaId,
+            List<string>? gruposRol,
+            DateTime? fechaResolucionDesde,
+            DateTime? fechaResolucionHasta)
+        {
+            try
+            {
+                var query = _context.SolicitudesFestivosTrabajados
+                    .AsNoTracking()
+                    .Include(s => s.Empleado).ThenInclude(e => e.Area)
+                    .Include(s => s.Empleado).ThenInclude(e => e.Grupo)
+                    .Where(s => s.EstadoSolicitud == "Aprobada");
+
+                // `year` identifica el periodo de procesamiento SAP, no el año de la
+                // fecha exportada. Filtramos siempre por FechaNuevaSolicitada.Year
+                // para que los reportes Nuevos y Eliminar permanezcan emparejados
+                // (misma solicitud → misma línea en ambos archivos), incluso cuando
+                // FestivoOriginal cae en un año calendario distinto a FechaNueva.
+                query = query.Where(s => s.FechaNuevaSolicitada.Year == year);
+
+                if (areaId.HasValue)
+                    query = query.Where(s => s.Empleado.AreaId == areaId.Value);
+
+                if (gruposRol != null && gruposRol.Any())
+                    query = query.Where(s => s.Empleado.Grupo != null && gruposRol.Contains(s.Empleado.Grupo.Rol));
+
+                if (fechaResolucionDesde.HasValue)
+                    query = query.Where(s => s.FechaRespuesta >= fechaResolucionDesde.Value);
+                if (fechaResolucionHasta.HasValue)
+                    query = query.Where(s => s.FechaRespuesta <= fechaResolucionHasta.Value);
+
+                var datos = await query
+                    .OrderBy(s => s.Empleado.Nomina)
+                    .Select(s => new
+                    {
+                        s.Empleado.Nomina,
+                        Fecha = esParaEliminar ? s.FestivoOriginal : s.FechaNuevaSolicitada
+                    })
+                    .ToListAsync();
+
+                var sb = new StringBuilder(datos.Count * 32);
+                foreach (var item in datos)
+                {
+                    var fechaStr = item.Fecha.ToString("ddMMyyyy");
+                    sb.Append(item.Nomina).Append(',')
+                      .Append(fechaStr).Append(',')
+                      .Append(fechaStr).Append(',')
+                      .Append("1100").Append('\n');
+                }
+
+                var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var bytes = encoding.GetBytes(sb.ToString());
+                var stream = new MemoryStream(bytes, writable: false);
+                var prefix = esParaEliminar ? "ReporteSAP_Festivos_Eliminar" : "ReporteSAP_Festivos_Nuevos";
+                var fileName = $"{prefix}_{year}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+                return (stream, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando reporte SAP de festivos trabajados");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Sanitiza el nombre de una hoja de Excel para cumplir con las restricciones:
         /// - Máximo 31 caracteres
         /// - No puede contener: : \ / ? * [ ]

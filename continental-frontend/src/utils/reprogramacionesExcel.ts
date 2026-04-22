@@ -12,9 +12,24 @@ interface ReprogramacionExportMeta {
   tipo?: 'general' | 'hu57';
 }
 
+// Fechas "YYYY-MM-DD" del backend se parsean como UTC si se pasan a `new Date()`,
+// lo que en zonas UTC- desplaza la fecha un día hacia atrás al formatearla en local.
+// Parseamos el segmento de fecha como hora local para preservar el día original.
+const parseDateToLocal = (value: string): Date => {
+  const onlyDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (onlyDate) {
+    return new Date(
+      parseInt(onlyDate[1], 10),
+      parseInt(onlyDate[2], 10) - 1,
+      parseInt(onlyDate[3], 10),
+    );
+  }
+  return new Date(value);
+};
+
 const formatDate = (value?: string | null): string => {
   if (!value) return '';
-  return format(new Date(value), 'dd/MM/yyyy', { locale: es });
+  return format(parseDateToLocal(value), 'dd/MM/yyyy', { locale: es });
 };
 
 /**

@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ const BULK_MAX_PAGES = 10;
 
 export const Plantilla = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user, hasRole } = useAuth();
 
     useEffect(() => {
@@ -461,7 +462,7 @@ export const Plantilla = () => {
                     <Button
                         variant="continental"
                         size="sm"
-                        onClick={() => navigate(`/area/plantilla/${row.id}`)}
+                        onClick={() => navigate(`/area/plantilla/${row.id}`, { state: { from: location.pathname + location.search } })}
                     >
                         Ver empleado
                     </Button>
@@ -559,7 +560,7 @@ export const Plantilla = () => {
             setDeletePassword('');
             await handleRefetch();
         } catch (e: any) {
-            setDeleteError(e?.response?.data?.message ?? 'Error al eliminar');
+            setDeleteError(e?.details?.errorMsg ?? e?.response?.data?.errorMsg ?? e?.message ?? 'Error al eliminar');
         } finally {
             setDeleteLoading(false);
         }

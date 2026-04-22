@@ -4,37 +4,38 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #fff;
+  color-scheme: light;
+  color: #0a0a0a;
+  background-color: #f7f6f2;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --radius: 0.625rem;
+  --radius: 0.375rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.18 0 0);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
+  --secondary-foreground: oklch(0.18 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent-foreground: oklch(0.18 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.9 0 0);
+  --input: oklch(0.9 0 0);
+  --ring: oklch(0.6 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -42,25 +43,33 @@
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --continental-yellow: #fbbf24;
-  --continental-black: #000000;
+  --sidebar-accent-foreground: oklch(0.18 0 0);
+  --sidebar-border: oklch(0.9 0 0);
+  --sidebar-ring: oklch(0.6 0 0);
+  --continental-yellow: #ffa500;
+  --continental-yellow-soft: #fff4dd;
+  --continental-black: #0a0a0a;
   --continental-white: #ffffff;
-  --continental-gray-1: #737373;
+  --continental-gray-1: #525252;
   --continental-gray-2: #969696;
-  --continental-gray-3: #cdcdcd;
+  --continental-gray-3: #d4d4d4;
   --continental-gray-4: #f0f0f0;
+  --continental-gray-5: #fafafa;
   --continental-blue-light: #00a5dc;
   --continental-blue-dark: #004eaf;
   --continental-green: #2db928;
   --continental-green-light: #2db928;
   --continental-green-dark: #057855;
   --continental-red: #ff2d37;
+
+  /* Industrial shadow tokens - short, crisp, no heavy blur */
+  --shadow-industrial-xs: 0 1px 0 0 rgb(0 0 0 / 0.04);
+  --shadow-industrial-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 1px 0 0 rgb(0 0 0 / 0.02);
+  --shadow-industrial-md: 0 2px 4px -1px rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  --shadow-industrial-lg: 0 8px 24px -8px rgb(0 0 0 / 0.12), 0 2px 4px -1px rgb(0 0 0 / 0.04);
 }
 
 
@@ -70,15 +79,15 @@ body {
   width: 100%;
   min-height: 100vh;
   box-sizing: border-box;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.005em;
 }
 
-
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
+/* Better numeric alignment across tables and stats */
+table,
+.tabular-nums,
+[data-slot="badge"] {
+  font-variant-numeric: tabular-nums;
 }
 
 @theme inline {
@@ -120,19 +129,24 @@ body {
   
   /* Continental Brand Colors */
   --color-continental-yellow: #ffa500;
-  --color-continental-black: #000000;
+  --color-continental-yellow-soft: #fff4dd;
+  --color-continental-black: #0a0a0a;
   --color-continental-white: #ffffff;
-  --color-continental-gray-1: #737373;
+  --color-continental-gray-1: #525252;
   --color-continental-gray-2: #969696;
-  --color-continental-gray-3: #cdcdcd;
+  --color-continental-gray-3: #d4d4d4;
   --color-continental-gray-4: #f0f0f0;
+  --color-continental-gray-5: #fafafa;
   --color-continental-blue-light: #00a5dc;
   --color-continental-blue-dark: #004eaf;
   --color-continental-green: #2db928;
   --color-continental-green-light: #2db928;
   --color-continental-green-dark: #057855;
   --color-continental-red: #ff2d37;
-  --color-continental-bg: #f4efe5;
+  --color-continental-bg: #f7f6f2;
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .dark {
@@ -181,12 +195,14 @@ body {
 @layer utilities {
   /* Continental Background Colors */
   .bg-continental-yellow { background-color: var(--color-continental-yellow); }
+  .bg-continental-yellow-soft { background-color: var(--color-continental-yellow-soft); }
   .bg-continental-black { background-color: var(--color-continental-black); }
   .bg-continental-white { background-color: var(--color-continental-white); }
   .bg-continental-gray-1 { background-color: var(--color-continental-gray-1); }
   .bg-continental-gray-2 { background-color: var(--color-continental-gray-2); }
   .bg-continental-gray-3 { background-color: var(--color-continental-gray-3); }
   .bg-continental-gray-4 { background-color: var(--color-continental-gray-4); }
+  .bg-continental-gray-5 { background-color: var(--color-continental-gray-5); }
   .bg-continental-blue-light { background-color: var(--color-continental-blue-light); }
   .bg-continental-blue-dark { background-color: var(--color-continental-blue-dark); }
   .bg-continental-green { background-color: var(--color-continental-green); }
@@ -222,4 +238,53 @@ body {
   /* Hover variants */
   .hover\:bg-continental-yellow\/90:hover { background-color: color-mix(in srgb, var(--color-continental-yellow) 90%, transparent); }
   .hover\:text-continental-yellow:hover { color: var(--color-continental-yellow); }
+
+  /* Industrial design utilities */
+  .industrial-eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-continental-gray-1);
+  }
+  .industrial-heading {
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--color-continental-black);
+  }
+  .industrial-surface {
+    background-color: var(--color-continental-white);
+    border: 1px solid var(--color-continental-gray-3);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-industrial-sm);
+  }
+  .industrial-accent-rail {
+    position: relative;
+  }
+  .industrial-accent-rail::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: var(--color-continental-yellow);
+    border-top-left-radius: var(--radius);
+    border-bottom-left-radius: var(--radius);
+  }
+  .industrial-divider {
+    border-bottom: 1px solid var(--color-continental-gray-3);
+  }
+  .shadow-industrial-xs { box-shadow: var(--shadow-industrial-xs); }
+  .shadow-industrial-sm { box-shadow: var(--shadow-industrial-sm); }
+  .shadow-industrial-md { box-shadow: var(--shadow-industrial-md); }
+  .shadow-industrial-lg { box-shadow: var(--shadow-industrial-lg); }
+
+  /* Hairline decorative pattern — evokes blueprints / engineering drawings */
+  .bg-industrial-grid {
+    background-image:
+      linear-gradient(to right, rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(10, 10, 10, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
 }

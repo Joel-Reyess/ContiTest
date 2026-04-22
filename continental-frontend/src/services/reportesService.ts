@@ -270,4 +270,67 @@ const url = `${env.API_BASE_URL}/api/reportes/reporte-sap?${qs.toString()}`;
         link.click();
         document.body.removeChild(link);
     },
+
+    async exportarReporteSAPPermutasEliminar(params: { year: number; areaId?: number; gruposRol?: string[]; fechaResolucionDesde?: string; fechaResolucionHasta?: string; horaDesde?: string; horaHasta?: string; }): Promise<void> {
+        const token = localStorage.getItem("auth_token");
+        if (!token) throw new Error("No se encontró token de autenticación");
+        const qs = new URLSearchParams();
+        qs.append("year", params.year.toString());
+        if (params.areaId) qs.append("areaId", params.areaId.toString());
+        params.gruposRol?.forEach((g) => qs.append("gruposRol", g));
+        if (params.fechaResolucionDesde) qs.append("fechaResolucionDesde", params.fechaResolucionDesde);
+        if (params.fechaResolucionHasta) qs.append("fechaResolucionHasta", params.fechaResolucionHasta);
+        if (params.horaDesde) qs.append("horaDesde", params.horaDesde);
+        if (params.horaHasta) qs.append("horaHasta", params.horaHasta);
+        const url = `${env.API_BASE_URL}/api/reportes/reporte-sap-permutas-eliminar?${qs.toString()}`;
+        const response = await fetch(url, { method: "GET", headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error("Error al descargar Reporte SAP Permutas (Eliminar)");
+        const blob = await response.blob();
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `ReporteSAP_Permutas_Eliminar_${params.year}_${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    },
+
+    async exportarReporteSAPFestivosNuevos(params: { year: number; areaId?: number; gruposRol?: string[]; fechaResolucionDesde?: string; fechaResolucionHasta?: string; horaDesde?: string; horaHasta?: string; }): Promise<void> {
+        const token = localStorage.getItem("auth_token");
+        if (!token) throw new Error("No se encontró token de autenticación");
+        const qs = new URLSearchParams();
+        qs.append("year", params.year.toString());
+        if (params.areaId) qs.append("areaId", params.areaId.toString());
+        params.gruposRol?.forEach((g) => qs.append("gruposRol", g));
+        if (params.fechaResolucionDesde) qs.append("fechaResolucionDesde", params.fechaResolucionDesde);
+        if (params.fechaResolucionHasta) qs.append("fechaResolucionHasta", params.fechaResolucionHasta);
+        if (params.horaDesde) qs.append("horaDesde", params.horaDesde);
+        if (params.horaHasta) qs.append("horaHasta", params.horaHasta);
+        const url = `${env.API_BASE_URL}/api/reportes/reporte-sap-festivos-nuevos?${qs.toString()}`;
+        const response = await fetch(url, { method: "GET", headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error("Error al descargar Reporte SAP Festivos (Nuevos)");
+        const blob = await response.blob();
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `ReporteSAP_Festivos_Nuevos_${params.year}_${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    },
+
+    async exportarReporteSAPFestivosEliminar(params: { year: number; areaId?: number; gruposRol?: string[]; fechaResolucionDesde?: string; fechaResolucionHasta?: string; horaDesde?: string; horaHasta?: string; }): Promise<void> {
+        const token = localStorage.getItem("auth_token");
+        if (!token) throw new Error("No se encontró token de autenticación");
+        const qs = new URLSearchParams();
+        qs.append("year", params.year.toString());
+        if (params.areaId) qs.append("areaId", params.areaId.toString());
+        params.gruposRol?.forEach((g) => qs.append("gruposRol", g));
+        if (params.fechaResolucionDesde) qs.append("fechaResolucionDesde", params.fechaResolucionDesde);
+        if (params.fechaResolucionHasta) qs.append("fechaResolucionHasta", params.fechaResolucionHasta);
+        if (params.horaDesde) qs.append("horaDesde", params.horaDesde);
+        if (params.horaHasta) qs.append("horaHasta", params.horaHasta);
+        const url = `${env.API_BASE_URL}/api/reportes/reporte-sap-festivos-eliminar?${qs.toString()}`;
+        const response = await fetch(url, { method: "GET", headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error("Error al descargar Reporte SAP Festivos (Eliminar)");
+        const blob = await response.blob();
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `ReporteSAP_Festivos_Eliminar_${params.year}_${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    },
 };

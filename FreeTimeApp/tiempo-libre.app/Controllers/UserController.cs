@@ -1059,6 +1059,45 @@ namespace tiempo_libre.app.Controllers
                 if (solicitudesFestivos.Any())
                     _dbContext.SolicitudesFestivosTrabajados.RemoveRange(solicitudesFestivos);
 
+                // 7b. Permutas: anular referencias como aprobador (nullable) para
+                // preservar el historial de permutas entre terceros. Las permutas
+                // donde el usuario es origen, destino o solicitante (FK no nullable)
+                // se eliminan; el caso de "Delegado solicitante sobre permuta de
+                // terceros" se pierde por limitación de esquema — habría que migrar
+                // SolicitadoPorId a nullable o usar un usuario centinela.
+                var permutasAprobadasPorEsteUsuario = await _dbContext.Permutas
+                    .Where(p => p.EmpleadoOrigenId != id && p.EmpleadoDestinoId != id
+                             && p.SolicitadoPorId != id && p.JefeAprobadorId == id)
+                    .ToListAsync();
+                foreach (var p in permutasAprobadasPorEsteUsuario) p.JefeAprobadorId = null;
+
+                var permutasPropias = await _dbContext.Permutas
+                    .Where(p => p.EmpleadoOrigenId == id || p.EmpleadoDestinoId == id
+                             || p.SolicitadoPorId == id)
+                    .ToListAsync();
+                if (permutasPropias.Any())
+                    _dbContext.Permutas.RemoveRange(permutasPropias);
+
+                // 7c. Incidencias/Permisos: igual que arriba — solo borrar cuando
+                // el usuario es el empleado afectado; para rol de autorizador o
+                // sindicato sobre incidencias de otros empleados, anulamos.
+                var incidenciasTerceros = await _dbContext.IncidenciasOPermisos
+                    .Where(i => i.IdUsuarioEmpleado != id
+                             && (i.IdUsuarioAutoiza == id || i.IdUsuarioSindicato == id))
+                    .ToListAsync();
+                foreach (var i in incidenciasTerceros)
+                {
+                    if (i.IdUsuarioSindicato == id) i.IdUsuarioSindicato = null;
+                    // IdUsuarioAutoiza no es nullable; dejar el registro para evitar
+                    // perder historial (se requiere cambio de esquema para anularlo).
+                }
+
+                var incidenciasPropias = await _dbContext.IncidenciasOPermisos
+                    .Where(i => i.IdUsuarioEmpleado == id)
+                    .ToListAsync();
+                if (incidenciasPropias.Any())
+                    _dbContext.IncidenciasOPermisos.RemoveRange(incidenciasPropias);
+
                 // 8. Eliminar AsignacionesBloque y CambiosBloque
                 var asignacionesBloque = await _dbContext.AsignacionesBloque
                     .Where(ab => ab.EmpleadoId == id || ab.AsignedoPor == id)
@@ -1229,7 +1268,7 @@ namespace tiempo_libre.app.Controllers
 
         // EP: Eliminar empleado sindicalizado (tabla Users + tabla Empleados)
         [HttpPost("delete-sindicalizado/{id}")]
-        [RolesAllowedAttribute("SuperUsuario", "Jefe De Area", "JefeDeArea")]
+        [RolesAllowedAttribute("SuperUsuario", "Jefe De Area", "JefeDeArea", "IngenieroIndustrial", "Ingeniero Industrial")]
         public async Task<IActionResult> DeleteSindicalizado(int id, [FromBody] DeleteUserRequest request)
         {
             var userToDelete = await _dbContext.Users
@@ -1278,6 +1317,34 @@ namespace tiempo_libre.app.Controllers
                 var solicitudesFestivos = await _dbContext.SolicitudesFestivosTrabajados
                     .Where(sf => sf.EmpleadoId == id).ToListAsync();
                 if (solicitudesFestivos.Any()) _dbContext.SolicitudesFestivosTrabajados.RemoveRange(solicitudesFestivos);
+
+                // Ver DeleteUser para la justificación: preservar historial entre
+                // terceros cuando este usuario solo figura como aprobador/sindicato.
+                var permutasAprobadasPorEsteUsuario = await _dbContext.Permutas
+                    .Where(p => p.EmpleadoOrigenId != id && p.EmpleadoDestinoId != id
+                             && p.SolicitadoPorId != id && p.JefeAprobadorId == id)
+                    .ToListAsync();
+                foreach (var p in permutasAprobadasPorEsteUsuario) p.JefeAprobadorId = null;
+
+                var permutas = await _dbContext.Permutas
+                    .Where(p => p.EmpleadoOrigenId == id || p.EmpleadoDestinoId == id
+                             || p.SolicitadoPorId == id)
+                    .ToListAsync();
+                if (permutas.Any()) _dbContext.Permutas.RemoveRange(permutas);
+
+                var incidenciasTerceros = await _dbContext.IncidenciasOPermisos
+                    .Where(i => i.IdUsuarioEmpleado != id
+                             && (i.IdUsuarioAutoiza == id || i.IdUsuarioSindicato == id))
+                    .ToListAsync();
+                foreach (var i in incidenciasTerceros)
+                {
+                    if (i.IdUsuarioSindicato == id) i.IdUsuarioSindicato = null;
+                }
+
+                var incidencias = await _dbContext.IncidenciasOPermisos
+                    .Where(i => i.IdUsuarioEmpleado == id)
+                    .ToListAsync();
+                if (incidencias.Any()) _dbContext.IncidenciasOPermisos.RemoveRange(incidencias);
 
                 var asignacionesBloque = await _dbContext.AsignacionesBloque
                     .Where(ab => ab.EmpleadoId == id).ToListAsync();
