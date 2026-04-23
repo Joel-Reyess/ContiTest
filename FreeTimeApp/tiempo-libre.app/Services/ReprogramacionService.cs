@@ -372,7 +372,14 @@ namespace tiempo_libre.Services
                 var vacacionActualizada = false;
                 if (request.Aprobada)
                 {
-                    var vacacion = solicitud.VacacionOriginal;
+                    var vacacion = solicitud.VacacionOriginal
+                        ?? await _db.VacacionesProgramadas.FindAsync(solicitud.VacacionOriginalId);
+
+                    if (vacacion == null)
+                    {
+                        return new ApiResponse<AprobarReprogramacionResponse>(false, null,
+                            "No se encontró la vacación original para cancelar");
+                    }
 
                     // Cancelar la vacación original en la fecha original
                     vacacion.EstadoVacacion = "Cancelada";
