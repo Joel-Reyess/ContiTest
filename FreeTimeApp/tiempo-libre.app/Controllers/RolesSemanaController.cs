@@ -91,6 +91,20 @@ namespace tiempo_libre.Controllers
 
                 var baseCalendar = baseCalendarResponse.Data.Calendario;
 
+                // Consultar vacaciones
+                var empleadosIds = empleados.Select(e => e.Id).ToList();
+
+                // Obtener fechas reprogramadas aprobadas
+                var fechasReprogramadasAprobadas = await _db.SolicitudesReprogramacion
+                    .Where(s => s.EstadoSolicitud == "Aprobada"
+                             && empleadosIds.Contains(s.EmpleadoId))
+                    .Select(s => new { s.EmpleadoId, s.FechaOriginalGuardada })
+                    .ToListAsync();
+
+                var reprogramadasSet = new HashSet<(int empleadoId, DateOnly fecha)>(
+                    fechasReprogramadasAprobadas.Select(r => (r.EmpleadoId, r.FechaOriginalGuardada))
+                );
+
                 // NUEVO: Consultar permisos e incapacidades de SAP
                 var empleadosNominas = empleados
                     .Where(e => e.Nomina.HasValue)
@@ -113,6 +127,19 @@ namespace tiempo_libre.Controllers
                     var fechaActual = permiso.Desde;
                     while (fechaActual <= permiso.Hasta)
                     {
+
+                        // NUEVO: Si es código 1100 (Vacación SAP) y ya fue reprogramada, ignorar
+                        if (permiso.ClAbPre == 1100)
+                        {
+                            var empleadoPorNomina = empleados.FirstOrDefault(e => e.Nomina == permiso.Nomina);
+                            if (empleadoPorNomina != null &&
+                                reprogramadasSet.Contains((empleadoPorNomina.Id, fechaActual)))
+                            {
+                                fechaActual = fechaActual.AddDays(1);
+                                continue;
+                            }
+                        }
+
                         var fechaStr = fechaActual.ToString("yyyy-MM-dd");
                         if (!permisosPorEmpleadoYFecha.ContainsKey(fechaStr))
                         {
@@ -129,9 +156,6 @@ namespace tiempo_libre.Controllers
                         fechaActual = fechaActual.AddDays(1);
                     }
                 }
-
-                // Consultar vacaciones
-                var empleadosIds = empleados.Select(e => e.Id).ToList();
 
                 // NUEVO: Consultar permutas aprobadas (incluir AMBOS empleados)
                 var permutasAprobadas = await _db.Permutas
