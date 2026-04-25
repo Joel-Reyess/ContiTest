@@ -31,6 +31,7 @@ export default function FestivoDetallePage() {
 
     const location = useLocation()
     const savedFilters = (location.state as any)?.filters
+    const returnTab = (location.state as any)?.returnTab
 
     useEffect(() => {
         const list: AreaOption[] = []
@@ -215,7 +216,10 @@ export default function FestivoDetallePage() {
                     <Button
                         variant="outline"
                         onClick={() => navigate('/area/solicitudes', {
-                            state: { filters: savedFilters, refetch: true }
+                            state: {
+                                filters: savedFilters, refetch: true,
+                                activeTab: returnTab ?? 'festivos'
+                            }
                         })}
                         className="flex items-center gap-2"
                     >

@@ -65,6 +65,7 @@ export default function SolicitudDetallePage() {
 
     const location = useLocation()
     const savedFilters = (location.state as any)?.filters
+    const returnTab = (location.state as any)?.returnTab
 
     // Opciones de Área base desde el usuario o desde la solicitud
     useEffect(() => {
@@ -289,7 +290,8 @@ export default function SolicitudDetallePage() {
                             navigate('/area/solicitudes', {
                                 state: {
                                     filters: savedFilters,
-                                    refetch: true  // ← Agregar esta bandera
+                                    refetch: true,
+                                    activeTab: returnTab ?? 'vacaciones'
                                 }
                             })
                         }}

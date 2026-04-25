@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState, useCallback, useRef } from 'react'
 import { Search } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { DataTable, type Column } from '../ui/data-table'
 import RejectModal from './RejectModal'
 import ApproveModal from './ApproveModal'
@@ -15,16 +15,25 @@ export function TablaFestivosTrabajados() {
     const { user } = useAuth()
     const [solicitudes, setSolicitudes] = useState<SolicitudFestivoTrabajado[]>([])
     const [loading, setLoading] = useState(true)
+    const location = useLocation()
+    const filtersRestoredRef = useRef(false)
     const [userData, setUserData] = useState<User | null>(null)
     const [loadingUserData, setLoadingUserData] = useState(false)
     const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null)
-    const [estadoFilter, setEstadoFilter] = useState<string>('Pendiente')
+    const [estadoFilter, setEstadoFilter] = useState<string>(() => {
+        const saved = (location.state as any)?.filters
+        return saved?.estadoFilter || 'Pendiente'
+    })
     const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<SolicitudFestivoTrabajado | null>(null)
     const [showApproveModal, setShowApproveModal] = useState(false)
     const [selectedSolicitudForApprove, setSelectedSolicitudForApprove] = useState<SolicitudFestivoTrabajado | null>(null)
     const [showRejectModal, setShowRejectModal] = useState(false)
-    const [query, setQuery] = useState('')
+    const [query, setQuery] = useState<string>(() => {
+        const saved = (location.state as any)?.filters
+        return saved?.query || ''
+    })
     const lastFetchedFiltersRef = useRef<string>('')
+
 
     const fetchUserData = useCallback(async () => {
         if (!user?.id) {
@@ -36,7 +45,12 @@ export function TablaFestivosTrabajados() {
             const userDetail = await userService.getUserById(user.id)
             setUserData(userDetail)
             if (userDetail?.areas && userDetail.areas.length > 0) {
-                setSelectedAreaId(userDetail.areas[0].areaId)
+                const savedAreaId = (location.state as any)?.filters?.selectedAreaId
+                if (savedAreaId) {
+                    setSelectedAreaId(savedAreaId)
+                } else {
+                    setSelectedAreaId(userDetail.areas[0].areaId)
+                }
             }
         } catch (error) {
             console.error('Error fetching user data:', error)
@@ -263,7 +277,11 @@ export function TablaFestivosTrabajados() {
                 <div className="flex flex-col gap-1 py-1">
                     <Link
                         to={`/area/festivos/${row.id}`}
-                        state={{ filters: { selectedAreaId, estadoFilter, query } }}
+                        state={{
+                            filters: { selectedAreaId, estadoFilter, query },
+                            returnPath: '/area/solicitudes',
+                            returnTab: 'festivos'
+                        }}
                         className="inline-flex h-7 w-full items-center justify-center rounded-lg bg-[var(--color-continental-yellow,#FDB41C)] px-2 text-xs font-semibold text-black hover:opacity-90 whitespace-nowrap"
                     >
                         Ver solicitud

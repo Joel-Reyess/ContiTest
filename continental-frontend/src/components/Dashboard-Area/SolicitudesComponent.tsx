@@ -36,6 +36,7 @@ import { SolicitudesPermisos } from './SolicitudesPermisos';
 import { TablaFestivosTrabajados } from './TablaFestivosTrabajados';
 import { TablaPermutas } from './TablaPermutas';
 import { ChevronDown } from 'lucide-react'
+import { useLocation } from 'react-router-dom';
 function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
     const getPeriodoStatus = (periodo: 'ProgramacionAnual' | 'Reprogramacion') => {
         if (periodoActual === periodo) {
@@ -73,8 +74,12 @@ function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
 type TabOption = 'solicitudes' | 'festivos' | 'permutas' | 'permisos' | 'vacaciones';
 
 const SolicitudesComponent: React.FC = () => {
+    const location = useLocation()
     const { config, loading, error } = useVacationConfig()
-    const [selectedTab, setSelectedTab] = useState<TabOption>('vacaciones')
+    const [selectedTab, setSelectedTab] = useState<TabOption>(() => {
+        const stateTab = (location.state as any)?.activeTab
+        return (stateTab as TabOption) || 'vacaciones'
+    })
 
     if (loading) {
         return (
