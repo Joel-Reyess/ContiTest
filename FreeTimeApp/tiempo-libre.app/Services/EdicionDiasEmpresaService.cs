@@ -136,15 +136,14 @@ namespace tiempo_libre.Services
                     return new ApiResponse<SolicitudEdicionDiaEmpresaDto>(false, null,
                         "Ya existe una solicitud pendiente para este día.");
 
-                // Obtener jefe de área del empleado
+                // Obtener jefe de área del empleado via Area.JefeId
                 int? jefeAreaId = null;
                 if (empleado.AreaId.HasValue)
                 {
-                    var jefe = await _db.Users
-                        .Where(u => u.AreaId == empleado.AreaId
-                                 && u.Roles.Any(r => r.Name == "Jefe De Area" || r.Name == "JefeArea"))
+                    var area = await _db.Areas
+                        .Where(a => a.AreaId == empleado.AreaId && a.JefeId.HasValue)
                         .FirstOrDefaultAsync();
-                    jefeAreaId = jefe?.Id;
+                    jefeAreaId = area?.JefeId;
                 }
 
                 var solicitud = new SolicitudEdicionDiaEmpresa
@@ -306,11 +305,8 @@ namespace tiempo_libre.Services
 
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerSolicitudesPendientesJefeAsync(int jefeId)
         {
-            var jefe = await _db.Users
-                .Include(u => u.Area)
-                .FirstOrDefaultAsync(u => u.Id == jefeId);
-
-            if (jefe?.AreaId == null) return new List<SolicitudEdicionDiaEmpresaDto>();
+            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.JefeId == jefeId);
+            if (areaDelJefe == null) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa
                 .Include(s => s.Empleado)
@@ -319,7 +315,7 @@ namespace tiempo_libre.Services
                     .ThenInclude(e => e.Grupo)
                 .Include(s => s.JefeArea)
                 .Include(s => s.SolicitadoPor)
-                .Where(s => s.Empleado.AreaId == jefe.AreaId && s.EstadoSolicitud == "Pendiente")
+                .Where(s => s.Empleado.AreaId == areaDelJefe.AreaId && s.EstadoSolicitud == "Pendiente")
                 .OrderBy(s => s.FechaSolicitud)
                 .ToListAsync();
 
@@ -328,8 +324,8 @@ namespace tiempo_libre.Services
 
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerTodasSolicitudesJefeAsync(int jefeId)
         {
-            var jefe = await _db.Users.FindAsync(jefeId);
-            if (jefe?.AreaId == null) return new List<SolicitudEdicionDiaEmpresaDto>();
+            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.JefeId == jefeId);
+            if (areaDelJefe == null) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa
                 .Include(s => s.Empleado)
@@ -338,7 +334,7 @@ namespace tiempo_libre.Services
                     .ThenInclude(e => e.Grupo)
                 .Include(s => s.JefeArea)
                 .Include(s => s.SolicitadoPor)
-                .Where(s => s.Empleado.AreaId == jefe.AreaId)
+                .Where(s => s.Empleado.AreaId == areaDelJefe.AreaId)
                 .OrderByDescending(s => s.FechaSolicitud)
                 .ToListAsync();
 

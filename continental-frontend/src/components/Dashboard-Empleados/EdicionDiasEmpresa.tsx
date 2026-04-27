@@ -419,6 +419,8 @@ export default function EdicionDiasEmpresa() {
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-gray-100">
+                                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Empleado</th>
+                                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Solicitado por</th>
                                         <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Día original</th>
                                         <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Nueva fecha</th>
                                         <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Estado</th>
@@ -428,6 +430,12 @@ export default function EdicionDiasEmpresa() {
                                 <tbody>
                                     {solicitudes.map(s => (
                                         <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
+                                            <td className="py-2 px-3 text-gray-800 font-medium">{s.nombreEmpleado}</td>
+                                            <td className="py-2 px-3 text-gray-700">
+                                                {s.nombreSolicitadoPor && s.nombreSolicitadoPor !== s.nombreEmpleado
+                                                    ? s.nombreSolicitadoPor
+                                                    : <span className="text-gray-400 italic text-xs">El mismo</span>}
+                                            </td>
                                             <td className="py-2 px-3 text-gray-800">{format(parseISO(s.fechaOriginal), 'dd/MM/yyyy')}</td>
                                             <td className="py-2 px-3 text-gray-800">{format(parseISO(s.fechaNueva), 'dd/MM/yyyy')}</td>
                                             <td className="py-2 px-3">{getEstadoBadge(s.estadoSolicitud)}</td>
