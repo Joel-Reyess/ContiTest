@@ -1064,3 +1064,70 @@ export interface ConsultarSolicitudesPermisosResponse {
     totalRegistros: number;
     solicitudes: SolicitudPermisoDto[];
 }
+
+// ============================================================================
+// EDICIÓN DE DÍAS EMPRESA INTERFACES
+// ============================================================================
+
+export interface ConfiguracionEdicionDiasEmpresa {
+    id: number;
+    habilitado: boolean;
+    fechaInicioPeriodo: string;
+    fechaFinPeriodo: string;
+    descripcion?: string;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface SolicitudEdicionDiaEmpresa {
+    id: number;
+    empleadoId: number;
+    nombreEmpleado: string;
+    nominaEmpleado?: number;
+    vacacionOriginalId: number;
+    fechaOriginal: string;
+    fechaNueva: string;
+    estadoSolicitud: 'Pendiente' | 'Aprobada' | 'Rechazada';
+    motivoRechazo?: string;
+    observacionesEmpleado?: string;
+    observacionesJefe?: string;
+    fechaSolicitud: string;
+    fechaRespuesta?: string;
+    nombreJefeArea?: string;
+    nombreSolicitadoPor?: string;
+}
+
+export interface ReporteDiasReprogramadosEmpresa {
+    empleadoId: number;
+    nomina?: number;
+    nombreEmpleado: string;
+    area?: string;
+    grupo?: string;
+    fechaOriginal: string;
+    fechaNueva: string;
+    estadoSolicitud: string;
+    fechaSolicitud: string;
+    fechaRespuesta?: string;
+    nombreJefeArea?: string;
+}
+
+export interface SolicitarEdicionDiaEmpresaRequest {
+    empleadoId: number;
+    vacacionOriginalId: number;
+    fechaNueva: string;
+    observacionesEmpleado?: string;
+}
+
+export interface ResponderEdicionDiaEmpresaRequest {
+    solicitudId: number;
+    aprobar: boolean;
+    observacionesJefe?: string;
+    motivoRechazo?: string;
+}
+
+export interface CrearConfiguracionEdicionRequest {
+    fechaInicioPeriodo: string;
+    fechaFinPeriodo: string;
+    descripcion?: string;
+    habilitado: boolean;
+}

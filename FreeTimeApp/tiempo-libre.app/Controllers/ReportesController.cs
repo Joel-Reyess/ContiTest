@@ -13,6 +13,7 @@ namespace tiempo_libre.Controllers
     {
         private readonly VacacionesExportService _exportService;
         private readonly ReportesVacacionesService _reportesService;
+        private readonly EdicionDiasEmpresaService _edicionDiasEmpresaService;
         private readonly ILogger<ReportesController> _logger;
 
         private static DateTime? ParseFechaHora(string? fecha, string? hora, bool esInicio)
@@ -29,10 +30,12 @@ namespace tiempo_libre.Controllers
         public ReportesController(
             VacacionesExportService exportService,
             ReportesVacacionesService reportesService,
+            EdicionDiasEmpresaService edicionDiasEmpresaService,
             ILogger<ReportesController> logger)
         {
             _exportService = exportService;
             _reportesService = reportesService;
+            _edicionDiasEmpresaService = edicionDiasEmpresaService;
             _logger = logger;
         }
 
@@ -334,5 +337,22 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>Reporte de días reprogramados por la empresa (ediciones del sindicato aprobadas)</summary>
+        [HttpGet("dias-reprogramados-empresa")]
+        public async Task<IActionResult> ReporteDiasReprogramadosEmpresa(
+            [FromQuery] int? anio = null,
+            [FromQuery] int? areaId = null)
+        {
+            try
+            {
+                var datos = await _edicionDiasEmpresaService.GenerarReporteAsync(anio, areaId);
+                return Ok(new ApiResponse<object>(true, datos));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al generar reporte días reprogramados empresa");
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+            }
+        }
     }
 }

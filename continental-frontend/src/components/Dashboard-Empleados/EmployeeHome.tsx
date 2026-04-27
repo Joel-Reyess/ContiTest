@@ -2,7 +2,7 @@ import useAuth from "@/hooks/useAuth";
 import { PeriodLight } from "./PeriodLight";
 import { NavbarUser } from "../ui/navbar-user";
 import { Info } from "./Info";
-import { Calendar, CalendarClock, Users2, Users } from "lucide-react";
+import { Calendar, CalendarClock, Users2, Users, CalendarDays } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { useNavigate } from "react-router-dom";
@@ -13,8 +13,9 @@ import { UserRole } from "@/interfaces/User.interface";
 import { useState, useMemo, useEffect } from "react";
 import { getVacacionesAsignadasPorEmpleado, vacacionesService } from "@/services/vacacionesService";
 import { ReprogramacionService } from "@/services/reprogramacionService";
-import type { VacacionesAsignadasResponse, UsuarioInfoDto } from "@/interfaces/Api.interface";
+import type { VacacionesAsignadasResponse, UsuarioInfoDto, ConfiguracionEdicionDiasEmpresa } from "@/interfaces/Api.interface";
 import { PermutaModal } from "../Empleado/PermutaModal";
+import { edicionDiasEmpresaService } from "@/services/edicionDiasEmpresaService";
 
 const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
     const { user } = useAuth();
@@ -40,6 +41,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [loadingVacaciones, setLoadingVacaciones] = useState(true);
 
     const [showPermutaModal, setShowPermutaModal] = useState(false);
+    const [configEdicion, setConfigEdicion] = useState<ConfiguracionEdicionDiasEmpresa | null>(null);
 
     // Estados para solicitudes de reprogramación
     const [solicitudesStats, setSolicitudesStats] = useState<{
@@ -175,6 +177,13 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
             anualesYReprogramacion
         };
     }, [vacacionesData, selectedEmployee?.id]);
+
+    // Cargar configuración de edición de días empresa
+    useEffect(() => {
+        edicionDiasEmpresaService.obtenerConfiguracion()
+            .then(cfg => setConfigEdicion(cfg))
+            .catch(() => {});
+    }, []);
 
     const goToRequestCalendar = () => {
         navigate("/empleados/solicitar-vacaciones");
@@ -435,6 +444,32 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                     )
                 }
             </div>
+            {/* Tarjeta de edición de días empresa (cuando está habilitado) */}
+            {configEdicion?.habilitado && (
+                <div className="mt-4 flex gap-4">
+                    <div className="flex-1 flex items-center gap-4 p-5 border border-green-300 bg-green-50 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                            <CalendarDays size={24} className="text-green-700" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-green-800">Edición de días asignados por empresa</h3>
+                            <p className="text-xs text-green-700 mt-0.5">
+                                Puedes solicitar cambiar tus días asignados al período{' '}
+                                {configEdicion.fechaInicioPeriodo.slice(5).split('-').reverse().join('/')}
+                                {' – '}
+                                {configEdicion.fechaFinPeriodo.slice(5).split('-').reverse().join('/')}.
+                            </p>
+                        </div>
+                        <Button
+                            className="cursor-pointer bg-green-600 hover:bg-green-700 text-white flex-shrink-0"
+                            onClick={() => navigate('/empleados/edicion-dias-empresa')}
+                        >
+                            Solicitar
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <PermutaModal
                 show={showPermutaModal}
                 onClose={() => setShowPermutaModal(false)}

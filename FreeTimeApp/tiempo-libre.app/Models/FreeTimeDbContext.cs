@@ -76,6 +76,10 @@ public partial class FreeTimeDbContext : DbContext
     // Transferencias de personal entre grupos
     public virtual DbSet<TransferenciaGrupo> TransferenciasGrupo { get; set; }
 
+    // Sistema de edición de días asignados por empresa
+    public virtual DbSet<ConfiguracionEdicionDiasEmpresa> ConfiguracionEdicionDiasEmpresa { get; set; }
+    public virtual DbSet<SolicitudEdicionDiaEmpresa> SolicitudesEdicionDiasEmpresa { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
 
@@ -1186,6 +1190,51 @@ public partial class FreeTimeDbContext : DbContext
         //    entity.HasIndex(e => e.FechaTransferencia)
         //        .HasDatabaseName("IX_TransferenciaGrupo_Fecha");
         //});
+
+        // ConfiguracionEdicionDiasEmpresa
+        modelBuilder.Entity<ConfiguracionEdicionDiasEmpresa>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Habilitado).IsRequired().HasDefaultValue(false);
+            entity.Property(e => e.FechaInicioPeriodo).IsRequired();
+            entity.Property(e => e.FechaFinPeriodo).IsRequired();
+            entity.Property(e => e.Descripcion).HasMaxLength(300);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.HasOne(e => e.CreadoPor)
+                .WithMany()
+                .HasForeignKey(e => e.CreadoPorId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // SolicitudesEdicionDiasEmpresa
+        modelBuilder.Entity<SolicitudEdicionDiaEmpresa>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FechaOriginal).IsRequired();
+            entity.Property(e => e.FechaNueva).IsRequired();
+            entity.Property(e => e.EstadoSolicitud).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.MotivoRechazo).HasMaxLength(500);
+            entity.Property(e => e.ObservacionesEmpleado).HasMaxLength(500);
+            entity.Property(e => e.ObservacionesJefe).HasMaxLength(500);
+            entity.Property(e => e.FechaSolicitud).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.HasOne(e => e.Empleado)
+                .WithMany()
+                .HasForeignKey(e => e.EmpleadoId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.VacacionOriginal)
+                .WithMany()
+                .HasForeignKey(e => e.VacacionOriginalId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.JefeArea)
+                .WithMany()
+                .HasForeignKey(e => e.JefeAreaId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.SolicitadoPor)
+                .WithMany()
+                .HasForeignKey(e => e.SolicitadoPorId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
 
         OnModelCreatingPartial(modelBuilder);
     }

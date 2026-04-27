@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Calendar, BarChart3, CheckCircle, Info, X } from "lucide-react";
+import { Calendar, BarChart3, CheckCircle, Info, X, CalendarDays } from "lucide-react";
 import { VacacionesGeneral } from "./VacacionesGeneral";
 import { VacacionesCalendario } from "./VacacionesCalendario";
+import { ConfigEdicionDias } from "./ConfigEdicionDias";
 import { vacacionesService } from '@/services/vacacionesService';
 import type { VacacionesConfig } from '@/interfaces/Vacaciones.interface';
 import { Input } from '@/components/ui/input';
@@ -19,7 +20,7 @@ interface Notification {
 }
 
 export const Vacaciones = () => {
-  const [activeTab, setActiveTab] = useState<'general' | 'calendario'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias'>('general');
   const [config, setConfig] = useState<VacacionesConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -224,7 +225,7 @@ export const Vacaciones = () => {
           <div className="flex w-full">
             <button
               onClick={() => setActiveTab('general')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/2 ${activeTab === 'general'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/3 ${activeTab === 'general'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -234,7 +235,7 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('calendario')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/2 ${activeTab === 'calendario'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/3 ${activeTab === 'calendario'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -242,10 +243,25 @@ export const Vacaciones = () => {
               <Calendar size={16} />
               <span>Calendario</span>
             </button>
+            <button
+              onClick={() => setActiveTab('edicion-dias')}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/3 ${activeTab === 'edicion-dias'
+                ? 'bg-white text-continental-black shadow-sm'
+                : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
+                }`}
+            >
+              <CalendarDays size={16} />
+              <span>Edición días empresa</span>
+            </button>
           </div>
         </div>
 
         {/* Content based on active tab */}
+        {activeTab === 'edicion-dias' && (
+          <div className="p-4 bg-white border border-continental-gray-3 rounded-lg">
+            <ConfigEdicionDias />
+          </div>
+        )}
         {activeTab === 'general' && (
           <VacacionesGeneral
             onNotification={showNotification}

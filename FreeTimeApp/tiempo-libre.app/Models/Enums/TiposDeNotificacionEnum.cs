@@ -12,7 +12,9 @@ namespace tiempo_libre.Models.Enums
         SolicitudIntercambioDiaFestivo = 8, // Solicitud de intercambio de día festivo (legacy)
         SistemaBloques = 9, // Sistema de bloques de reservación
         SolicitudPermiso,      // Para cuando se crea una solicitud
-        RespuestaSolicitud
+        RespuestaSolicitud,
+        SolicitudEdicionDiaEmpresa = 12, // Solicitud de edición de días asignados por empresa
+        RespuestaEdicionDiaEmpresa = 13  // Respuesta del jefe a solicitud de edición
     }
 
     public enum EstatusNotificacionEnum

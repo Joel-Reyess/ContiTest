@@ -52,6 +52,7 @@ builder.Services.AddScoped<tiempo_libre.Services.PermisosIncapacidadesService>()
 builder.Services.AddScoped<tiempo_libre.Services.ISuplenciaService, tiempo_libre.Services.SuplenciaService>();
 builder.Services.AddScoped<tiempo_libre.Services.SolicitudesPermisosService>();
 builder.Services.AddScoped<tiempo_libre.Services.SincronizacionRolesService>();
+builder.Services.AddScoped<tiempo_libre.Services.EdicionDiasEmpresaService>();
 // Email Service con configuración SMTP
 builder.Services.AddSingleton<tiempo_libre.Services.IEmailService, tiempo_libre.Services.EmailService>();
 

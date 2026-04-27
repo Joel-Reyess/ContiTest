@@ -10,6 +10,7 @@ import { Plantilla } from './Plantilla'
 import { useVacationConfig } from '@/hooks/useVacationConfig'
 import WeeklyRoles from './WeeklyRoles'
 import MisPermutas from './MisPermutas';
+import EdicionDiasEmpresa from './EdicionDiasEmpresa';
 
 
 const EmployeeDashboard = (): JSX.Element => {
@@ -79,6 +80,7 @@ const EmployeeDashboard = (): JSX.Element => {
                     <Route path="mis-vacaciones" element={<MyVacations currentPeriod={currentPeriod} />} />
                     <Route path="roles-semanales" element={<WeeklyRoles />} />
                     <Route path="mis-permutas" element={<MisPermutas />} />
+                    <Route path="edicion-dias-empresa" element={<EdicionDiasEmpresa />} />
                 </Routes>
             </div>
         </div>
