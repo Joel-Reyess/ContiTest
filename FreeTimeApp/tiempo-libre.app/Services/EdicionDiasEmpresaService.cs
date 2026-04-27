@@ -375,7 +375,7 @@ namespace tiempo_libre.Services
                 Nomina = s.Empleado?.Nomina,
                 NombreEmpleado = s.Empleado?.FullName ?? string.Empty,
                 Area = s.Empleado?.Area?.NombreGeneral,
-                Grupo = s.Empleado?.Grupo?.Nombre,
+                Grupo = s.Empleado?.Grupo?.Rol,
                 FechaOriginal = s.FechaOriginal,
                 FechaNueva = s.FechaNueva,
                 EstadoSolicitud = s.EstadoSolicitud,
