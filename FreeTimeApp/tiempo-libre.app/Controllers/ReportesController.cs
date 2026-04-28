@@ -339,6 +339,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Reporte de días reprogramados por la empresa (ediciones del sindicato aprobadas)</summary>
         [HttpGet("dias-reprogramados-empresa")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,JefeArea,IngenieroIndustrial,Ingeniero Industrial")]
         public async Task<IActionResult> ReporteDiasReprogramadosEmpresa(
             [FromQuery] int? anio = null,
             [FromQuery] int? areaId = null)

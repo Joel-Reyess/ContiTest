@@ -13,6 +13,7 @@ import { PeriodOptions } from "@/interfaces/Calendar.interface";
 import { exportarReprogramacionesExcel } from "@/utils/reprogramacionesExcel";
 import { ReporteAprobaciones } from "./ReporteAprobaciones";
 import { reportesService } from "@/services/reportesService";
+import { edicionDiasEmpresaService } from "@/services/edicionDiasEmpresaService";
 import { vacacionesService } from "@/services/vacacionesService";
 import { generarExcelVacacionesAsignadasEmpresa } from "@/utils/vacacionesAsignadasEmpresaExcel";
 import type { EmpleadoDetalle } from "@/interfaces/Api.interface";
@@ -144,6 +145,13 @@ export const Reportes = () => {
             subtitle: "Todas las reprogramaciones (solo en periodo de reprogramación).",
             category: 'reprogramacion',
             requiresReprogramming: true
+        },
+        {
+            id: 19,
+            icon: RefreshCw,
+            title: "Reprogramación de días asignados por la empresa",
+            subtitle: "Días que los sindicalizados solicitaron cambiar (día original y nuevo día asignado).",
+            category: 'programacion-anual'
         },
     ];
 
@@ -436,6 +444,24 @@ export const Reportes = () => {
             await handleDownloadConstancia();
         } else if (reportId === 11) {
             await handleReprogGeneral();
+        } else if (reportId === 19) {
+            try {
+                const anio = selectedYear ? parseInt(selectedYear) : undefined;
+                const areaIdFilter = selectedArea === 'all' ? undefined : selectedArea;
+                const loadingToast = toast.loading("Generando reporte de reprogramación de días asignados por la empresa...");
+                const datos = await edicionDiasEmpresaService.obtenerReporte(anio, areaIdFilter);
+                toast.dismiss(loadingToast);
+                if (!datos.length) {
+                    toast.info("No hay registros con los filtros seleccionados.");
+                    return;
+                }
+                const { exportarEdicionDiasEmpresaExcel } = await import("@/utils/edicionDiasEmpresaExcel");
+                exportarEdicionDiasEmpresaExcel(datos, { area: selectedAreaName, anio });
+                toast.success(`Reporte descargado (${datos.length} registro(s)).`);
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+            }
         } else {
             toast.info("Funcionalidad en desarrollo para este tipo de reporte");
         }

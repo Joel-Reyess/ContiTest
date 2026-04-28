@@ -6,8 +6,6 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { edicionDiasEmpresaService } from '@/services/edicionDiasEmpresaService';
 import type { SolicitudEdicionDiaEmpresa } from '@/interfaces/Api.interface';
-import ApproveModal from './ApproveModal';
-import RejectModal from './RejectModal';
 
 type Filtro = 'Todas' | 'Pendiente' | 'Aprobada' | 'Rechazada';
 
@@ -15,11 +13,6 @@ export function SolicitudesEdicionDias() {
     const [solicitudes, setSolicitudes] = useState<SolicitudEdicionDiaEmpresa[]>([]);
     const [loading, setLoading] = useState(true);
     const [filtro, setFiltro] = useState<Filtro>('Pendiente');
-    const [procesando, setProcesando] = useState(false);
-
-    const [solicitudParaAprobar, setSolicitudParaAprobar] = useState<SolicitudEdicionDiaEmpresa | null>(null);
-    const [solicitudParaRechazar, setSolicitudParaRechazar] = useState<SolicitudEdicionDiaEmpresa | null>(null);
-
     const cargar = async () => {
         setLoading(true);
         try {
@@ -33,43 +26,6 @@ export function SolicitudesEdicionDias() {
     };
 
     useEffect(() => { cargar(); }, []);
-
-    const handleAprobar = async () => {
-        if (!solicitudParaAprobar) return;
-        setProcesando(true);
-        try {
-            await edicionDiasEmpresaService.responderSolicitud({
-                solicitudId: solicitudParaAprobar.id,
-                aprobar: true,
-            });
-            toast.success('Solicitud aprobada. El rol del empleado ha sido actualizado.');
-            await cargar();
-        } catch (err: any) {
-            toast.error(err?.message || 'Error al aprobar solicitud');
-        } finally {
-            setProcesando(false);
-            setSolicitudParaAprobar(null);
-        }
-    };
-
-    const handleRechazar = async (motivo: string) => {
-        if (!solicitudParaRechazar) return;
-        setProcesando(true);
-        try {
-            await edicionDiasEmpresaService.responderSolicitud({
-                solicitudId: solicitudParaRechazar.id,
-                aprobar: false,
-                motivoRechazo: motivo,
-            });
-            toast.success('Solicitud rechazada.');
-            await cargar();
-        } catch (err: any) {
-            toast.error(err?.message || 'Error al rechazar solicitud');
-        } finally {
-            setProcesando(false);
-            setSolicitudParaRechazar(null);
-        }
-    };
 
     const solicitudesFiltradas = solicitudes.filter(s =>
         filtro === 'Todas' || s.estadoSolicitud === filtro
@@ -147,7 +103,6 @@ export function SolicitudesEdicionDias() {
                                 <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Nueva fecha</th>
                                 <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Estado</th>
                                 <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase">Fecha solicitud</th>
-                                <th className="text-right py-2 px-3 text-xs font-medium text-gray-500 uppercase">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -178,33 +133,6 @@ export function SolicitudesEdicionDias() {
                                     <td className="py-2 px-3 text-gray-500 text-xs">
                                         {format(new Date(s.fechaSolicitud), 'dd/MM/yyyy HH:mm')}
                                     </td>
-                                    <td className="py-2 px-3 text-right">
-                                        {s.estadoSolicitud === 'Pendiente' && (
-                                            <div className="flex gap-1 justify-end">
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    disabled={procesando}
-                                                    className="cursor-pointer border-green-300 text-green-700 hover:bg-green-50 h-7 px-2 text-xs"
-                                                    onClick={() => setSolicitudParaAprobar(s)}
-                                                >
-                                                    <CheckCircle size={12} className="mr-1" /> Aprobar
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    disabled={procesando}
-                                                    className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50 h-7 px-2 text-xs"
-                                                    onClick={() => setSolicitudParaRechazar(s)}
-                                                >
-                                                    <XCircle size={12} className="mr-1" /> Rechazar
-                                                </Button>
-                                            </div>
-                                        )}
-                                        {s.estadoSolicitud === 'Rechazada' && s.motivoRechazo && (
-                                            <span className="text-xs text-gray-400 italic">{s.motivoRechazo}</span>
-                                        )}
-                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -212,29 +140,6 @@ export function SolicitudesEdicionDias() {
                 </div>
             )}
 
-            {/* Modals */}
-            {solicitudParaAprobar && (
-                <ApproveModal
-                    show={true}
-                    onClose={() => setSolicitudParaAprobar(null)}
-                    onConfirm={handleAprobar}
-                    solicitudId={String(solicitudParaAprobar.id)}
-                    nombreEmpleado={solicitudParaAprobar.nombreEmpleado}
-                    tipoSolicitud="Edición de día empresa"
-                    fechaActual={format(parseISO(solicitudParaAprobar.fechaOriginal), 'dd/MM/yyyy')}
-                    fechaReprogramacion={format(parseISO(solicitudParaAprobar.fechaNueva), 'dd/MM/yyyy')}
-                />
-            )}
-
-            {solicitudParaRechazar && (
-                <RejectModal
-                    show={true}
-                    onClose={() => setSolicitudParaRechazar(null)}
-                    onConfirm={handleRechazar}
-                    solicitudId={String(solicitudParaRechazar.id)}
-                    nombreEmpleado={solicitudParaRechazar.nombreEmpleado}
-                />
-            )}
         </div>
     );
 }

@@ -146,42 +146,34 @@ namespace tiempo_libre.Services
                     jefeAreaId = area?.JefeId;
                 }
 
+                var fechaOriginal = vacacion.FechaVacacion;
+
                 var solicitud = new SolicitudEdicionDiaEmpresa
                 {
                     EmpleadoId = request.EmpleadoId,
                     VacacionOriginalId = request.VacacionOriginalId,
-                    FechaOriginal = vacacion.FechaVacacion,
+                    FechaOriginal = fechaOriginal,
                     FechaNueva = request.FechaNueva,
-                    EstadoSolicitud = "Pendiente",
+                    EstadoSolicitud = "Aprobada",
                     JefeAreaId = jefeAreaId,
                     SolicitadoPorId = usuarioSolicitanteId,
                     ObservacionesEmpleado = request.ObservacionesEmpleado,
                     FechaSolicitud = DateTime.UtcNow,
-                    CreatedAt = DateTime.UtcNow
+                    FechaRespuesta = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
                 };
 
                 _db.SolicitudesEdicionDiasEmpresa.Add(solicitud);
+
+                // Aplicar el cambio de fecha directamente (auto-aprobación)
+                vacacion.FechaVacacion = request.FechaNueva;
+                vacacion.UpdatedAt = DateTime.UtcNow;
+                vacacion.UpdatedBy = usuarioSolicitanteId;
+                vacacion.Observaciones =
+                    $"Día editado: original {fechaOriginal:dd/MM/yyyy} → {request.FechaNueva:dd/MM/yyyy}";
+
                 await _db.SaveChangesAsync();
-
-                // Notificar al jefe de área
-                if (jefeAreaId.HasValue)
-                {
-                    var solicitante = await _db.Users.FindAsync(usuarioSolicitanteId);
-                    await _notificacionesService.CrearNotificacionAsync(
-                        TiposDeNotificacionEnum.SolicitudEdicionDiaEmpresa,
-                        "Solicitud de edición de día empresa",
-                        $"{empleado.FullName} solicita cambiar el día {vacacion.FechaVacacion:dd/MM/yyyy} por {request.FechaNueva:dd/MM/yyyy}.",
-                        solicitante?.FullName ?? empleado.FullName,
-                        idUsuarioReceptor: jefeAreaId,
-                        idUsuarioEmisor: usuarioSolicitanteId,
-                        areaId: empleado.AreaId,
-                        grupoId: empleado.GrupoId,
-                        tipoMovimiento: "Edición Día Empresa",
-                        idSolicitud: solicitud.Id,
-                        metadatos: new { SolicitudId = solicitud.Id, EmpleadoId = request.EmpleadoId }
-                    );
-                }
-
                 await transaction.CommitAsync();
 
                 var dto = await ObtenerSolicitudDtoAsync(solicitud.Id);
