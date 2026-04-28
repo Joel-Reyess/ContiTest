@@ -430,8 +430,8 @@ export const Reportes = () => {
         {
             id: 19,
             icon: RefreshCw,
-            title: "Días Reprogramados por la Empresa",
-            subtitle: "Días que los sindicalizados solicitaron cambiar (día original y nuevo día). Incluye estado de aprobación.",
+            title: "Reprogramación de días asignados por la empresa",
+            subtitle: "Días que los sindicalizados solicitaron cambiar (día original y nuevo día). Incluye estado, solicitado por y jefe que respondió.",
             category: 'reprogramacion'
         },
     ];
@@ -964,41 +964,25 @@ export const Reportes = () => {
             }
         }
         else if (reportId === 19) {
-            // Días reprogramados por la empresa
             try {
-                const loadingToast = toast.loading("Generando reporte de días reprogramados por la empresa...");
-                const datos = await edicionDiasEmpresaService.obtenerReporte(
-                    selectedYear ? parseInt(selectedYear) : undefined,
-                    selectedArea ? parseInt(selectedArea) : undefined
-                );
+                const anio = selectedYear ? parseInt(selectedYear) : undefined;
+                const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
+                const areaName = selectedArea
+                    ? areas.find(a => a.areaId.toString() === selectedArea)?.nombreGeneral ?? 'Sin área'
+                    : 'Todas';
+
+                const loadingToast = toast.loading("Generando reporte de reprogramación de días asignados por la empresa...");
+                const datos = await edicionDiasEmpresaService.obtenerReporte(anio, areaIdFilter);
                 toast.dismiss(loadingToast);
+
                 if (!datos.length) {
                     toast.info("No hay registros con los filtros seleccionados.");
                     return;
                 }
-                // Generar CSV
-                const headers = ['Nómina','Empleado','Área','Grupo','Día original','Nueva fecha','Estado','Fecha solicitud','Fecha respuesta','Jefe que respondió'];
-                const rows = datos.map(d => [
-                    d.nomina ?? '',
-                    d.nombreEmpleado,
-                    d.area ?? '',
-                    d.grupo ?? '',
-                    d.fechaOriginal,
-                    d.fechaNueva,
-                    d.estadoSolicitud,
-                    d.fechaSolicitud ? new Date(d.fechaSolicitud).toLocaleDateString('es-MX') : '',
-                    d.fechaRespuesta ? new Date(d.fechaRespuesta).toLocaleDateString('es-MX') : '',
-                    d.nombreJefeArea ?? '',
-                ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
-                const csv = [headers.join(','), ...rows].join('\n');
-                const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `dias_reprogramados_empresa_${selectedYear || 'todos'}.csv`;
-                link.click();
-                URL.revokeObjectURL(url);
-                toast.success('Reporte de días reprogramados por la empresa descargado.');
+
+                const { exportarEdicionDiasEmpresaExcel } = await import("@/utils/edicionDiasEmpresaExcel");
+                exportarEdicionDiasEmpresaExcel(datos, { area: areaName, anio });
+                toast.success(`Reporte descargado (${datos.length} registro(s)).`);
             } catch (error) {
                 toast.dismiss();
                 toast.error(error instanceof Error ? error.message : 'No se pudo generar el reporte');

@@ -352,6 +352,7 @@ namespace tiempo_libre.Services
                 .Include(s => s.Empleado)
                     .ThenInclude(e => e.Grupo)
                 .Include(s => s.JefeArea)
+                .Include(s => s.SolicitadoPor)
                 .AsQueryable();
 
             if (anio.HasValue)
@@ -367,6 +368,7 @@ namespace tiempo_libre.Services
 
             return solicitudes.Select(s => new ReporteDiasReprogramadosEmpresaDto
             {
+                Id = s.Id,
                 EmpleadoId = s.EmpleadoId,
                 Nomina = s.Empleado?.Nomina,
                 NombreEmpleado = s.Empleado?.FullName ?? string.Empty,
@@ -377,7 +379,10 @@ namespace tiempo_libre.Services
                 EstadoSolicitud = s.EstadoSolicitud,
                 FechaSolicitud = s.FechaSolicitud,
                 FechaRespuesta = s.FechaRespuesta,
-                NombreJefeArea = s.JefeArea?.FullName
+                NombreJefeArea = s.JefeArea?.FullName,
+                NombreSolicitadoPor = s.SolicitadoPor?.FullName,
+                ObservacionesEmpleado = s.ObservacionesEmpleado,
+                MotivoRechazo = s.MotivoRechazo
             }).ToList();
         }
 

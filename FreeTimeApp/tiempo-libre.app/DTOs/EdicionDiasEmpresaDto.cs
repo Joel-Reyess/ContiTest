@@ -84,6 +84,7 @@ namespace tiempo_libre.DTOs
 
     public class ReporteDiasReprogramadosEmpresaDto
     {
+        public int Id { get; set; }
         public int EmpleadoId { get; set; }
         public int? Nomina { get; set; }
         public string NombreEmpleado { get; set; } = string.Empty;
@@ -95,5 +96,8 @@ namespace tiempo_libre.DTOs
         public DateTime FechaSolicitud { get; set; }
         public DateTime? FechaRespuesta { get; set; }
         public string? NombreJefeArea { get; set; }
+        public string? NombreSolicitadoPor { get; set; }
+        public string? ObservacionesEmpleado { get; set; }
+        public string? MotivoRechazo { get; set; }
     }
 }

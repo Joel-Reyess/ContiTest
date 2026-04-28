@@ -1098,6 +1098,7 @@ export interface SolicitudEdicionDiaEmpresa {
 }
 
 export interface ReporteDiasReprogramadosEmpresa {
+    id: number;
     empleadoId: number;
     nomina?: number;
     nombreEmpleado: string;
@@ -1109,6 +1110,9 @@ export interface ReporteDiasReprogramadosEmpresa {
     fechaSolicitud: string;
     fechaRespuesta?: string;
     nombreJefeArea?: string;
+    nombreSolicitadoPor?: string;
+    observacionesEmpleado?: string;
+    motivoRechazo?: string;
 }
 
 export interface SolicitarEdicionDiaEmpresaRequest {
