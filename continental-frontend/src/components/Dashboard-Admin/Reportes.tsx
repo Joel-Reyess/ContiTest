@@ -432,7 +432,7 @@ export const Reportes = () => {
             icon: RefreshCw,
             title: "Reprogramación de días asignados por la empresa",
             subtitle: "Días que los sindicalizados solicitaron cambiar (día original y nuevo día). Incluye estado, solicitado por y jefe que respondió.",
-            category: 'reprogramacion'
+            category: 'programacion-anual'
         },
     ];
 
