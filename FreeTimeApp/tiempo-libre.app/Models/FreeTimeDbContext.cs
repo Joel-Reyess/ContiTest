@@ -56,6 +56,7 @@ public partial class FreeTimeDbContext : DbContext
     public virtual DbSet<SolicitudesReprogramacion> SolicitudesReprogramacion { get; set; }
     public virtual DbSet<SolicitudesFestivosTrabajados> SolicitudesFestivosTrabajados { get; set; }
     public virtual DbSet<FestivosEmpleadosTrabajadosUpload> FestivosEmpleadosTrabajadosUpload { get; set; }
+    public virtual DbSet<SolicitudReprogramacionPostIncapacidad> SolicitudesReprogramacionPostIncapacidad { get; set; } = null!;
 
     public DbSet<SuplentePeriodo> SuplentePeriodos { get; set; }
     public DbSet<Permuta> Permutas { get; set; }
@@ -1144,6 +1145,57 @@ public partial class FreeTimeDbContext : DbContext
                 .HasForeignKey(e => e.VacacionCreadaId)
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configuración para SolicitudesReprogramacionPostIncapacidad
+        modelBuilder.Entity<SolicitudReprogramacionPostIncapacidad>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EstadoSolicitud)
+                .HasMaxLength(20)
+                .HasDefaultValue("Pendiente");
+            entity.Property(e => e.Motivo)
+                .HasMaxLength(500)
+                .IsRequired();
+            entity.Property(e => e.MotivoRechazo)
+                .HasMaxLength(500);
+            entity.Property(e => e.FechaSolicitud)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Empleado)
+                .WithMany()
+                .HasForeignKey(e => e.EmpleadoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.PermisoIncapacidad)
+                .WithMany()
+                .HasForeignKey(e => e.PermisoIncapacidadId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.VacacionOriginal)
+                .WithMany()
+                .HasForeignKey(e => e.VacacionOriginalId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.SolicitadoPor)
+                .WithMany()
+                .HasForeignKey(e => e.SolicitadoPorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.JefeArea)
+                .WithMany()
+                .HasForeignKey(e => e.JefeAreaId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.AprobadoPor)
+                .WithMany()
+                .HasForeignKey(e => e.AprobadoPorId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => new { e.EmpleadoId, e.EstadoSolicitud });
+            entity.HasIndex(e => e.JefeAreaId);
         });
 
         // Configuración para TransferenciasGrupo

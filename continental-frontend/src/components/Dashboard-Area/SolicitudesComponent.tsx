@@ -36,6 +36,7 @@ import { SolicitudesPermisos } from './SolicitudesPermisos';
 import { TablaFestivosTrabajados } from './TablaFestivosTrabajados';
 import { TablaPermutas } from './TablaPermutas';
 import { SolicitudesEdicionDias } from './SolicitudesEdicionDias';
+import { SolicitudesReprogramacionPostIncapacidad } from './SolicitudesReprogramacionPostIncapacidad';
 import { ChevronDown } from 'lucide-react'
 import { useLocation } from 'react-router-dom';
 function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
@@ -72,7 +73,7 @@ function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
     )
 }
 
-type TabOption = 'solicitudes' | 'festivos' | 'permutas' | 'permisos' | 'vacaciones' | 'edicion-dias';
+type TabOption = 'solicitudes' | 'festivos' | 'permutas' | 'permisos' | 'vacaciones' | 'edicion-dias' | 'post-incapacidad';
 
 const SolicitudesComponent: React.FC = () => {
     const location = useLocation()
@@ -112,6 +113,7 @@ const SolicitudesComponent: React.FC = () => {
         {value: 'permisos' as TabOption, label: 'Solicitudes Permisos'},
         {value: 'permutas' as TabOption, label: 'Permutas de Turno'},
         {value: 'edicion-dias' as TabOption, label: 'Edición Días Empresa'},
+        {value: 'post-incapacidad' as TabOption, label: 'Reprogramación post-incapacidad'},
     ]
 
     return (
@@ -163,6 +165,7 @@ const SolicitudesComponent: React.FC = () => {
                             {selectedTab === 'permisos' && <SolicitudesPermisos />}
                             {selectedTab === 'permutas' && <TablaPermutas />}
                             {selectedTab === 'edicion-dias' && <SolicitudesEdicionDias />}
+                            {selectedTab === 'post-incapacidad' && <SolicitudesReprogramacionPostIncapacidad />}
                         </div>
                     </>
                 )}

@@ -28,6 +28,7 @@ import { generateConstanciaAntiguedadPDFBlob } from '@/services/pdfService';
 import { UserRole } from "@/interfaces/User.interface";
 import { ChangePasswordModal } from "@/components/Empleado/ChangePasswordModal";
 import { SolicitarPermisoModal } from "./SolicitarPermisoModal";
+import { SolicitarReprogramacionPostIncapacidadModal } from "./SolicitarReprogramacionPostIncapacidadModal";
 
 const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [searchParams] = useSearchParams();
@@ -49,6 +50,7 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [showConstanciaModal, setShowConstanciaModal] = useState(false);
     const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
     const [showSolicitarPermisoModal, setShowSolicitarPermisoModal] = useState(false);
+    const [showReprogPostIncModal, setShowReprogPostIncModal] = useState(false);
     const navigate = useNavigate();
 
     const isDelegadoSindical = Boolean(
@@ -325,6 +327,17 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                             Solicitar Permiso/Incapacidad
                         </Button>
                     )}
+                    {currentPeriod === PeriodOptions.reprogramming && isDelegadoSindical && (
+                        <Button
+                            variant="outline"
+                            className="w-full cursor-pointer border-blue-300 text-blue-700 hover:bg-blue-50"
+                            size="lg"
+                            onClick={() => setShowReprogPostIncModal(true)}
+                        >
+                            <CalendarPlus2 className="mr-2 h-4 w-4" />
+                            Reprogramación post-incapacidad
+                        </Button>
+                    )}
                 </div>
             </div>
             <EditModal
@@ -378,6 +391,12 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 onSolicitudCreada={() => {
                     toast.success("Solicitud enviada exitosamente. Pendiente de aprobación por el Jefe de Área.");
                 }}
+            />
+            <SolicitarReprogramacionPostIncapacidadModal
+                show={showReprogPostIncModal}
+                onClose={() => setShowReprogPostIncModal(false)}
+                empleadoId={employeeId !== 'undefined' && employeeId !== null ? parseInt(employeeId) : user?.id}
+                empleadoNombre={selectedEmployee?.fullName || user?.fullName || ''}
             />
         </div>
     );
