@@ -29,6 +29,7 @@ import { CalendarService } from '@/services/calendarService';
 import { OvertimeCalendar } from '../Dashboard-Area/OvertimeCalendar';
 import useAuth from '@/hooks/useAuth';
 import { RegistrarPermisoModal } from "@/components/Empleado/RegistrarPermisoModal";
+import { ExtenderIncapacidadModal } from "@/components/Empleado/ExtenderIncapacidadModal";
 export const DetallesEmpleado = ({
 }: {
   currentPeriod: Period;
@@ -87,8 +88,13 @@ export const DetallesEmpleado = ({
   const [loadingExcepciones, setLoadingExcepciones] = useState(false);
 
   const [showPermisoModal, setShowPermisoModal] = useState(false);
+  const [showExtenderModal, setShowExtenderModal] = useState(false);
   const { hasRole } = useAuth();
   const isLeader = hasRole(UserRole.LEADER);
+  const puedeExtenderIncapacidad =
+      hasRole(UserRole.SUPER_ADMIN) ||
+      hasRole(UserRole.AREA_ADMIN) ||
+      hasRole(UserRole.INDUSTRIAL);
 
   const getEmployeeDetails = useCallback(async (id: string) => {
     if (!id) return;
@@ -814,6 +820,16 @@ const handleRemoveDay = async (fecha: string) => {
               <FileText size={16} />
               Registrar Permiso/Incapacidad
             </Button>
+            {puedeExtenderIncapacidad && (
+              <Button
+                variant="outline"
+                onClick={() => setShowExtenderModal(true)}
+                className="flex items-center gap-2 w-[225px] h-[45px] border-orange-400 text-orange-700 rounded-lg hover:bg-orange-50"
+              >
+                <Clock size={16} />
+                Extender Incapacidad
+              </Button>
+            )}
                       {isLeader && (
                           <OvertimeCalendar
                               excepciones={excepcionesTiempoExtra}
@@ -998,6 +1014,17 @@ const handleRemoveDay = async (fecha: string) => {
                       if (id) {
                           getEmployeeDetails(id);
                       }
+                  }}
+              />
+          )}
+          {showExtenderModal && sindicalizado && (
+              <ExtenderIncapacidadModal
+                  show={showExtenderModal}
+                  onClose={() => setShowExtenderModal(false)}
+                  nomina={parseInt(sindicalizado.noNomina?.toString() || "0")}
+                  nombreEmpleado={sindicalizado.nombre}
+                  onPermisoExtendido={() => {
+                      if (id) getEmployeeDetails(id);
                   }}
               />
           )}

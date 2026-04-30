@@ -42,6 +42,7 @@ export interface ConsultarPermisosRequest {
 }
 
 export interface PermisoIncapacidad {
+    id: number;
     nomina: number;
     nombre: string;
     posicion: string;
@@ -88,6 +89,35 @@ class PermisosIncapacidadesService {
             return response.data.tiposPermisos;
         } catch (error) {
             logger.error('Error fetching permisos catalog', error, 'PERMISOS_SERVICE');
+            throw error;
+        }
+    }
+
+    /**
+     * Extiende la fecha "Hasta" de un permiso/incapacidad existente.
+     */
+    async extenderPermiso(request: {
+        permisoId: number;
+        nuevaFechaHasta: string;
+        observaciones?: string;
+    }): Promise<{
+        permisoId: number;
+        nomina: number;
+        desde: string;
+        hastaAnterior: string;
+        hastaNuevo: string;
+        diasHabiles: number;
+        diasNaturales: number;
+    }> {
+        try {
+            const response: ApiResponse<any> =
+                await httpClient.post('/api/permisos-incapacidades/extender', request);
+            if (!response.success || !response.data) {
+                throw new Error(response.errorMsg || response.message || 'Error al extender permiso/incapacidad');
+            }
+            return response.data;
+        } catch (error) {
+            logger.error('Error extending permiso', error, 'PERMISOS_SERVICE');
             throw error;
         }
     }

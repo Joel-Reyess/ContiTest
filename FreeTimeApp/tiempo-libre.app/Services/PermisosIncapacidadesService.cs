@@ -15,30 +15,30 @@ namespace tiempo_libre.Services
         private readonly NotificacionesService _notificacionesService;
         private readonly ILogger<PermisosIncapacidadesService> _logger;
 
-        // Mapeo de ClAbPre a Clave de VisualizaciÛn
+        // Mapeo de ClAbPre a Clave de VisualizaciÔøΩn
         private readonly Dictionary<int, string> _mapeoClaves = new()
         {
-            { 2380, "P" },  // Permiso con Goce (tambiÈn usado para E)
-            { 1331, "P" },  // Permiso DefunciÛn
-            { 1100, "V" },  // VacaciÛn
+            { 2380, "P" },  // Permiso con Goce (tambiÔøΩn usado para E)
+            { 1331, "P" },  // Permiso DefunciÔøΩn
+            { 1100, "V" },  // VacaciÔøΩn
             { 2310, "G" },  // Permiso sin Goce
-            { 2381, "A" },  // Inc. Accidente de Trabajo (tambiÈn H)
+            { 2381, "A" },  // Inc. Accidente de Trabajo (tambiÔøΩn H)
             { 2396, "M" },  // Inc. por Maternidad
             { 2394, "R" },  // Inc. Pble. Riesgo Trabajo
-            { 2123, "S" },  // SuspensiÛn
+            { 2123, "S" },  // SuspensiÔøΩn
             { 1315, "O" }   // PCG por Paternidad
         };
 
         private readonly Dictionary<int, string> _descripcionClaves = new()
         {
             { 2380, "Permiso con Goce / Inc. Enfermedad General" },
-            { 1331, "Permiso DefunciÛn" },
-            { 1100, "VacaciÛn" },
+            { 1331, "Permiso DefunciÔøΩn" },
+            { 1100, "VacaciÔøΩn" },
             { 2310, "Permiso sin Goce" },
             { 2381, "Inc. Accidente de Trabajo / Perm. sin goce" },
             { 2396, "Inc. por Maternidad" },
             { 2394, "Inc. Pble. Riesgo Trabajo" },
-            { 2123, "SuspensiÛn" },
+            { 2123, "SuspensiÔøΩn" },
             { 1315, "PCG por Paternidad" }
         };
 
@@ -53,11 +53,11 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Obtiene la clave de visualizaciÛn seg˙n el cÛdigo SAP y contexto
+        /// Obtiene la clave de visualizaciÔøΩn segÔøΩn el cÔøΩdigo SAP y contexto
         /// </summary>
         private string ObtenerClaveVisualizacion(int clAbPre, string? contexto = null)
         {
-            // Casos especiales donde el mismo ClAbPre tiene m˙ltiples visualizaciones
+            // Casos especiales donde el mismo ClAbPre tiene mÔøΩltiples visualizaciones
             if (clAbPre == 2380)
             {
                 // Si el contexto indica enfermedad, retorna "E", sino "P"
@@ -93,7 +93,7 @@ namespace tiempo_libre.Services
                 if (empleado == null)
                 {
                     return new ApiResponse<CrearPermisoIncapacidadResponse>(
-                        false, null, $"No se encontrÛ un empleado con nÛmina {request.Nomina}");
+                        false, null, $"No se encontrÔøΩ un empleado con nÔøΩmina {request.Nomina}");
                 }
 
                 // 2. Validar fechas
@@ -103,15 +103,15 @@ namespace tiempo_libre.Services
                         false, null, "La fecha fin no puede ser anterior a la fecha de inicio");
                 }
 
-                // 3. Validar que el tipo de permiso existe en el cat·logo
+                // 3. Validar que el tipo de permiso existe en el catÔøΩlogo
                 var clAbPreInt = int.Parse(request.ClAbPre);
                 if (!_mapeoClaves.ContainsKey(clAbPreInt) && clAbPreInt != 2381)
                 {
                     return new ApiResponse<CrearPermisoIncapacidadResponse>(
-                        false, null, $"El cÛdigo de permiso {request.ClAbPre} no es v·lido");
+                        false, null, $"El cÔøΩdigo de permiso {request.ClAbPre} no es vÔøΩlido");
                 }
 
-                // 4. Calcular dÌas h·biles (excluyendo fines de semana y dÌas inh·biles)
+                // 4. Calcular dÔøΩas hÔøΩbiles (excluyendo fines de semana y dÔøΩas inhÔøΩbiles)
                 var diasInhabiles = await _db.DiasInhabiles
                     .Where(d => d.Fecha >= request.FechaInicio && d.Fecha <= request.FechaFin)
                     .Select(d => d.Fecha)
@@ -124,7 +124,7 @@ namespace tiempo_libre.Services
                 {
                     var diaSemana = fechaActual.DayOfWeek;
 
-                    // Excluir fines de semana y dÌas inh·biles
+                    // Excluir fines de semana y dÔøΩas inhÔøΩbiles
                     if (diaSemana != DayOfWeek.Saturday &&
                         diaSemana != DayOfWeek.Sunday &&
                         !diasInhabiles.Contains(fechaActual))
@@ -138,7 +138,7 @@ namespace tiempo_libre.Services
                 if (!fechasAfectadas.Any())
                 {
                     return new ApiResponse<CrearPermisoIncapacidadResponse>(
-                        false, null, "El rango de fechas seleccionado no contiene dÌas h·biles");
+                        false, null, "El rango de fechas seleccionado no contiene dÔøΩas hÔøΩbiles");
                 }
 
                 // 5. Verificar conflictos con permisos existentes
@@ -155,11 +155,11 @@ namespace tiempo_libre.Services
                         conflictos.Select(c => $"{c.ClaseAbsentismo} ({c.Desde:dd/MM/yyyy} - {c.Hasta:dd/MM/yyyy})"));
 
                     _logger.LogWarning(
-                        "Conflictos encontrados para nÛmina {Nomina}: {Conflictos}",
+                        "Conflictos encontrados para nÔøΩmina {Nomina}: {Conflictos}",
                         request.Nomina, detalleConflictos);
                 }
 
-                // 6. Obtener la clave de visualizaciÛn
+                // 6. Obtener la clave de visualizaciÔøΩn
                 var claveVisualizacion = ObtenerClaveVisualizacion(clAbPreInt, request.Observaciones);
                 var descripcion = _descripcionClaves.TryGetValue(clAbPreInt, out var desc)
                     ? desc
@@ -186,14 +186,14 @@ namespace tiempo_libre.Services
                 _db.PermisosEIncapacidadesSAP.Add(nuevoPermiso);
                 await _db.SaveChangesAsync();
 
-                // 8. Notificar al empleado y jefe de ·rea
+                // 8. Notificar al empleado y jefe de ÔøΩrea
                 var usuarioRegistra = await _db.Users.FindAsync(usuarioRegistraId);
 
                 await _notificacionesService.CrearNotificacionAsync(
                     Models.Enums.TiposDeNotificacionEnum.RegistroVacaciones,
                     $"Registro de {descripcion}",
                     $"Se ha registrado un permiso/incapacidad del {request.FechaInicio:dd/MM/yyyy} al {request.FechaFin:dd/MM/yyyy}. " +
-                    $"DÌas afectados: {fechasAfectadas.Count}. " +
+                    $"DÔøΩas afectados: {fechasAfectadas.Count}. " +
                     (string.IsNullOrEmpty(request.Observaciones) ? "" : $"Observaciones: {request.Observaciones}"),
                     usuarioRegistra?.FullName ?? "Sistema",
                     empleado.Id,
@@ -217,7 +217,7 @@ namespace tiempo_libre.Services
                 var response = new CrearPermisoIncapacidadResponse
                 {
                     Exitoso = true,
-                    Mensaje = $"Permiso/Incapacidad registrado exitosamente. {fechasAfectadas.Count} dÌa(s) afectado(s).",
+                    Mensaje = $"Permiso/Incapacidad registrado exitosamente. {fechasAfectadas.Count} dÔøΩa(s) afectado(s).",
                     Nomina = request.Nomina,
                     NombreEmpleado = empleado.FullName,
                     TipoPermiso = claveVisualizacion,
@@ -229,7 +229,7 @@ namespace tiempo_libre.Services
                 };
 
                 _logger.LogInformation(
-                    "Permiso/Incapacidad creado para nÛmina {Nomina}: {Tipo} del {Inicio} al {Fin}",
+                    "Permiso/Incapacidad creado para nÔøΩmina {Nomina}: {Tipo} del {Inicio} al {Fin}",
                     request.Nomina, claveVisualizacion, request.FechaInicio, request.FechaFin);
 
                 return new ApiResponse<CrearPermisoIncapacidadResponse>(true, response, null);
@@ -237,7 +237,7 @@ namespace tiempo_libre.Services
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Error al crear permiso/incapacidad para nÛmina {Nomina}", request.Nomina);
+                _logger.LogError(ex, "Error al crear permiso/incapacidad para nÔøΩmina {Nomina}", request.Nomina);
                 return new ApiResponse<CrearPermisoIncapacidadResponse>(
                     false, null, $"Error inesperado: {ex.Message}");
             }
@@ -292,6 +292,7 @@ namespace tiempo_libre.Services
 
                 var permisosDto = permisos.Select(p => new PermisoIncapacidadDto
                 {
+                    Id = p.Id,
                     Nomina = p.Nomina,
                     Nombre = p.Nombre,
                     Posicion = p.Posicion,
@@ -355,7 +356,7 @@ namespace tiempo_libre.Services
                 await _db.SaveChangesAsync();
 
                 _logger.LogInformation(
-                    "Permiso/Incapacidad eliminado por usuario {UsuarioId}: NÛmina {Nomina}, {Desde} - {Hasta}",
+                    "Permiso/Incapacidad eliminado por usuario {UsuarioId}: NÔøΩmina {Nomina}, {Desde} - {Hasta}",
                     usuarioEliminaId, request.Nomina, request.Desde, request.Hasta);
 
                 return new ApiResponse<object>(
@@ -370,11 +371,89 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Obtiene el cat·logo de tipos de permisos e incapacidades
+        /// Obtiene el catÔøΩlogo de tipos de permisos e incapacidades
         /// </summary>
         public CatalogoPermisosResponse ObtenerCatalogoPermisos()
         {
             return new CatalogoPermisosResponse();
+        }
+
+        /// <summary>
+        /// Extiende la fecha "Hasta" de un permiso/incapacidad existente.
+        /// Activar las nomenclaturas (E, A, M, P, etc.) en el rol semanal en los nuevos d√≠as.
+        /// Solo Jefe de √Årea, Ingeniero Industrial, L√≠der de Grupo o SuperUsuario.
+        /// </summary>
+        public async Task<ApiResponse<object>> ExtenderPermisoIncapacidadAsync(
+            ExtenderPermisoIncapacidadRequest request,
+            int usuarioId)
+        {
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                var permiso = await _db.PermisosEIncapacidadesSAP
+                    .FirstOrDefaultAsync(p => p.Id == request.PermisoId);
+
+                if (permiso == null)
+                    return new ApiResponse<object>(false, null, "Permiso/incapacidad no encontrado.");
+
+                if (request.NuevaFechaHasta <= permiso.Hasta)
+                    return new ApiResponse<object>(false, null,
+                        $"La nueva fecha Hasta ({request.NuevaFechaHasta:yyyy-MM-dd}) debe ser posterior a la actual ({permiso.Hasta:yyyy-MM-dd}).");
+
+                // Recalcular dÔøΩas hÔøΩbiles totales en [Desde, NuevaFechaHasta]
+                var diasInhabiles = await _db.DiasInhabiles
+                    .Where(d => d.Fecha >= permiso.Desde && d.Fecha <= request.NuevaFechaHasta)
+                    .Select(d => d.Fecha)
+                    .ToListAsync();
+
+                int diasHabiles = 0;
+                int diasNaturales = 0;
+                for (var f = permiso.Desde; f <= request.NuevaFechaHasta; f = f.AddDays(1))
+                {
+                    diasNaturales++;
+                    if (f.DayOfWeek == DayOfWeek.Saturday || f.DayOfWeek == DayOfWeek.Sunday) continue;
+                    if (diasInhabiles.Contains(f)) continue;
+                    diasHabiles++;
+                }
+
+                var hastaAnterior = permiso.Hasta;
+                permiso.Hasta = request.NuevaFechaHasta;
+                permiso.Dias = diasHabiles;
+                permiso.DiaNat = diasNaturales;
+                permiso.EsRegistroManual = true;
+
+                if (!string.IsNullOrWhiteSpace(request.Observaciones))
+                {
+                    var marca = $"[Extendido por usuario {usuarioId} el {DateTime.UtcNow:yyyy-MM-dd HH:mm}: {hastaAnterior:yyyy-MM-dd} ‚Üí {request.NuevaFechaHasta:yyyy-MM-dd}] ";
+                    permiso.Observaciones = string.IsNullOrEmpty(permiso.Observaciones)
+                        ? marca + request.Observaciones
+                        : permiso.Observaciones + " | " + marca + request.Observaciones;
+                }
+
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation(
+                    "Usuario {UsuarioId} extendi√≥ permiso {PermisoId} de n√≥mina {Nomina}: {Anterior} ‚Üí {Nuevo}",
+                    usuarioId, permiso.Id, permiso.Nomina, hastaAnterior, request.NuevaFechaHasta);
+
+                return new ApiResponse<object>(true, new
+                {
+                    permisoId = permiso.Id,
+                    nomina = permiso.Nomina,
+                    desde = permiso.Desde,
+                    hastaAnterior,
+                    hastaNuevo = permiso.Hasta,
+                    diasHabiles,
+                    diasNaturales,
+                }, "Permiso/incapacidad extendido correctamente.");
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error extendiendo permiso/incapacidad {Id}", request.PermisoId);
+                return new ApiResponse<object>(false, null, "Error al extender: " + ex.Message);
+            }
         }
     }
 }

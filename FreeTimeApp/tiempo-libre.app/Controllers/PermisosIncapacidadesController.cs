@@ -28,7 +28,7 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
-        /// Obtiene el catálogo de tipos de permisos e incapacidades disponibles
+        /// Obtiene el catï¿½logo de tipos de permisos e incapacidades disponibles
         /// </summary>
         [HttpGet("catalogo")]
         public IActionResult ObtenerCatalogo()
@@ -40,7 +40,7 @@ namespace tiempo_libre.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener catálogo de permisos");
+                _logger.LogError(ex, "Error al obtener catï¿½logo de permisos");
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }
@@ -59,7 +59,7 @@ namespace tiempo_libre.Controllers
                     var errors = string.Join("; ", ModelState
                         .SelectMany(x => x.Value?.Errors ?? Enumerable.Empty<Microsoft.AspNetCore.Mvc.ModelBinding.ModelError>())
                         .Select(x => x.ErrorMessage));
-                    return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada inválidos: {errors}"));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada invï¿½lidos: {errors}"));
                 }
 
                 // Obtener el ID del usuario del token JWT
@@ -71,7 +71,7 @@ namespace tiempo_libre.Controllers
                 }
 
                 _logger.LogInformation(
-                    "Usuario {UsuarioId} creando permiso/incapacidad para nómina {Nomina}, tipo {ClAbPre}, {Desde} - {Hasta}",
+                    "Usuario {UsuarioId} creando permiso/incapacidad para nï¿½mina {Nomina}, tipo {ClAbPre}, {Desde} - {Hasta}",
                     usuarioId, request.Nomina, request.ClAbPre, request.FechaInicio, request.FechaFin);
 
                 var response = await _permisosService.CrearPermisoIncapacidadAsync(request, usuarioId);
@@ -91,6 +91,39 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
+        /// Extiende la fecha "Hasta" de un permiso/incapacidad existente.
+        /// Activa las nomenclaturas (E, A, M, P, etc.) en el rol semanal en los nuevos dï¿½as.
+        /// </summary>
+        [HttpPost("extender")]
+        [Authorize(Roles = "SuperUsuario,Jefe De Area,Lider De Grupo,Ingeniero Industrial")]
+        public async Task<IActionResult> ExtenderPermiso([FromBody] ExtenderPermisoIncapacidadRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = string.Join("; ", ModelState
+                        .SelectMany(x => x.Value?.Errors ?? Enumerable.Empty<Microsoft.AspNetCore.Mvc.ModelBinding.ModelError>())
+                        .Select(x => x.ErrorMessage));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos invï¿½lidos: {errors}"));
+                }
+
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var usuarioId))
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+
+                var response = await _permisosService.ExtenderPermisoIncapacidadAsync(request, usuarioId);
+                if (!response.Success) return BadRequest(response);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al extender permiso/incapacidad");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Consulta permisos e incapacidades con filtros opcionales
         /// </summary>
         [HttpPost("consultar")]
@@ -103,11 +136,11 @@ namespace tiempo_libre.Controllers
                     var errors = string.Join("; ", ModelState
                         .SelectMany(x => x.Value?.Errors ?? Enumerable.Empty<Microsoft.AspNetCore.Mvc.ModelBinding.ModelError>())
                         .Select(x => x.ErrorMessage));
-                    return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada inválidos: {errors}"));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada invï¿½lidos: {errors}"));
                 }
 
                 _logger.LogInformation(
-                    "Consultando permisos/incapacidades. Nómina: {Nomina}, EmpleadoId: {EmpleadoId}, Rango: {Desde} - {Hasta}",
+                    "Consultando permisos/incapacidades. Nï¿½mina: {Nomina}, EmpleadoId: {EmpleadoId}, Rango: {Desde} - {Hasta}",
                     request.Nomina, request.EmpleadoId, request.FechaInicio, request.FechaFin);
 
                 var response = await _permisosService.ConsultarPermisosAsync(request);
@@ -127,7 +160,7 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
-        /// Consulta permisos de un empleado específico por nómina
+        /// Consulta permisos de un empleado especï¿½fico por nï¿½mina
         /// </summary>
         [HttpGet("empleado/{nomina}")]
         public async Task<IActionResult> ObtenerPermisosPorNomina(
@@ -163,7 +196,7 @@ namespace tiempo_libre.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener permisos de nómina {Nomina}", nomina);
+                _logger.LogError(ex, "Error al obtener permisos de nï¿½mina {Nomina}", nomina);
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }
@@ -182,7 +215,7 @@ namespace tiempo_libre.Controllers
                     var errors = string.Join("; ", ModelState
                         .SelectMany(x => x.Value?.Errors ?? Enumerable.Empty<Microsoft.AspNetCore.Mvc.ModelBinding.ModelError>())
                         .Select(x => x.ErrorMessage));
-                    return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada inválidos: {errors}"));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada invï¿½lidos: {errors}"));
                 }
 
                 // Obtener el ID del usuario del token JWT
@@ -194,7 +227,7 @@ namespace tiempo_libre.Controllers
                 }
 
                 _logger.LogInformation(
-                    "Usuario {UsuarioId} eliminando permiso/incapacidad para nómina {Nomina}, {Desde} - {Hasta}, tipo {ClAbPre}",
+                    "Usuario {UsuarioId} eliminando permiso/incapacidad para nï¿½mina {Nomina}, {Desde} - {Hasta}, tipo {ClAbPre}",
                     usuarioId, request.Nomina, request.Desde, request.Hasta, request.ClAbPre);
 
                 var response = await _permisosService.EliminarPermisoAsync(request, usuarioId);
@@ -214,7 +247,7 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
-        /// Obtiene estadísticas de permisos e incapacidades de un periodo
+        /// Obtiene estadï¿½sticas de permisos e incapacidades de un periodo
         /// </summary>
         [HttpGet("estadisticas")]
         [Authorize(Roles = "SuperUsuario,Jefe De Area,Ingeniero Industrial")]
@@ -225,16 +258,16 @@ namespace tiempo_libre.Controllers
         {
             try
             {
-                // Esta funcionalidad se puede implementar después
-                // Por ahora retornamos una respuesta básica
+                // Esta funcionalidad se puede implementar despuï¿½s
+                // Por ahora retornamos una respuesta bï¿½sica
                 return Ok(new ApiResponse<object>(true, new
                 {
-                    mensaje = "Funcionalidad de estadísticas en desarrollo"
+                    mensaje = "Funcionalidad de estadï¿½sticas en desarrollo"
                 }, null));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener estadísticas");
+                _logger.LogError(ex, "Error al obtener estadï¿½sticas");
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }

@@ -9,11 +9,11 @@ namespace tiempo_libre.DTOs
     /// </summary>
     public class CrearPermisoIncapacidadRequest
     {
-        [Required(ErrorMessage = "La nómina del empleado es requerida")]
+        [Required(ErrorMessage = "La nï¿½mina del empleado es requerida")]
         public int Nomina { get; set; }
 
         [Required(ErrorMessage = "La clave de ausencia es requerida")]
-        public string ClAbPre { get; set; } = string.Empty; // Código SAP (2380, 1331, etc.)
+        public string ClAbPre { get; set; } = string.Empty; // Cï¿½digo SAP (2380, 1331, etc.)
 
         [Required(ErrorMessage = "La fecha de inicio es requerida")]
         public DateOnly FechaInicio { get; set; }
@@ -25,13 +25,28 @@ namespace tiempo_libre.DTOs
         public string? Observaciones { get; set; }
 
         /// <summary>
-        /// Número de días del permiso/incapacidad
+        /// Nï¿½mero de dï¿½as del permiso/incapacidad
         /// </summary>
         public int? Dias { get; set; }
     }
 
     /// <summary>
-    /// DTO para respuesta de creación de permiso/incapacidad
+    /// DTO para extender la fecha "Hasta" de un permiso/incapacidad existente.
+    /// </summary>
+    public class ExtenderPermisoIncapacidadRequest
+    {
+        [Required(ErrorMessage = "El Id del permiso/incapacidad es requerido")]
+        public int PermisoId { get; set; }
+
+        [Required(ErrorMessage = "La nueva fecha Hasta es requerida")]
+        public DateOnly NuevaFechaHasta { get; set; }
+
+        [MaxLength(500)]
+        public string? Observaciones { get; set; }
+    }
+
+    /// <summary>
+    /// DTO para respuesta de creaciï¿½n de permiso/incapacidad
     /// </summary>
     public class CrearPermisoIncapacidadResponse
     {
@@ -64,6 +79,7 @@ namespace tiempo_libre.DTOs
     /// </summary>
     public class PermisoIncapacidadDto
     {
+        public int Id { get; set; }
         public int Nomina { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public string Posicion { get; set; } = string.Empty;
@@ -71,7 +87,7 @@ namespace tiempo_libre.DTOs
         public DateOnly Hasta { get; set; }
         public int ClAbPre { get; set; }
         public string ClaveVisualizacion { get; set; } = string.Empty; // P, V, G, E, A, M, R, S, O, H
-        public string ClaseAbsentismo { get; set; } = string.Empty; // Descripción legible
+        public string ClaseAbsentismo { get; set; } = string.Empty; // Descripciï¿½n legible
         public double Dias { get; set; }
         public double DiaNat { get; set; }
         public string? Observaciones { get; set; }
@@ -107,7 +123,7 @@ namespace tiempo_libre.DTOs
     }
 
     /// <summary>
-    /// Catálogo de tipos de permisos e incapacidades
+    /// Catï¿½logo de tipos de permisos e incapacidades
     /// </summary>
     public class TipoPermisoDto
     {
@@ -120,7 +136,7 @@ namespace tiempo_libre.DTOs
     }
 
     /// <summary>
-    /// DTO para obtener el catálogo de tipos de permisos
+    /// DTO para obtener el catï¿½logo de tipos de permisos
     /// </summary>
     public class CatalogoPermisosResponse
     {
@@ -139,8 +155,8 @@ namespace tiempo_libre.DTOs
             {
                 ClAbPre = "1331",
                 ClaveVisualizacion = "P",
-                Concepto = "Permiso Defunción",
-                Descripcion = "Permiso por defunción",
+                Concepto = "Permiso Defunciï¿½n",
+                Descripcion = "Permiso por defunciï¿½n",
                 RequiereAprobacion = true,
                 AplicaDescuento = false
             },
@@ -148,7 +164,7 @@ namespace tiempo_libre.DTOs
             {
                 ClAbPre = "1100",
                 ClaveVisualizacion = "V",
-                Concepto = "Vacación",
+                Concepto = "Vacaciï¿½n",
                 Descripcion = "Vacaciones",
                 RequiereAprobacion = false,
                 AplicaDescuento = false
@@ -202,8 +218,8 @@ namespace tiempo_libre.DTOs
             {
                 ClAbPre = "2123",
                 ClaveVisualizacion = "S",
-                Concepto = "Suspensión",
-                Descripcion = "Suspensión",
+                Concepto = "Suspensiï¿½n",
+                Descripcion = "Suspensiï¿½n",
                 RequiereAprobacion = true,
                 AplicaDescuento = true
             },
