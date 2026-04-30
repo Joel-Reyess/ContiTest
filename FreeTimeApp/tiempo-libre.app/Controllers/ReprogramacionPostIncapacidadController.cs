@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
+using tiempo_libre.Models;
 using tiempo_libre.Services;
 
 namespace tiempo_libre.Controllers
