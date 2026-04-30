@@ -599,6 +599,7 @@ const WeeklyRoles = () => {
                                 { code: "O", label: "Perm. Paternidad", color: "bg-cyan-100 text-cyan-700" },
                                 { code: "H", label: "Perm. s/Goce Alt", color: "bg-indigo-100 text-indigo-700" },
                                 { code: "F", label: "Festivo Trabajado", color: "bg-teal-100 text-teal-700" },
+                                { code: "C", label: "Día empresa reprog.", color: "bg-amber-100 text-amber-800" },
                             ].map(({ code, label, color }) => (
                                 <span key={code} className="flex items-center gap-1">
                                     <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 font-semibold ${color}`}>{code}</span>
@@ -781,7 +782,9 @@ const WeeklyRoles = () => {
                                                                                                     ? "bg-cyan-100 text-cyan-700"
                                                                                                     : shift === "H"
                                                                                                         ? "bg-indigo-100 text-indigo-700"
-                                                                                                        : "bg-slate-100 text-slate-600";
+                                                                                                        : shift === "C"
+                                                                                                            ? "bg-amber-100 text-amber-800"
+                                                                                                            : "bg-slate-100 text-slate-600";
 
                                         return (
                                             <td key={idx} className="px-3 py-2 text-center">

@@ -29,6 +29,7 @@ import { UserRole } from "@/interfaces/User.interface";
 import { ChangePasswordModal } from "@/components/Empleado/ChangePasswordModal";
 import { SolicitarPermisoModal } from "./SolicitarPermisoModal";
 import { SolicitarReprogramacionPostIncapacidadModal } from "./SolicitarReprogramacionPostIncapacidadModal";
+import { SolicitarReprogramacionDiaEmpresaModal } from "./SolicitarReprogramacionDiaEmpresaModal";
 
 const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [searchParams] = useSearchParams();
@@ -51,12 +52,16 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
     const [showSolicitarPermisoModal, setShowSolicitarPermisoModal] = useState(false);
     const [showReprogPostIncModal, setShowReprogPostIncModal] = useState(false);
+    const [showReprogDiaEmpresaModal, setShowReprogDiaEmpresaModal] = useState(false);
     const navigate = useNavigate();
 
     const isDelegadoSindical = Boolean(
         (user?.roles || []).some(role => (typeof role === 'string' ? role === UserRole.UNION_REPRESENTATIVE : role.name === UserRole.UNION_REPRESENTATIVE)) ||
         (user as any)?.isUnionCommittee ||
         user?.area?.nombreGeneral === 'Sindicato'
+    );
+    const isSuperUsuario = Boolean(
+        (user?.roles || []).some(role => (typeof role === 'string' ? role === UserRole.SUPER_ADMIN : role.name === UserRole.SUPER_ADMIN))
     );
     const canChangePassword =
         isDelegadoSindical &&
@@ -338,6 +343,17 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                             Reprogramación post-incapacidad
                         </Button>
                     )}
+                    {isSuperUsuario && (
+                        <Button
+                            variant="outline"
+                            className="w-full cursor-pointer border-amber-400 text-amber-700 hover:bg-amber-50"
+                            size="lg"
+                            onClick={() => setShowReprogDiaEmpresaModal(true)}
+                        >
+                            <CalendarPlus2 className="mr-2 h-4 w-4" />
+                            Reprogramación día empresa (motivo)
+                        </Button>
+                    )}
                 </div>
             </div>
             <EditModal
@@ -395,6 +411,12 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
             <SolicitarReprogramacionPostIncapacidadModal
                 show={showReprogPostIncModal}
                 onClose={() => setShowReprogPostIncModal(false)}
+                empleadoId={employeeId !== 'undefined' && employeeId !== null ? parseInt(employeeId) : user?.id}
+                empleadoNombre={selectedEmployee?.fullName || user?.fullName || ''}
+            />
+            <SolicitarReprogramacionDiaEmpresaModal
+                show={showReprogDiaEmpresaModal}
+                onClose={() => setShowReprogDiaEmpresaModal(false)}
                 empleadoId={employeeId !== 'undefined' && employeeId !== null ? parseInt(employeeId) : user?.id}
                 empleadoNombre={selectedEmployee?.fullName || user?.fullName || ''}
             />

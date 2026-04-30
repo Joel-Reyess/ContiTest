@@ -216,6 +216,19 @@ namespace tiempo_libre.Controllers
                     festivosAprobados.Select(f => (f.EmpleadoId, f.FechaNuevaSolicitada.ToString("yyyy-MM-dd")))
                     );
 
+                // Punto 9: días empresa reprogramados aprobados → se mostrarán como "C".
+                // Se cargan aquí (antes del bucle) porque el codigoTurno los usa con prioridad 0.
+                var diasEmpresaReprogList = await _db.VacacionesProgramadas
+                    .Where(v => empleadosIds.Contains(v.EmpleadoId)
+                             && v.FechaVacacion >= DateOnly.FromDateTime(inicio)
+                             && v.FechaVacacion <= DateOnly.FromDateTime(fin)
+                             && v.EstadoVacacion == "Activa"
+                             && v.TipoVacacion == "DiaEmpresaReprogramado")
+                    .Select(v => new { v.EmpleadoId, v.FechaVacacion })
+                    .ToListAsync();
+                var diasEmpresaReprogSet = new HashSet<(int empleadoId, string fecha)>(
+                    diasEmpresaReprogList.Select(v => (v.EmpleadoId, v.FechaVacacion.ToString("yyyy-MM-dd"))));
+
                 // Para cada empleado y cada día de la semana, asegurar una entrada
                 foreach (var emp in empleados)
                 {
@@ -226,8 +239,13 @@ namespace tiempo_libre.Controllers
 
                         string codigoTurno;
 
+                        // PRIORIDAD 0: Día asignado por empresa REPROGRAMADO (punto 9 PDF) → "C"
+                        if (diasEmpresaReprogSet.Contains((emp.Id, fechaStr)))
+                        {
+                            codigoTurno = "C";
+                        }
                         // PRIORIDAD 1: Verificar si hay un permiso/incapacidad
-                        if (emp.Nomina.HasValue &&
+                        else if (emp.Nomina.HasValue &&
                             permisosPorEmpleadoYFecha.ContainsKey(fechaStr) &&
                             permisosPorEmpleadoYFecha[fechaStr].ContainsKey(emp.Nomina.Value))
                         {
@@ -276,7 +294,7 @@ namespace tiempo_libre.Controllers
                              && v.FechaVacacion >= DateOnly.FromDateTime(inicio)
                              && v.FechaVacacion <= DateOnly.FromDateTime(fin)
                              && v.EstadoVacacion != "Cancelada")
-                 .Select(v => new { v.Id, v.EmpleadoId, v.FechaVacacion })
+                 .Select(v => new { v.Id, v.EmpleadoId, v.FechaVacacion, v.TipoVacacion })
                  .ToListAsync();
 
                 var vacacionesLegacy = await _db.Vacaciones

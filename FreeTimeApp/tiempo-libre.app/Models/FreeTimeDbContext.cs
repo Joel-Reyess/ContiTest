@@ -57,6 +57,7 @@ public partial class FreeTimeDbContext : DbContext
     public virtual DbSet<SolicitudesFestivosTrabajados> SolicitudesFestivosTrabajados { get; set; }
     public virtual DbSet<FestivosEmpleadosTrabajadosUpload> FestivosEmpleadosTrabajadosUpload { get; set; }
     public virtual DbSet<SolicitudReprogramacionPostIncapacidad> SolicitudesReprogramacionPostIncapacidad { get; set; } = null!;
+    public virtual DbSet<SolicitudReprogramacionDiaEmpresa> SolicitudesReprogramacionDiaEmpresa { get; set; } = null!;
 
     public DbSet<SuplentePeriodo> SuplentePeriodos { get; set; }
     public DbSet<Permuta> Permutas { get; set; }
@@ -1186,6 +1187,48 @@ public partial class FreeTimeDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.JefeAreaId)
                 .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.AprobadoPor)
+                .WithMany()
+                .HasForeignKey(e => e.AprobadoPorId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => new { e.EmpleadoId, e.EstadoSolicitud });
+            entity.HasIndex(e => e.JefeAreaId);
+        });
+
+        // Configuración para SolicitudesReprogramacionDiaEmpresa (punto 9 del PDF)
+        modelBuilder.Entity<SolicitudReprogramacionDiaEmpresa>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EstadoSolicitud).HasMaxLength(20).HasDefaultValue("Pendiente");
+            entity.Property(e => e.MotivoTipo).HasMaxLength(40).IsRequired();
+            entity.Property(e => e.Justificacion).HasMaxLength(500);
+            entity.Property(e => e.MotivoRechazo).HasMaxLength(500);
+            entity.Property(e => e.FechaSolicitud).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Empleado)
+                .WithMany()
+                .HasForeignKey(e => e.EmpleadoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.VacacionOriginal)
+                .WithMany()
+                .HasForeignKey(e => e.VacacionOriginalId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.JefeArea)
+                .WithMany()
+                .HasForeignKey(e => e.JefeAreaId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.SolicitadoPor)
+                .WithMany()
+                .HasForeignKey(e => e.SolicitadoPorId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.AprobadoPor)
