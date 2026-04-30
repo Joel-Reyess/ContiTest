@@ -169,9 +169,19 @@ export const Dashboard: React.FC = () => {
     const [semanaSel,  setSemanaSel]  = useState<number | 'all'>('all');
     const [diaSel,     setDiaSel]     = useState<string>('');
 
-    const [areaSelId, setAreaSelId] = useState<number | 'all'>(() =>
-        !hasRole(UserRole.SUPER_ADMIN) && user?.area?.areaId ? user.area.areaId : 'all'
-    );
+    // Áreas a las que el usuario tiene acceso (multi-área para Ing. Industrial / Jefe)
+    const areasUsuario = useMemo<number[]>(() => {
+        if (isAdmin) return [];
+        const ids = new Set<number>();
+        if (user?.area?.areaId) ids.add(user.area.areaId);
+        user?.areas?.forEach(a => { if (a.areaId) ids.add(a.areaId); });
+        return Array.from(ids);
+    }, [isAdmin, user?.area?.areaId, user?.areas]);
+
+    const [areaSelId, setAreaSelId] = useState<number | 'all'>(() => {
+        if (isAdmin) return 'all';
+        return areasUsuario.length === 1 ? areasUsuario[0] : 'all';
+    });
 
     const [areas,              setAreas]              = useState<Area[]>([]);
     const [grupos,             setGrupos]             = useState<AusenciasPorGrupo[]>([]);
@@ -187,18 +197,26 @@ export const Dashboard: React.FC = () => {
     const [loadingTE,      setLoadingTE]      = useState(false);
     const [grupoExpandido, setGrupoExpandido] = useState<number | null>(null);
 
-    // Cargar áreas
+    // Cargar áreas (admin: todas; otros: solo las asignadas)
     useEffect(() => {
         areasService.getAreas()
-            .then(resp => setAreas(Array.isArray(resp) ? resp : []))
+            .then(resp => {
+                const all = Array.isArray(resp) ? resp : [];
+                if (isAdmin) {
+                    setAreas(all);
+                } else {
+                    const allowed = new Set(areasUsuario);
+                    setAreas(all.filter(a => allowed.has(a.areaId)));
+                }
+            })
             .catch(console.error);
-    }, []);
+    }, [isAdmin, areasUsuario]);
 
     useEffect(() => {
-        if (!isAdmin && user?.area?.areaId) {
-            setAreaSelId(prev => prev === 'all' ? user.area.areaId : prev);
+        if (!isAdmin && areasUsuario.length === 1 && areaSelId === 'all') {
+            setAreaSelId(areasUsuario[0]);
         }
-    }, [isAdmin, user?.area?.areaId]);
+    }, [isAdmin, areasUsuario, areaSelId]);
 
     const fechaEfectiva = useMemo(() => {
         if (diaSel) return diaSel;
@@ -435,7 +453,7 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {isAdmin && (
+                    {(isAdmin || areasUsuario.length > 1) && (
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-medium text-gray-500">Área</label>
                             <select
@@ -443,7 +461,7 @@ export const Dashboard: React.FC = () => {
                                 onChange={e => { setAreaSelId(e.target.value === 'all' ? 'all' : Number(e.target.value)); setGrupoExpandido(null); }}
                                 className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[160px]"
                             >
-                                <option value="all">Todas las áreas</option>
+                                <option value="all">{isAdmin ? 'Todas las áreas' : 'Todas mis áreas'}</option>
                                 {areas.map(a => <option key={a.areaId} value={a.areaId}>{a.nombreGeneral}</option>)}
                             </select>
                         </div>
@@ -503,7 +521,7 @@ export const Dashboard: React.FC = () => {
                     )}
 
                     <button
-                        onClick={() => { setAnioSel(hoy.getFullYear()); setMesSel(hoy.getMonth()+1); setSemanaSel('all'); setDiaSel(''); if (isAdmin) setAreaSelId('all'); }}
+                        onClick={() => { setAnioSel(hoy.getFullYear()); setMesSel(hoy.getMonth()+1); setSemanaSel('all'); setDiaSel(''); if (isAdmin || areasUsuario.length > 1) setAreaSelId('all'); }}
                         className="text-xs text-blue-600 hover:underline pb-1"
                     >Limpiar filtros</button>
                 </div>
