@@ -85,7 +85,7 @@ namespace tiempo_libre.DTOs
         public string Posicion { get; set; } = string.Empty;
         public DateOnly Desde { get; set; }
         public DateOnly Hasta { get; set; }
-        public int ClAbPre { get; set; }
+        public int? ClAbPre { get; set; }
         public string ClaveVisualizacion { get; set; } = string.Empty; // P, V, G, E, A, M, R, S, O, H
         public string ClaseAbsentismo { get; set; } = string.Empty; // Descripci�n legible
         public double Dias { get; set; }

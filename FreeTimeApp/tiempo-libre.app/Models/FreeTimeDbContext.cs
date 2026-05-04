@@ -992,7 +992,7 @@ public partial class FreeTimeDbContext : DbContext
             entity.Property(e => e.Posicion).HasMaxLength(200);
             entity.Property(e => e.Desde).IsRequired();
             entity.Property(e => e.Hasta).IsRequired();
-            entity.Property(e => e.ClAbPre).IsRequired().HasMaxLength(10);
+            // ClAbPre es int? — la tabla tiene registros legacy con NULL.
             entity.Property(e => e.ClaseAbsentismo).HasMaxLength(200);
             entity.Property(e => e.EsRegistroManual).HasDefaultValue(false);
             entity.Property(e => e.FechaRegistro).HasDefaultValueSql("GETDATE()");

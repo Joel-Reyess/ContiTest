@@ -251,7 +251,10 @@ namespace tiempo_libre.Services
         {
             try
             {
-                var query = _db.PermisosEIncapacidadesSAP.AsQueryable();
+                // Excluir registros basura (legacy con ClAbPre NULL) que truenan EF al materializar.
+                var query = _db.PermisosEIncapacidadesSAP
+                    .Where(p => p.ClAbPre != null)
+                    .AsQueryable();
 
                 if (request.Nomina.HasValue)
                 {
@@ -299,7 +302,7 @@ namespace tiempo_libre.Services
                     Desde = p.Desde,
                     Hasta = p.Hasta,
                     ClAbPre = p.ClAbPre,
-                    ClaveVisualizacion = ObtenerClaveVisualizacion(p.ClAbPre, p.ClaseAbsentismo),
+                    ClaveVisualizacion = ObtenerClaveVisualizacion(p.ClAbPre ?? 0, p.ClaseAbsentismo),
                     ClaseAbsentismo = p.ClaseAbsentismo,
                     Dias = p.Dias ?? 0,
                     DiaNat = p.DiaNat ?? 0,

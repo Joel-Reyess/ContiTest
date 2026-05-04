@@ -33,24 +33,24 @@ namespace tiempo_libre.Models
         public DateOnly Hasta { get; set; }
 
         /// <summary>
-        /// Código SAP de ausencia (2380, 1331, 1100, 2310, 2381, 2396, 2394, 2123, 1315)
+        /// Cï¿½digo SAP de ausencia (2380, 1331, 1100, 2310, 2381, 2396, 2394, 2123, 1315).
+        /// Nullable para tolerar registros legacy/basura en la tabla.
         /// </summary>
-        [Required]
-        public int ClAbPre { get; set; }  // Cambiar de string a int
+        public int? ClAbPre { get; set; }
 
         /// <summary>
-        /// Descripción de la clase de absentismo
+        /// Descripciï¿½n de la clase de absentismo
         /// </summary>
         [MaxLength(200)]
         public string? ClaseAbsentismo { get; set; } = string.Empty;
 
         /// <summary>
-        /// Número de días del permiso/incapacidad
+        /// Nï¿½mero de dï¿½as del permiso/incapacidad
         /// </summary>
         public double? Dias { get; set; }
 
         /// <summary>
-        /// Días naturales
+        /// Dï¿½as naturales
         /// </summary>
         public double? DiaNat { get; set; }
 
@@ -66,17 +66,17 @@ namespace tiempo_libre.Models
         public bool EsRegistroManual { get; set; } = false;
 
         /// <summary>
-        /// Fecha en que se registró el permiso/incapacidad en el sistema
+        /// Fecha en que se registrï¿½ el permiso/incapacidad en el sistema
         /// </summary>
         public DateTime FechaRegistro { get; set; } = DateTime.Now;
 
         /// <summary>
-        /// ID del usuario que registró el permiso/incapacidad (solo para registros manuales)
+        /// ID del usuario que registrï¿½ el permiso/incapacidad (solo para registros manuales)
         /// </summary>
         public int? UsuarioRegistraId { get; set; }
 
         /// <summary>
-        /// Relación con el usuario que registró (opcional)
+        /// Relaciï¿½n con el usuario que registrï¿½ (opcional)
         /// </summary>
         [ForeignKey("UsuarioRegistraId")]
         public User? UsuarioRegistra { get; set; }
@@ -88,7 +88,7 @@ namespace tiempo_libre.Models
         public string? EstadoSolicitud { get; set; } = "Aprobado";
 
         /// <summary>
-        /// ID del delegado sindical que solicitó (solo para solicitudes)
+        /// ID del delegado sindical que solicitï¿½ (solo para solicitudes)
         /// </summary>
         public int? DelegadoSolicitanteId { get; set; }
 
@@ -96,7 +96,7 @@ namespace tiempo_libre.Models
         //public User? DelegadoSolicitante { get; set; }
 
         /// <summary>
-        /// ID del jefe que aprobó/rechazó
+        /// ID del jefe que aprobï¿½/rechazï¿½
         /// </summary>
         public int? JefeAprobadorId { get; set; }
 
@@ -115,7 +115,7 @@ namespace tiempo_libre.Models
         public DateTime? FechaSolicitud { get; set; }
 
         /// <summary>
-        /// Fecha de respuesta (aprobación/rechazo)
+        /// Fecha de respuesta (aprobaciï¿½n/rechazo)
         /// </summary>
         public DateTime? FechaRespuesta { get; set; }
     }
