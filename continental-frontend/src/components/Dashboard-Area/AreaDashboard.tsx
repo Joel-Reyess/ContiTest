@@ -36,14 +36,14 @@
 import { useState, type JSX } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
 import { Navbar } from "../Navbar/Navbar";
-import { Calendar, File, FileChartColumn, Users, CalendarClock, ArrowLeftRight, BarChart3 } from "lucide-react";
+import { Calendar, File, FileChartColumn, Users, CalendarClock } from "lucide-react";
 import CalendarComponent from "./CalendarComponent";
 import SolicitudesComponent from "./SolicitudesComponent";
 import SolicitudDetallePage from "./SolicitudDetallePage";
 import SolicitudPermisoDetalle from "./SolicitudPermisoDetalle";
 import { Plantilla } from "./Plantilla";
 import { Reportes } from "./Reportes";
-import { Dashboard as GraficosDashboard } from "../Dashboard-Admin/Dashboard";
+// import { Dashboard as GraficosDashboard } from "../Dashboard-Admin/Dashboard"; // TEMPORAL: dashboard solo SuperUsuario
 import { DetallesEmpleado } from "../Empleado/DetallesEmpleado";
 import { PeriodOptions, type Period } from "@/interfaces/Calendar.interface";
 import WeeklyRoles from "../Dashboard-Empleados/WeeklyRoles";
@@ -72,8 +72,9 @@ const AreaDashboard = (): JSX.Element => {
     const navItems = [
         { to: "/area/calendario", label: "Calendario", icon: <Calendar /> },
         { to: "/area/roles-semanales", label: "Roles semanales", icon: <CalendarClock /> },
-        // Dashboard de gráficos: Jefe e Ingeniero Industrial
-        ...(!isLeader ? [{ to: "/area/dashboard", label: "Dashboard", icon: <BarChart3 /> }] : []),
+        // Dashboard de gráficos: TEMPORALMENTE deshabilitado para Jefe de Área e
+        // Ingeniero Industrial. Solo accesible desde el SuperUsuario en /admin/dashboard.
+        // ...(!isLeader ? [{ to: "/area/dashboard", label: "Dashboard", icon: <BarChart3 /> }] : []),
         // Solo mostrar Solicitudes si NO es LEADER ni INDUSTRIAL
         ...(!isLeader && !isIndustrial ? [{ to: "/area/solicitudes", label: "Solicitudes", icon: <File /> }] : []),
         { to: "/area/plantilla", label: "Plantilla", icon: <Users /> },
@@ -132,8 +133,9 @@ const AreaDashboard = (): JSX.Element => {
                     <Route path="plantilla" element={<Plantilla />} />
                     <Route path="plantilla/:id" element={<DetallesEmpleado currentPeriod={currentPeriod} />} />
 
-                    {/* Dashboard de gráficos: Jefe de Área e Ingeniero Industrial */}
-                    {!isLeader && <Route path="dashboard" element={<GraficosDashboard />} />}
+                    {/* Dashboard de gráficos: TEMPORALMENTE deshabilitado para Jefe de Área
+                        e Ingeniero Industrial. Solo accesible desde el SuperUsuario. */}
+                    {/* {!isLeader && <Route path="dashboard" element={<GraficosDashboard />} />} */}
 
                     {/* Solo LEADER no puede ver */}
                     {!isLeader && <Route path="reportes" element={<Reportes />} />}

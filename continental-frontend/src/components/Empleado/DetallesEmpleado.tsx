@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarPlus2, Download, Key, UserCheck, Edit2, Check, X, Clock, FileText } from "lucide-react";
+import { ArrowLeft, CalendarPlus2, Download, Key, UserCheck, Edit2, Check, X, Clock, FileText, Building2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Button } from "../ui/button";
@@ -30,6 +30,7 @@ import { OvertimeCalendar } from '../Dashboard-Area/OvertimeCalendar';
 import useAuth from '@/hooks/useAuth';
 import { RegistrarPermisoModal } from "@/components/Empleado/RegistrarPermisoModal";
 import { ExtenderIncapacidadModal } from "@/components/Empleado/ExtenderIncapacidadModal";
+import { SolicitarReprogramacionDiaEmpresaModal } from "@/components/Dashboard-Empleados/SolicitarReprogramacionDiaEmpresaModal";
 export const DetallesEmpleado = ({
 }: {
   currentPeriod: Period;
@@ -89,8 +90,10 @@ export const DetallesEmpleado = ({
 
   const [showPermisoModal, setShowPermisoModal] = useState(false);
   const [showExtenderModal, setShowExtenderModal] = useState(false);
+  const [showReprogDiaEmpresaModal, setShowReprogDiaEmpresaModal] = useState(false);
   const { hasRole } = useAuth();
   const isLeader = hasRole(UserRole.LEADER);
+  const isSuperUsuario = hasRole(UserRole.SUPER_ADMIN);
   const puedeExtenderIncapacidad =
       hasRole(UserRole.SUPER_ADMIN) ||
       hasRole(UserRole.AREA_ADMIN) ||
@@ -830,6 +833,16 @@ const handleRemoveDay = async (fecha: string) => {
                 Extender Incapacidad
               </Button>
             )}
+            {isSuperUsuario && (
+              <Button
+                variant="outline"
+                onClick={() => setShowReprogDiaEmpresaModal(true)}
+                className="flex items-center gap-2 w-[225px] h-[45px] border-amber-400 text-amber-700 rounded-lg hover:bg-amber-50"
+              >
+                <Building2 size={16} />
+                Reprogramar día empresa
+              </Button>
+            )}
                       {isLeader && (
                           <OvertimeCalendar
                               excepciones={excepcionesTiempoExtra}
@@ -1024,6 +1037,17 @@ const handleRemoveDay = async (fecha: string) => {
                   nomina={parseInt(sindicalizado.noNomina?.toString() || "0")}
                   nombreEmpleado={sindicalizado.nombre}
                   onPermisoExtendido={() => {
+                      if (id) getEmployeeDetails(id);
+                  }}
+              />
+          )}
+          {showReprogDiaEmpresaModal && sindicalizado && id && (
+              <SolicitarReprogramacionDiaEmpresaModal
+                  show={showReprogDiaEmpresaModal}
+                  onClose={() => setShowReprogDiaEmpresaModal(false)}
+                  empleadoId={parseInt(id)}
+                  empleadoNombre={sindicalizado.nombre}
+                  onSolicitudCreada={() => {
                       if (id) getEmployeeDetails(id);
                   }}
               />
