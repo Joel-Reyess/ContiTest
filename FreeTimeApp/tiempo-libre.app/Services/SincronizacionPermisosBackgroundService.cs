@@ -27,14 +27,14 @@ namespace tiempo_libre.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Servicio de sincronización de permisos iniciado");
+            _logger.LogInformation("Servicio de sincronizaciï¿½n de permisos iniciado");
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
                     await SincronizarPermisos();
-                    _logger.LogInformation($"Próxima sincronización de permisos en {_intervalo.TotalMinutes} minutos");
+                    _logger.LogInformation($"Prï¿½xima sincronizaciï¿½n de permisos en {_intervalo.TotalMinutes} minutos");
 
                     try
                     {
@@ -47,7 +47,7 @@ namespace tiempo_libre.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error en el servicio de sincronización de permisos");
+                    _logger.LogError(ex, "Error en el servicio de sincronizaciï¿½n de permisos");
 
                     try
                     {
@@ -60,7 +60,7 @@ namespace tiempo_libre.Services
                 }
             }
 
-            _logger.LogInformation("Servicio de sincronización de permisos detenido");
+            _logger.LogInformation("Servicio de sincronizaciï¿½n de permisos detenido");
         }
 
         private async Task SincronizarPermisos()
@@ -110,7 +110,7 @@ namespace tiempo_libre.Services
                                 // Conversiones
                                 if (!int.TryParse(registro.Nomina.Trim(), out int nomina))
                                 {
-                                    _logger.LogWarning($"Nómina inválida: {registro.Nomina}");
+                                    _logger.LogWarning($"Nï¿½mina invï¿½lida: {registro.Nomina}");
                                     erroresConversion++;
                                     continue;
                                 }
@@ -157,6 +157,29 @@ namespace tiempo_libre.Services
                                     continue;
                                 }
 
+                                // Punto 6: si ya existe un registro protegido por
+                                // extensiÃ³n del jefe (mismo Nomina+Desde+ClAbPre),
+                                // no insertar nada del Excel para no pisar lo que
+                                // el jefe extendiÃ³. Compara solo por (Nomina,
+                                // Desde, ClAbPre) â€” Hasta puede haber cambiado
+                                // si la versiÃ³n Excel original difiere.
+                                var protegido = await context.PermisosEIncapacidadesSAP
+                                    .AsNoTracking()
+                                    .AnyAsync(p =>
+                                        p.Nomina == nomina &&
+                                        p.Desde == desde &&
+                                        p.ClAbPre == clAbPre &&
+                                        p.ProtegidoPorExtension);
+
+                                if (protegido)
+                                {
+                                    _logger.LogInformation(
+                                        "Omitido por protecciÃ³n de extensiÃ³n: Nomina={Nomina} Desde={Desde} ClAbPre={ClAbPre}",
+                                        nomina, desde, clAbPre);
+                                    registrosOmitidos++;
+                                    continue;
+                                }
+
                                 // Verificar que el empleado exista
                                 var empleadoExiste = await context.Users
                                     .AsNoTracking()
@@ -164,7 +187,7 @@ namespace tiempo_libre.Services
 
                                 if (!empleadoExiste)
                                 {
-                                    _logger.LogWarning($"Empleado con nómina {nomina} no encontrado en Users");
+                                    _logger.LogWarning($"Empleado con nï¿½mina {nomina} no encontrado en Users");
                                     erroresConversion++;
                                     continue;
                                 }
@@ -219,7 +242,7 @@ namespace tiempo_libre.Services
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogError(ex, $"Error procesando registro Nómina: {registro.Nomina ?? "NULL"}");
+                                _logger.LogError(ex, $"Error procesando registro Nï¿½mina: {registro.Nomina ?? "NULL"}");
                                 erroresConversion++;
                             }
                         }
@@ -250,19 +273,19 @@ namespace tiempo_libre.Services
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Error al limpiar tabla PermisosEIncapacidadesSAP_Actualizar - los registros se procesarán nuevamente en la próxima ejecución");
+                            _logger.LogError(ex, "Error al limpiar tabla PermisosEIncapacidadesSAP_Actualizar - los registros se procesarï¿½n nuevamente en la prï¿½xima ejecuciï¿½n");
                         }
                     }
 
                     _logger.LogInformation(
-                        $"Sincronización de permisos completada. " +
+                        $"Sincronizaciï¿½n de permisos completada. " +
                         $"Insertados: {registrosInsertados}, " +
                         $"Omitidos (duplicados): {registrosOmitidos}, " +
                         $"Errores: {erroresConversion}");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error crítico al sincronizar permisos desde PermisosEIncapacidadesSAP_Actualizar");
+                    _logger.LogError(ex, "Error crï¿½tico al sincronizar permisos desde PermisosEIncapacidadesSAP_Actualizar");
                     throw;
                 }
             }

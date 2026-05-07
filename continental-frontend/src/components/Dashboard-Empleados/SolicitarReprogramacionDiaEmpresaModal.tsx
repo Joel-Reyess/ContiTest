@@ -7,12 +7,10 @@ import { es } from 'date-fns/locale'
 import {
     reprogramacionDiaEmpresaService,
     MOTIVO_LABEL,
+    MOTIVO_NOMENCLATURA,
     type MotivoTipo,
+    type VacacionAsignada,
 } from '@/services/reprogramacionDiaEmpresaService'
-import {
-    reprogramacionPostIncapacidadService,
-    type VacacionNoCanjeada,
-} from '@/services/reprogramacionPostIncapacidadService'
 
 interface Props {
     show: boolean
@@ -27,7 +25,7 @@ const MOTIVOS: MotivoTipo[] = ['Incapacidad', 'PermisoDefuncion', 'Paternidad', 
 export function SolicitarReprogramacionDiaEmpresaModal({
     show, onClose, empleadoId, empleadoNombre, onSolicitudCreada,
 }: Props) {
-    const [vacaciones, setVacaciones] = useState<VacacionNoCanjeada[]>([])
+    const [vacaciones, setVacaciones] = useState<VacacionAsignada[]>([])
     const [vacacionId, setVacacionId] = useState<number | null>(null)
     const [fechaNueva, setFechaNueva] = useState('')
     const [motivoTipo, setMotivoTipo] = useState<MotivoTipo | ''>('')
@@ -41,14 +39,14 @@ export function SolicitarReprogramacionDiaEmpresaModal({
         if (!show || !empleadoId) return
         let cancel = false
         setLoadingData(true)
-        reprogramacionPostIncapacidadService.getVacacionesNoCanjeadas(empleadoId)
+        reprogramacionDiaEmpresaService.getVacacionesAsignadasNoConsumidas(empleadoId)
             .then(vacs => {
                 if (cancel) return
                 setVacaciones(vacs)
-                if (!vacs.length) toast.info('El empleado no tiene vacaciones futuras no canjeadas.')
+                if (!vacs.length) toast.info('El empleado no tiene días asignados por la empresa pendientes.')
             })
             .catch((e: any) => {
-                if (!cancel) toast.error(e?.message || 'Error al cargar vacaciones')
+                if (!cancel) toast.error(e?.message || 'Error al cargar vacaciones asignadas')
             })
             .finally(() => { if (!cancel) setLoadingData(false) })
         return () => { cancel = true }
@@ -162,9 +160,19 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                     >
                                         <option value="">— Selecciona —</option>
                                         {MOTIVOS.map(m => (
-                                            <option key={m} value={m}>{MOTIVO_LABEL[m]}</option>
+                                            <option key={m} value={m}>
+                                                {MOTIVO_LABEL[m]} ({MOTIVO_NOMENCLATURA[m]})
+                                            </option>
                                         ))}
                                     </select>
+                                    {motivoTipo && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Nomenclatura en rol: <span className="font-mono font-semibold text-continental-yellow bg-gray-100 px-1.5 py-0.5 rounded">
+                                                {MOTIVO_NOMENCLATURA[motivoTipo]}
+                                            </span>
+                                            {' '}— se reflejará como <span className="font-mono font-semibold">C</span> en el rol semanal del día reprogramado.
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div>

@@ -14,13 +14,13 @@ export interface EventType {
     razon?: string;
 }
 
-export const useCalendar = ({groupId, userId}: {groupId?: number; userId?: number}) => {
+export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; userId?: number; refreshKey?: number}) => {
     const [schedule, setSchedule] = useState<EventType[]>([]);
     const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     const lastFetchKeyRef = useRef<string>('');
-    
+
     const fetchEvents = useCallback(async (start: Date, end: Date): Promise<void> => {
         // Always fetch by usuario. Use provided userId or fall back to the current logged user.
         const effectiveUserId: number | undefined = typeof userId === 'number'
@@ -33,7 +33,7 @@ export const useCalendar = ({groupId, userId}: {groupId?: number; userId?: numbe
             return;
         }
 
-        const dateKey = `${start.toISOString().split('T')[0]}_${end.toISOString().split('T')[0]}_${effectiveUserId}_${groupId}`;
+        const dateKey = `${start.toISOString().split('T')[0]}_${end.toISOString().split('T')[0]}_${effectiveUserId}_${groupId}_${refreshKey ?? 0}`;
         
         // Evitar llamadas duplicadas
         if (isLoading || lastFetchKeyRef.current === dateKey) {
@@ -183,7 +183,7 @@ export const useCalendar = ({groupId, userId}: {groupId?: number; userId?: numbe
         } finally {
             setIsLoading(false);
         }
-    }, [groupId, userId]);
+    }, [groupId, userId, refreshKey]);
 
     const handleRangeChange = (
         range: Date[] | { start: Date; end: Date },

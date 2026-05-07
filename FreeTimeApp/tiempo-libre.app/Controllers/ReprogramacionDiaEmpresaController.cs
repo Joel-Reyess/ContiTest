@@ -46,6 +46,26 @@ namespace tiempo_libre.Controllers
             return Ok(new ApiResponse<object>(true, _service.ObtenerCatalogoMotivos()));
         }
 
+        /// <summary>
+        /// Vacaciones asignadas por la empresa (Automatica/AsignadaAutomaticamente)
+        /// no consumidas del empleado. Punto 9: candidatas a reprogramación.
+        /// </summary>
+        [HttpGet("vacaciones-asignadas/{empleadoId:int}")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario")]
+        public async Task<IActionResult> ObtenerVacacionesAsignadas(int empleadoId)
+        {
+            try
+            {
+                var data = await _service.ObtenerVacacionesAsignadasNoConsumidasAsync(empleadoId);
+                return Ok(new ApiResponse<object>(true, data));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo vacaciones asignadas no consumidas para {EmpleadoId}", empleadoId);
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+            }
+        }
+
         /// <summary>Crear solicitud (SOLO SuperUsuario).</summary>
         [HttpPost("solicitar")]
         [Authorize(Roles = "SuperUsuario,Super Usuario")]

@@ -102,7 +102,7 @@ export default function FestivoDetallePage() {
             setError(null)
             try {
                 const solicitudId = parseInt(id, 10)
-                if (isNaN(solicitudId)) throw new Error('ID de solicitud inválido')
+                if (isNaN(solicitudId)) throw new Error('ID de solicitud invï¿½lido')
                 const data = await festivosTrabajadosService.getSolicitudById(solicitudId)
                 setSolicitud(data)
             } catch (error) {
@@ -132,7 +132,9 @@ export default function FestivoDetallePage() {
                 aprobada: true
             })
             toast.success('Solicitud aprobada correctamente')
-            navigate(-1)
+            navigate('/area/solicitudes', {
+                state: { filters: savedFilters, refetch: true, activeTab: returnTab ?? 'festivos' }
+            })
         } catch (error) {
             toast.error('Error al aprobar la solicitud')
         } finally {
@@ -152,7 +154,9 @@ export default function FestivoDetallePage() {
                 motivoRechazo: motivo
             })
             toast.success('Solicitud rechazada correctamente')
-            navigate(-1)
+            navigate('/area/solicitudes', {
+                state: { filters: savedFilters, refetch: true, activeTab: returnTab ?? 'festivos' }
+            })
         } catch (error) {
             toast.error('Error al rechazar la solicitud')
         } finally {
@@ -258,7 +262,7 @@ export default function FestivoDetallePage() {
                         <div className="space-y-4">
                             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                                 <UserIcon className="w-5 h-5" />
-                                Información del Empleado
+                                Informaciï¿½n del Empleado
                             </h3>
                             <div className="space-y-2">
                                 <div>
@@ -266,11 +270,11 @@ export default function FestivoDetallePage() {
                                     <p className="font-medium">{solicitud.nombreEmpleado || 'No especificado'}</p>
                                 </div>
                                 <div>
-                                    <span className="text-sm text-gray-500">Nómina:</span>
+                                    <span className="text-sm text-gray-500">Nï¿½mina:</span>
                                     <p className="font-medium">{solicitud.nominaEmpleado || 'No especificado'}</p>
                                 </div>
                                 <div>
-                                    <span className="text-sm text-gray-500">Área:</span>
+                                    <span className="text-sm text-gray-500">ï¿½rea:</span>
                                     <p className="font-medium">{solicitud.areaEmpleado || 'No especificado'}</p>
                                 </div>
                                 <div>
@@ -315,7 +319,7 @@ export default function FestivoDetallePage() {
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-sm text-gray-500">% Día:</span>
+                                    <span className="text-sm text-gray-500">% Dï¿½a:</span>
                                     <p className="font-medium">
                                         {solicitud.porcentajeDelDia != null && !isNaN(solicitud.porcentajeDelDia)
                                             ? `${solicitud.porcentajeDelDia.toFixed(1)}%`
@@ -348,7 +352,7 @@ export default function FestivoDetallePage() {
                                 </div>
                                 {solicitud.fechaAprobacion && (
                                     <div>
-                                        <span className="text-sm text-gray-500">Fecha de Resolución:</span>
+                                        <span className="text-sm text-gray-500">Fecha de Resoluciï¿½n:</span>
                                         <p className="font-medium">
                                             {format(new Date(solicitud.fechaAprobacion), "d 'de' MMMM, yyyy 'a las' HH:mm", { locale: es })}
                                         </p>
@@ -371,7 +375,7 @@ export default function FestivoDetallePage() {
 
                 {areaOptions.length > 0 ? (
                     <div className="bg-white rounded-lg shadow-sm border p-6">
-                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Calendario del Área</h2>
+                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Calendario del ï¿½rea</h2>
                         <CalendarWidget
                             showTabs
                             showHeader
@@ -386,7 +390,7 @@ export default function FestivoDetallePage() {
                     </div>
                 ) : (
                     <div className="bg-white rounded-lg shadow-sm border p-6">
-                        <p className="text-sm text-gray-600">No se pudieron cargar las Áreas para mostrar el calendario.</p>
+                        <p className="text-sm text-gray-600">No se pudieron cargar las ï¿½reas para mostrar el calendario.</p>
                     </div>
                 )}
             </div>

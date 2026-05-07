@@ -144,7 +144,7 @@ const CustomDateCellWrapper = ({
 };
  
 
-const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [] }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; }) => {
+const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number }) => {
   // Obtener configuración de vacaciones para determinar el año
   const { currentPeriod } = useVacationConfig();
   
@@ -161,7 +161,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
     date,
     setDate,
     isLoading: calendarLoading,
-  } = useCalendar({groupId: groupId || 1, userId});
+  } = useCalendar({groupId: groupId || 1, userId, refreshKey});
 
   // Ref para evitar bucles infinitos
   const lastSetDateRef = useRef<string>('');
@@ -245,6 +245,11 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
 
   // Ref para evitar múltiples llamadas con la misma fecha
   const lastFetchedDateRef = useRef<string>('');
+
+  // Si el padre incrementa refreshKey, limpiar el ref para forzar refetch.
+  useEffect(() => {
+    lastFetchedDateRef.current = '';
+  }, [refreshKey]);
   
   // Actualizar datos cuando cambie el mes o la fecha del calendario
   useEffect(() => {
@@ -252,7 +257,9 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
       // Usar la fecha actual del calendario (que puede ser de cualquier año)
       const year = date.getFullYear();
       const targetMonth = date.getMonth();
-      const fetchKey = `${year}-${targetMonth}-${userId}-${groupId}`;
+      // refreshKey forma parte del fetchKey para forzar refetch cuando el padre
+      // lo incrementa tras una operación (ej. aprobar reprogramación, extender).
+      const fetchKey = `${year}-${targetMonth}-${userId}-${groupId}-${refreshKey ?? 0}`;
 
       // Evitar llamadas duplicadas
       if (lastFetchedDateRef.current === fetchKey) {
@@ -279,7 +286,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
     if (date && userId && !calendarLoading) {
       updateCalendarData();
     }
-  }, [date, fetchEvents, groupId, userId, calendarLoading]);
+  }, [date, fetchEvents, groupId, userId, calendarLoading, refreshKey]);
 
   // Forzar re-render cuando cambie el schedule
   useEffect(() => {

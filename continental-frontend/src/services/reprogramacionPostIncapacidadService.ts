@@ -82,6 +82,11 @@ export const reprogramacionPostIncapacidadService = {
             httpClient.get(`${BASE}/vacaciones-no-canjeadas/${empleadoId}`)
         ),
 
+    getVacacionesEnIncapacidad: (empleadoId: number, permisoId: number) =>
+        unwrap<VacacionNoCanjeada[]>(
+            httpClient.get(`${BASE}/vacaciones-en-incapacidad/${empleadoId}/${permisoId}`)
+        ),
+
     solicitar: (req: SolicitarReprogramacionPostIncapacidadRequest) =>
         unwrap<SolicitudReprogramacionPostIncapacidad>(
             httpClient.post(`${BASE}/solicitar`, req)

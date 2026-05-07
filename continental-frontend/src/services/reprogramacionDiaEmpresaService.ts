@@ -12,6 +12,22 @@ export const MOTIVO_LABEL: Record<MotivoTipo, string> = {
     Maternidad: 'Maternidad',
 }
 
+// Nomenclatura SAP que aparece en el rol semanal cuando se aplica el motivo.
+// Misma convención que PermisosIncapacidadesService._mapeoClaves.
+export const MOTIVO_NOMENCLATURA: Record<MotivoTipo, string> = {
+    Incapacidad: 'E',
+    PermisoDefuncion: 'P',
+    Paternidad: 'O',
+    Maternidad: 'M',
+}
+
+export interface VacacionAsignada {
+    id: number
+    fecha: string
+    tipoVacacion: string
+    estadoVacacion: string
+}
+
 export interface SolicitarReprogramacionDiaEmpresaRequest {
     empleadoId: number
     vacacionOriginalId: number
@@ -59,6 +75,9 @@ async function unwrap<T>(p: Promise<ApiResponse<unknown>>): Promise<T> {
 export const reprogramacionDiaEmpresaService = {
     getMotivos: () =>
         unwrap<MotivoTipo[]>(httpClient.get(`${BASE}/motivos`)),
+
+    getVacacionesAsignadasNoConsumidas: (empleadoId: number) =>
+        unwrap<VacacionAsignada[]>(httpClient.get(`${BASE}/vacaciones-asignadas/${empleadoId}`)),
 
     solicitar: (req: SolicitarReprogramacionDiaEmpresaRequest) =>
         unwrap<SolicitudReprogramacionDiaEmpresa>(httpClient.post(`${BASE}/solicitar`, req)),

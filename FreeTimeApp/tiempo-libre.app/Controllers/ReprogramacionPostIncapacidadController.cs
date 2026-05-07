@@ -53,7 +53,7 @@ namespace tiempo_libre.Controllers
             }
         }
 
-        /// <summary>Vacaciones futuras no canjeadas (Activas) del empleado.</summary>
+        /// <summary>Vacaciones futuras no canjeadas (Activas, tipo Anual) del empleado.</summary>
         [HttpGet("vacaciones-no-canjeadas/{empleadoId:int}")]
         public async Task<IActionResult> ObtenerVacacionesNoCanjeadas(int empleadoId)
         {
@@ -65,6 +65,26 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error consultando vacaciones no canjeadas para {EmpleadoId}", empleadoId);
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+            }
+        }
+
+        /// <summary>
+        /// Vacaciones tipo "Anual" del empleado cuya fecha cae dentro del rango de
+        /// la incapacidad indicada. Punto 7: candidatas reales a reprogramar
+        /// porque el operador estaba incapacitado ese día.
+        /// </summary>
+        [HttpGet("vacaciones-en-incapacidad/{empleadoId:int}/{permisoId:int}")]
+        public async Task<IActionResult> ObtenerVacacionesEnIncapacidad(int empleadoId, int permisoId)
+        {
+            try
+            {
+                var data = await _service.ObtenerVacacionesEnIncapacidadAsync(empleadoId, permisoId);
+                return Ok(new ApiResponse<object>(true, data));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error consultando vacaciones en rango de incapacidad {PermisoId}", permisoId);
                 return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
             }
         }

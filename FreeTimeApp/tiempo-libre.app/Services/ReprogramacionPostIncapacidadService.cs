@@ -62,8 +62,10 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Vacaciones programadas futuras del empleado que aún no han sido canjeadas
-        /// (estado "Activa" y fecha &gt;= hoy).
+        /// Vacaciones SELECCIONADAS por el empleado (TipoVacacion = "Anual") que
+        /// aún no han sido canjeadas. Punto 7: el delegado solo puede reprogramar
+        /// las que el empleado eligió, no las asignadas por la empresa
+        /// (esas son terreno del Punto 9).
         /// </summary>
         public async Task<List<VacacionDisponibleDto>> ObtenerVacacionesNoCanjeadasAsync(int empleadoId)
         {
@@ -71,7 +73,37 @@ namespace tiempo_libre.Services
             return await _db.VacacionesProgramadas
                 .Where(v => v.EmpleadoId == empleadoId &&
                             v.EstadoVacacion == "Activa" &&
-                            v.FechaVacacion >= hoy)
+                            v.FechaVacacion >= hoy &&
+                            v.TipoVacacion == "Anual")
+                .OrderBy(v => v.FechaVacacion)
+                .Select(v => new VacacionDisponibleDto
+                {
+                    Id = v.Id,
+                    Fecha = v.FechaVacacion,
+                    TipoVacacion = v.TipoVacacion,
+                    EstadoVacacion = v.EstadoVacacion,
+                })
+                .ToListAsync();
+        }
+
+        /// <summary>
+        /// Vacaciones "Anual" del empleado cuya fecha cae DENTRO del rango de un
+        /// permiso/incapacidad específico (no se gozaron porque el operador estaba
+        /// incapacitado). Punto 7: estas son las únicas candidatas reales para
+        /// reprogramar después de una incapacidad.
+        /// </summary>
+        public async Task<List<VacacionDisponibleDto>> ObtenerVacacionesEnIncapacidadAsync(int empleadoId, int permisoId)
+        {
+            var permiso = await _db.PermisosEIncapacidadesSAP
+                .FirstOrDefaultAsync(p => p.Id == permisoId);
+            if (permiso == null) return new List<VacacionDisponibleDto>();
+
+            return await _db.VacacionesProgramadas
+                .Where(v => v.EmpleadoId == empleadoId &&
+                            v.EstadoVacacion == "Activa" &&
+                            v.TipoVacacion == "Anual" &&
+                            v.FechaVacacion >= permiso.Desde &&
+                            v.FechaVacacion <= permiso.Hasta)
                 .OrderBy(v => v.FechaVacacion)
                 .Select(v => new VacacionDisponibleDto
                 {
@@ -129,9 +161,18 @@ namespace tiempo_libre.Services
             if (vacacion.EstadoVacacion != "Activa")
                 return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
                     "Solo vacaciones activas pueden reprogramarse.");
-            if (vacacion.FechaVacacion < hoy)
+            // Punto 7: solo aplica a vacaciones seleccionadas por el empleado (no asignadas)
+            if (vacacion.TipoVacacion != "Anual")
                 return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
-                    "Solo se pueden reprogramar vacaciones futuras no canjeadas.");
+                    "Solo vacaciones seleccionadas por el empleado pueden reprogramarse aquí. " +
+                    "Las vacaciones asignadas por la empresa se reprograman desde el módulo de SuperUsuario.");
+            // Punto 7: la vacación debe haber caído DENTRO del rango de la incapacidad
+            // (es decir, el operador no la gozó porque estuvo incapacitado ese día)
+            if (vacacion.FechaVacacion < permiso.Desde || vacacion.FechaVacacion > permiso.Hasta)
+                return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
+                    $"La vacación seleccionada ({vacacion.FechaVacacion:yyyy-MM-dd}) no cae dentro " +
+                    $"del rango de la incapacidad ({permiso.Desde:yyyy-MM-dd} → {permiso.Hasta:yyyy-MM-dd}). " +
+                    "Solo se pueden reprogramar días que el operador no gozó por estar incapacitado.");
 
             // Evitar duplicados: misma vacación con solicitud pendiente
             var existePendiente = await _db.SolicitudesReprogramacionPostIncapacidad

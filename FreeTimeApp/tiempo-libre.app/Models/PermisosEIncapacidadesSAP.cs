@@ -118,5 +118,18 @@ namespace tiempo_libre.Models
         /// Fecha de respuesta (aprobaci�n/rechazo)
         /// </summary>
         public DateTime? FechaRespuesta { get; set; }
+
+        /// <summary>
+        /// Punto 6: si un jefe extendi� esta incapacidad, queda protegida para que
+        /// futuras cargas del Excel no la sobrescriban. Solo aplica al registro
+        /// original que vino del Excel.
+        /// </summary>
+        public bool ProtegidoPorExtension { get; set; } = false;
+
+        /// <summary>
+        /// Punto 6: si este registro es una extensi�n manual, apunta al Id del
+        /// registro original. NULL en registros normales.
+        /// </summary>
+        public int? PermisoOriginalId { get; set; }
     }
 }

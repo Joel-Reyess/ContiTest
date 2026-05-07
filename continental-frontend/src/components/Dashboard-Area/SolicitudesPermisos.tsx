@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { CheckCircle, XCircle, Clock, Eye } from 'lucide-react';
 import { solicitudesPermisosService, type SolicitudPermisoDto } from '@/services/solicitudesPermisosService';
 import { toast } from 'sonner';
@@ -9,9 +9,11 @@ import { es } from 'date-fns/locale';
 import ModalRechazoPermiso from './ModalRechazoPermiso'
 
 export const SolicitudesPermisos = () => {
+    const location = useLocation();
+    const restoredFilters = (location.state as any)?.filters as { filtroEstado?: string } | undefined;
     const [solicitudes, setSolicitudes] = useState<SolicitudPermisoDto[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filtroEstado, setFiltroEstado] = useState<string>('Pendiente');
+    const [filtroEstado, setFiltroEstado] = useState<string>(restoredFilters?.filtroEstado ?? 'Pendiente');
     const [processingId, setProcessingId] = useState<number | null>(null);
     const [showRejectModal, setShowRejectModal] = useState(false)
     const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<SolicitudPermisoDto | null>(null)
@@ -21,7 +23,7 @@ export const SolicitudesPermisos = () => {
         try {
             let response;
             if (filtroEstado === 'Pendiente') {
-                // Endpoint rápido solo para pendientes
+                // Endpoint rï¿½pido solo para pendientes
                 response = await solicitudesPermisosService.obtenerSolicitudesPendientes();
             } else {
                 // Consultar con filtro de estado (todas, aprobadas, rechazadas)
@@ -213,6 +215,7 @@ export const SolicitudesPermisos = () => {
                                         )}
                                         <Link
                                             to={`/area/solicitudes-permisos/${solicitud.id}`}
+                                            state={{ returnTab: 'permisos', filters: { filtroEstado } }}
                                             className="inline-flex h-7 w-full items-center justify-center mt-2
                                             rounded-lg bg-[var(--color-continental-yellow,#FDB41C)]
                                             px-3 text-sm font-semibold text-black hover:opacity-90"

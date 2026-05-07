@@ -216,6 +216,22 @@ namespace tiempo_libre.Services
                            i.Fecha >= fechaInicioOnly && i.Fecha <= fechaFinOnly)
                 .ToListAsync();
 
+            // Permisos/incapacidades de SAP del usuario en el rango. Incluye los
+            // registros de extensión manual (Punto 6) y respeta solicitudes
+            // (FechaSolicitud != null implica que solo se pinta si está aprobada).
+            var nominaUsuario = await _db.Users
+                .Where(u => u.Id == usuarioId)
+                .Select(u => u.Nomina)
+                .FirstOrDefaultAsync();
+
+            var permisosSap = nominaUsuario.HasValue
+                ? await _db.PermisosEIncapacidadesSAP
+                    .Where(p => p.Nomina == nominaUsuario.Value &&
+                                p.Hasta >= fechaInicioOnly && p.Desde <= fechaFinOnly &&
+                                (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                    .ToListAsync()
+                : new List<PermisosEIncapacidadesSAP>();
+
             var diasInhabiles = await _db.DiasInhabiles
                 .Where(d => d.Fecha >= fechaInicioOnly && d.Fecha <= fechaFinOnly)
                 .ToListAsync();
@@ -231,6 +247,17 @@ namespace tiempo_libre.Services
                 {
                     dia.Incidencia = "V";
                     dia.TipoIncidencia = vacacion.TipoVacacion.ToLower();
+                    continue;
+                }
+
+                // Verificar permisos/incapacidades SAP (incluye extensiones)
+                var permisoSap = permisosSap.FirstOrDefault(p => fechaDia >= p.Desde && fechaDia <= p.Hasta);
+                if (permisoSap != null)
+                {
+                    dia.Incidencia = "I";
+                    dia.TipoIncidencia = !string.IsNullOrEmpty(permisoSap.ClaseAbsentismo)
+                        ? permisoSap.ClaseAbsentismo
+                        : (permisoSap.ClAbPre?.ToString() ?? "Permiso");
                     continue;
                 }
 

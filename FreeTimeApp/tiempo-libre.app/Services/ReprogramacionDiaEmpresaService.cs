@@ -31,6 +31,32 @@ namespace tiempo_libre.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// Vacaciones ASIGNADAS por la empresa (TipoVacacion 'Automatica' o
+        /// 'AsignadaAutomaticamente') que aún no han sido consumidas. Punto 9: el
+        /// SuperUsuario solo puede reprogramar este tipo de vacaciones, no las
+        /// que el empleado eligió ('Anual').
+        /// </summary>
+        public async Task<List<VacacionDisponibleDto>> ObtenerVacacionesAsignadasNoConsumidasAsync(int empleadoId)
+        {
+            var hoy = DateOnly.FromDateTime(DateTime.Today);
+            return await _db.VacacionesProgramadas
+                .Where(v => v.EmpleadoId == empleadoId &&
+                            v.EstadoVacacion == "Activa" &&
+                            v.FechaVacacion >= hoy &&
+                            (v.TipoVacacion == "Automatica" ||
+                             v.TipoVacacion == "AsignadaAutomaticamente"))
+                .OrderBy(v => v.FechaVacacion)
+                .Select(v => new VacacionDisponibleDto
+                {
+                    Id = v.Id,
+                    Fecha = v.FechaVacacion,
+                    TipoVacacion = v.TipoVacacion,
+                    EstadoVacacion = v.EstadoVacacion,
+                })
+                .ToListAsync();
+        }
+
         public async Task<ApiResponse<SolicitudReprogramacionDiaEmpresaDto>> SolicitarAsync(
             SolicitarReprogramacionDiaEmpresaRequest request, int superUsuarioId)
         {
@@ -63,6 +89,10 @@ namespace tiempo_libre.Services
             if (vacacion.EstadoVacacion != "Activa")
                 return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,
                     "Solo vacaciones activas pueden reprogramarse.");
+            // Punto 9: el SuperUsuario solo puede reprogramar días asignados por empresa.
+            if (vacacion.TipoVacacion != "Automatica" && vacacion.TipoVacacion != "AsignadaAutomaticamente")
+                return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,
+                    "Solo días asignados por la empresa pueden reprogramarse desde aquí.");
 
             var hoy = DateOnly.FromDateTime(DateTime.Today);
             if (fechaNueva < hoy)

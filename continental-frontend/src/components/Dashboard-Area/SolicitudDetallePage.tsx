@@ -189,7 +189,9 @@ export default function SolicitudDetallePage() {
         try {
             await solicitudesService.aprobarSolicitud(selectedSolicitudForApprove.id)
             toast.success('Solicitud aprobada correctamente')
-            navigate(-1)
+            navigate('/area/solicitudes', {
+                state: { filters: savedFilters, refetch: true, activeTab: returnTab ?? 'vacaciones' }
+            })
         } catch (error) {
             console.error('Error al aprobar solicitud:', error)
             toast.error('Error al aprobar la solicitud')
@@ -207,7 +209,9 @@ export default function SolicitudDetallePage() {
         try {
             await solicitudesService.rechazarSolicitud(selectedSolicitudForReject.id, motivo)
             toast.success('Solicitud rechazada correctamente')
-            navigate(-1)
+            navigate('/area/solicitudes', {
+                state: { filters: savedFilters, refetch: true, activeTab: returnTab ?? 'vacaciones' }
+            })
         } catch (error) {
             console.error('Error al rechazar solicitud:', error)
             toast.error('Error al rechazar la solicitud')

@@ -995,6 +995,7 @@ public partial class FreeTimeDbContext : DbContext
             // ClAbPre es int? — la tabla tiene registros legacy con NULL.
             entity.Property(e => e.ClaseAbsentismo).HasMaxLength(200);
             entity.Property(e => e.EsRegistroManual).HasDefaultValue(false);
+            entity.Property(e => e.ProtegidoPorExtension).HasDefaultValue(false);
             entity.Property(e => e.FechaRegistro).HasDefaultValueSql("GETDATE()");
             entity.Property(e => e.Observaciones).HasMaxLength(500);
             entity.Property(e => e.EstadoSolicitud).HasMaxLength(20);

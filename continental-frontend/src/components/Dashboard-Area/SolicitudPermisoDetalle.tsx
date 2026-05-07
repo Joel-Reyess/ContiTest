@@ -1,4 +1,4 @@
-﻿import { useParams, useNavigate } from 'react-router-dom'
+﻿import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { Button } from '../ui/button'
@@ -10,6 +10,12 @@ import { es } from 'date-fns/locale'
 export default function SolicitudPermisoDetalle() {
     const { id } = useParams()
     const navigate = useNavigate()
+    const location = useLocation()
+    const savedFilters = (location.state as any)?.filters
+    const returnTab = (location.state as any)?.returnTab ?? 'permisos'
+    const goBack = () => navigate('/area/solicitudes', {
+        state: { filters: savedFilters, refetch: true, activeTab: returnTab }
+    })
     const [solicitud, setSolicitud] = useState<SolicitudPermisoDto | null>(null)
     const [loading, setLoading] = useState(true)
     const [processingAction, setProcessingAction] = useState(false)
@@ -41,7 +47,7 @@ export default function SolicitudPermisoDetalle() {
                 aprobar: true
             })
             toast.success('Solicitud aprobada correctamente')
-            navigate(-1)
+            goBack()
         } catch (error) {
             console.error('Error al aprobar:', error)
             toast.error('Error al aprobar la solicitud')
@@ -63,7 +69,7 @@ export default function SolicitudPermisoDetalle() {
                 motivoRechazo: motivo
             })
             toast.success('Solicitud rechazada correctamente')
-            navigate(-1)
+            goBack()
         } catch (error) {
             console.error('Error al rechazar:', error)
             toast.error('Error al rechazar la solicitud')
@@ -117,7 +123,7 @@ export default function SolicitudPermisoDetalle() {
         <div className="p-6 bg-gray-50 min-h-screen">
             <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex items-center gap-4">
-                    <Button variant="outline" onClick={() => navigate(-1)} className="flex items-center gap-2">
+                    <Button variant="outline" onClick={goBack} className="flex items-center gap-2">
                         <ArrowLeft className="w-4 h-4" />
                         Volver
                     </Button>

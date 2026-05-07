@@ -42,16 +42,11 @@ export function SolicitarReprogramacionPostIncapacidadModal({
         if (!show || !empleadoId) return
         let cancel = false
         setLoadingData(true)
-        Promise.all([
-            reprogramacionPostIncapacidadService.getIncapacidadesConsumidas(empleadoId),
-            reprogramacionPostIncapacidadService.getVacacionesNoCanjeadas(empleadoId),
-        ])
-            .then(([incs, vacs]) => {
+        reprogramacionPostIncapacidadService.getIncapacidadesConsumidas(empleadoId)
+            .then(incs => {
                 if (cancel) return
                 setIncapacidades(incs)
-                setVacaciones(vacs)
                 if (!incs.length) toast.info('El empleado no tiene incapacidades/permisos consumidos.')
-                if (!vacs.length) toast.info('El empleado no tiene vacaciones futuras no canjeadas.')
             })
             .catch((e: unknown) => {
                 console.error(e)
@@ -61,6 +56,29 @@ export function SolicitarReprogramacionPostIncapacidadModal({
 
         return () => { cancel = true }
     }, [show, empleadoId])
+
+    // Cuando se selecciona una incapacidad, cargar vacaciones cuya fecha cae
+    // dentro de ese rango (días que el operador no gozó por estar incapacitado).
+    useEffect(() => {
+        if (!empleadoId || !permisoId) {
+            setVacaciones([])
+            setVacacionId(null)
+            return
+        }
+        let cancel = false
+        reprogramacionPostIncapacidadService.getVacacionesEnIncapacidad(empleadoId, permisoId)
+            .then(vacs => {
+                if (cancel) return
+                setVacaciones(vacs)
+                setVacacionId(null)
+                if (!vacs.length) toast.info('No hay vacaciones del empleado dentro del rango de esta incapacidad.')
+            })
+            .catch((e: unknown) => {
+                console.error(e)
+                if (!cancel) toast.error('Error al cargar vacaciones en rango de incapacidad')
+            })
+        return () => { cancel = true }
+    }, [empleadoId, permisoId])
 
     const limpiar = () => {
         setPermisoId(null)
@@ -137,8 +155,11 @@ export function SolicitarReprogramacionPostIncapacidadModal({
                         </div>
 
                         <p className="text-sm text-gray-600 mb-4">
-                            Selecciona la incapacidad/permiso ya consumido y una vacación futura
-                            no canjeada del empleado para moverla a una fecha posterior al retorno.
+                            Selecciona la incapacidad/permiso ya consumido y una vacación
+                            seleccionada del empleado que cayó <span className="font-semibold">dentro</span> de
+                            ese rango (no la gozó por estar incapacitado). Solo aplica a vacaciones
+                            tipo "Anual"; los días asignados por la empresa se reprograman desde
+                            el módulo de SuperUsuario.
                         </p>
 
                         {loadingData ? (
@@ -171,18 +192,22 @@ export function SolicitarReprogramacionPostIncapacidadModal({
                                     )}
                                 </div>
 
-                                {/* Vacación a mover */}
+                                {/* Vacación a mover (filtrada al rango de la incapacidad) */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Vacación futura a reprogramar
+                                        Vacación seleccionada dentro del rango de la incapacidad
                                     </label>
                                     <select
                                         value={vacacionId ?? ''}
                                         onChange={e => setVacacionId(e.target.value ? Number(e.target.value) : null)}
                                         className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
-                                        disabled={vacaciones.length === 0}
+                                        disabled={!permisoId || vacaciones.length === 0}
                                     >
-                                        <option value="">— Selecciona —</option>
+                                        <option value="">
+                                            {!permisoId
+                                                ? '— Primero selecciona una incapacidad —'
+                                                : '— Selecciona —'}
+                                        </option>
                                         {vacaciones.map(v => (
                                             <option key={v.id} value={v.id}>
                                                 {format(parseISO(v.fecha), 'EEEE dd/MM/yyyy', { locale: es })} · {v.tipoVacacion}

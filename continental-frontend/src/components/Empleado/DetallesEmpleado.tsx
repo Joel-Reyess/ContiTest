@@ -91,6 +91,10 @@ export const DetallesEmpleado = ({
   const [showPermisoModal, setShowPermisoModal] = useState(false);
   const [showExtenderModal, setShowExtenderModal] = useState(false);
   const [showReprogDiaEmpresaModal, setShowReprogDiaEmpresaModal] = useState(false);
+  // Se incrementa después de operaciones que afectan el calendario (extender,
+  // reprogramar, solicitar) para forzar al CalendarComponent a refetchear.
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const refreshCalendar = useCallback(() => setCalendarRefreshKey(k => k + 1), []);
   const { hasRole } = useAuth();
   const isLeader = hasRole(UserRole.LEADER);
   const isSuperUsuario = hasRole(UserRole.SUPER_ADMIN);
@@ -878,6 +882,7 @@ const handleRemoveDay = async (fecha: string) => {
             groupId={groupId}
             userId={id ? parseInt(id) : undefined}
             excepciones={excepcionesTiempoExtra}
+            refreshKey={calendarRefreshKey}
             //onDateSelect={handleDateSelection} // Capturar fechas seleccionadas
             //tempSelectedDates={tempSelectedDates}
           />
@@ -1012,6 +1017,7 @@ const handleRemoveDay = async (fecha: string) => {
               getEmployeeDetails(id);
               }
               setTempSelectedDates([]);
+              refreshCalendar();
           }}
         />
           )}
@@ -1027,6 +1033,7 @@ const handleRemoveDay = async (fecha: string) => {
                       if (id) {
                           getEmployeeDetails(id);
                       }
+                      refreshCalendar();
                   }}
               />
           )}
@@ -1038,6 +1045,7 @@ const handleRemoveDay = async (fecha: string) => {
                   nombreEmpleado={sindicalizado.nombre}
                   onPermisoExtendido={() => {
                       if (id) getEmployeeDetails(id);
+                      refreshCalendar();
                   }}
               />
           )}
@@ -1049,6 +1057,7 @@ const handleRemoveDay = async (fecha: string) => {
                   empleadoNombre={sindicalizado.nombre}
                   onSolicitudCreada={() => {
                       if (id) getEmployeeDetails(id);
+                      refreshCalendar();
                   }}
               />
           )}
