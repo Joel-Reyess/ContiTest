@@ -69,9 +69,17 @@ export function SolicitarReprogramacionPostIncapacidadModal({
         reprogramacionPostIncapacidadService.getVacacionesEnIncapacidad(empleadoId, permisoId)
             .then(vacs => {
                 if (cancel) return
-                setVacaciones(vacs)
+                // Defensa cliente: aún si el backend regresa otros tipos
+                // (cache/legacy), mostramos sólo vacaciones seleccionadas (Anual).
+                // Las asignadas por la empresa se reprograman desde SuperUsuario.
+                const soloAnuales = (vacs || []).filter(v => v.tipoVacacion === 'Anual')
+                if (vacs && vacs.length !== soloAnuales.length) {
+                    console.warn('[ReprogPostIncapacidad] Backend regresó tipos no-Anual; filtrando en cliente:',
+                        vacs.map(v => v.tipoVacacion))
+                }
+                setVacaciones(soloAnuales)
                 setVacacionId(null)
-                if (!vacs.length) toast.info('No hay vacaciones del empleado dentro del rango de esta incapacidad.')
+                if (!soloAnuales.length) toast.info('No hay vacaciones seleccionadas (Anual) del empleado dentro del rango de esta incapacidad.')
             })
             .catch((e: unknown) => {
                 console.error(e)
@@ -210,7 +218,7 @@ export function SolicitarReprogramacionPostIncapacidadModal({
                                         </option>
                                         {vacaciones.map(v => (
                                             <option key={v.id} value={v.id}>
-                                                {format(parseISO(v.fecha), 'EEEE dd/MM/yyyy', { locale: es })} · {v.tipoVacacion}
+                                                {format(parseISO(v.fecha), 'EEEE dd/MM/yyyy', { locale: es })} · Seleccionada (Anual)
                                             </option>
                                         ))}
                                     </select>
