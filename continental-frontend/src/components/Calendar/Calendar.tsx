@@ -46,6 +46,46 @@ const datesEqual = (date1: Date, date2: Date): boolean => {
          date1.getDate() === date2.getDate();
 };
 
+// Paleta de nomenclatura SAP (mismas que la leyenda de roles semanales).
+// Sólo color y significado — no se muestra la letra en la celda.
+type SAPColorEntry = { bg: string; fg: string; label: string };
+const SAP_COLOR_MAP: Record<string, SAPColorEntry> = {
+  V: { bg: '#f3e8ff', fg: '#6b21a8', label: 'Vacaciones' },
+  P: { bg: '#dcfce7', fg: '#15803d', label: 'Permiso con goce' },
+  E: { bg: '#fee2e2', fg: '#b91c1c', label: 'Incapacidad por enfermedad' },
+  A: { bg: '#ffedd5', fg: '#c2410c', label: 'Incapacidad por accidente' },
+  M: { bg: '#fce7f3', fg: '#be185d', label: 'Incapacidad por maternidad' },
+  G: { bg: '#fef3c7', fg: '#92400e', label: 'Permiso sin goce' },
+  R: { bg: '#ffe4e6', fg: '#9f1239', label: 'Incapacidad por riesgo' },
+  S: { bg: '#f1f5f9', fg: '#334155', label: 'Suspensión' },
+  O: { bg: '#cffafe', fg: '#155e75', label: 'Permiso por paternidad' },
+  H: { bg: '#e0e7ff', fg: '#3730a3', label: 'Permiso sin goce alterno' },
+  F: { bg: '#ccfbf1', fg: '#0f766e', label: 'Festivo trabajado' },
+  C: { bg: '#fef3c7', fg: '#92400e', label: 'Día empresa reprogramado' },
+};
+
+// Resuelve el color SAP a partir del tipoIncidencia que viene del backend.
+// El tipoIncidencia puede ser una letra exacta (E/P/A/M…), o un texto largo
+// como "Incapacidad por enfermedad" / "Permiso por defunción".
+const resolveSAPColor = (tipoIncidencia?: string): SAPColorEntry | null => {
+  if (!tipoIncidencia) return null;
+  const t = tipoIncidencia.trim();
+  if (t.length <= 2 && SAP_COLOR_MAP[t.toUpperCase()]) return SAP_COLOR_MAP[t.toUpperCase()];
+  const lower = t.toLowerCase();
+  if (lower.includes('maternidad')) return SAP_COLOR_MAP.M;
+  if (lower.includes('paternidad')) return SAP_COLOR_MAP.O;
+  if (lower.includes('riesgo')) return SAP_COLOR_MAP.R;
+  if (lower.includes('accidente')) return SAP_COLOR_MAP.A;
+  if (lower.includes('enfermedad')) return SAP_COLOR_MAP.E;
+  if (lower.includes('incapacidad')) return SAP_COLOR_MAP.E;
+  if (lower.includes('suspensi')) return SAP_COLOR_MAP.S;
+  if (lower.includes('festivo')) return SAP_COLOR_MAP.F;
+  if (lower.includes('defunci') || lower.includes('permiso con goce')) return SAP_COLOR_MAP.P;
+  if (lower.includes('sin goce')) return SAP_COLOR_MAP.G;
+  if (lower.includes('reprog')) return SAP_COLOR_MAP.C;
+  return null;
+};
+
 // Componente personalizado para las casillas del día
 const CustomDateCellWrapper = ({
   children,
@@ -72,6 +112,8 @@ const CustomDateCellWrapper = ({
   );
 
   let className = "relative custom-date-cell-wrapper";
+  let inlineStyle: React.CSSProperties | undefined;
+  let title: string | undefined;
 
   // Si está seleccionado para vacaciones, aplicar el estilo de holiday-day
   if (isSelectedForVacation) {
@@ -94,16 +136,26 @@ const CustomDateCellWrapper = ({
       case "not-work":
         className += " not-work-day";
         break;
-      case "inability":
-        className += " inability-day";
+      case "inability": {
+        // Override del color por nomenclatura SAP cuando esté disponible.
+        // No mostramos la letra en la celda — solo color y tooltip.
+        const sap = resolveSAPColor(eventData.tipoIncidencia);
+        if (sap) {
+          inlineStyle = { backgroundColor: sap.bg, cursor: 'not-allowed' };
+          title = sap.label;
+          className += " sap-day";
+        } else {
+          className += " inability-day";
+        }
         break;
+      }
       default:
         break;
     }
   }
 
   return (
-    <div className={className}>
+    <div className={className} style={inlineStyle} title={title}>
       {/* Turno bubble (hide if holiday or holiday-boss because we'll render next to the sun) */}
       {eventData?.turno && eventData.eventType !== 'holiday' && eventData.eventType !== 'holiday-boss' && (
         <span className="text-center m-2 text-2xl border-2 border-continental-yellow rounded-full w-6 h-6 flex items-center justify-center font-bold p-3 text-continental-yellow">
@@ -431,7 +483,22 @@ export const CalendarLegend = () => {
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--color-continental-green-dark)' }}></div>
-            <span className="text-sm font-medium">Incapacidad</span>
+            <span className="text-sm font-medium">Incapacidad / permiso (genérico)</span>
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <p className="text-xs font-semibold text-gray-700 mb-2">Por tipo de permiso/incapacidad (SAP):</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {Object.entries(SAP_COLOR_MAP)
+                // No duplicamos V (ya está como Vacaciones arriba)
+                .filter(([code]) => code !== 'V')
+                .map(([code, c]) => (
+                  <div key={code} className="flex items-center space-x-2">
+                    <div className="w-4 h-4 rounded border border-gray-200" style={{ backgroundColor: c.bg }}></div>
+                    <span className="text-xs">{c.label}</span>
+                  </div>
+                ))}
+            </div>
           </div>
         </div>
 

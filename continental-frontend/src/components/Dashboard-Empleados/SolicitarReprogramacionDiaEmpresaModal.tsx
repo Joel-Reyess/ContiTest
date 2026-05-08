@@ -42,8 +42,18 @@ export function SolicitarReprogramacionDiaEmpresaModal({
         reprogramacionDiaEmpresaService.getVacacionesAsignadasNoConsumidas(empleadoId)
             .then(vacs => {
                 if (cancel) return
-                setVacaciones(vacs)
-                if (!vacs.length) toast.info('El empleado no tiene días asignados por la empresa pendientes.')
+                // Defensa cliente: aún si el backend regresa otros tipos (cache/legacy),
+                // mostramos sólo días asignados por empresa.
+                const soloAsignadas = (vacs || []).filter(v =>
+                    v.tipoVacacion === 'Automatica' ||
+                    v.tipoVacacion === 'AsignadaAutomaticamente'
+                )
+                if (vacs && vacs.length !== soloAsignadas.length) {
+                    console.warn('[ReprogDiaEmpresa] El backend regresó tipos no asignados; filtrando en cliente:',
+                        vacs.map(v => v.tipoVacacion))
+                }
+                setVacaciones(soloAsignadas)
+                if (!soloAsignadas.length) toast.info('El empleado no tiene días asignados por la empresa pendientes.')
             })
             .catch((e: any) => {
                 if (!cancel) toast.error(e?.message || 'Error al cargar vacaciones asignadas')
@@ -136,7 +146,7 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                         <option value="">— Selecciona —</option>
                                         {vacaciones.map(v => (
                                             <option key={v.id} value={v.id}>
-                                                {format(parseISO(v.fecha), 'EEEE dd/MM/yyyy', { locale: es })} · {v.tipoVacacion}
+                                                {format(parseISO(v.fecha), 'EEEE dd/MM/yyyy', { locale: es })} · Asignada por empresa
                                             </option>
                                         ))}
                                     </select>
@@ -151,7 +161,7 @@ export function SolicitarReprogramacionDiaEmpresaModal({
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Motivo (obligatorio)
+                                        Motivo (obligatorio) <span className="text-red-500">*</span>
                                     </label>
                                     <select
                                         value={motivoTipo}
@@ -161,17 +171,25 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                         <option value="">— Selecciona —</option>
                                         {MOTIVOS.map(m => (
                                             <option key={m} value={m}>
-                                                {MOTIVO_LABEL[m]} ({MOTIVO_NOMENCLATURA[m]})
+                                                [{MOTIVO_NOMENCLATURA[m]}] {MOTIVO_LABEL[m]}
                                             </option>
                                         ))}
                                     </select>
                                     {motivoTipo && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            Nomenclatura en rol: <span className="font-mono font-semibold text-continental-yellow bg-gray-100 px-1.5 py-0.5 rounded">
-                                                {MOTIVO_NOMENCLATURA[motivoTipo]}
-                                            </span>
-                                            {' '}— se reflejará como <span className="font-mono font-semibold">C</span> en el rol semanal del día reprogramado.
-                                        </p>
+                                        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <span className="inline-flex items-center justify-center rounded-full px-2 py-0.5 font-mono font-bold text-base bg-amber-100 text-amber-800">
+                                                    {MOTIVO_NOMENCLATURA[motivoTipo]}
+                                                </span>
+                                                <span className="font-medium text-blue-900">
+                                                    {MOTIVO_LABEL[motivoTipo]}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-blue-700 mt-2">
+                                                Código SAP: <span className="font-semibold">{MOTIVO_NOMENCLATURA[motivoTipo]}</span>.
+                                                El día reprogramado se reflejará como <span className="font-mono font-semibold">C</span> en el rol semanal.
+                                            </p>
+                                        </div>
                                     )}
                                 </div>
 
