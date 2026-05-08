@@ -4,39 +4,45 @@
 -- Excel) NO se sobrescribe. Se crea un nuevo registro de extensión y se marca
 -- el original con ProtegidoPorExtension = 1 para que el sync de Excel
 -- (SincronizacionPermisosBackgroundService) lo respete en futuras cargas.
+--
+-- Idempotente: se puede ejecutar varias veces sin error.
 -- =============================================================================
 
-IF NOT EXISTS (
-    SELECT 1 FROM sys.columns
-    WHERE Name = N'ProtegidoPorExtension'
-      AND Object_ID = Object_ID(N'PermisosEIncapacidadesSAP')
-)
-BEGIN
+-- 1) Columna ProtegidoPorExtension (BIT, default 0)
+IF COL_LENGTH('dbo.PermisosEIncapacidadesSAP', 'ProtegidoPorExtension') IS NULL
     ALTER TABLE [dbo].[PermisosEIncapacidadesSAP]
-    ADD [ProtegidoPorExtension] BIT NOT NULL CONSTRAINT DF_PEI_ProtegidoPorExtension DEFAULT(0);
-END
+        ADD [ProtegidoPorExtension] BIT NOT NULL
+        CONSTRAINT DF_PEI_ProtegidoPorExtension DEFAULT(0);
 GO
 
-IF NOT EXISTS (
-    SELECT 1 FROM sys.columns
-    WHERE Name = N'PermisoOriginalId'
-      AND Object_ID = Object_ID(N'PermisosEIncapacidadesSAP')
-)
-BEGIN
+-- 2) Columna PermisoOriginalId (INT NULL) — apunta al permiso original cuando
+--    el registro es una extensión creada por el jefe.
+IF COL_LENGTH('dbo.PermisosEIncapacidadesSAP', 'PermisoOriginalId') IS NULL
     ALTER TABLE [dbo].[PermisosEIncapacidadesSAP]
-    ADD [PermisoOriginalId] INT NULL;
-END
+        ADD [PermisoOriginalId] INT NULL;
 GO
 
--- Índice para acelerar la consulta de protección en el background service.
+-- 3) Índice filtrado para acelerar el chequeo de protegidos en el background sync.
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
     WHERE name = N'IX_PEI_Protegido_NominaDesdeClAbPre'
-      AND object_id = OBJECT_ID(N'PermisosEIncapacidadesSAP')
+      AND object_id = OBJECT_ID(N'dbo.PermisosEIncapacidadesSAP')
 )
-BEGIN
     CREATE INDEX [IX_PEI_Protegido_NominaDesdeClAbPre]
     ON [dbo].[PermisosEIncapacidadesSAP] ([Nomina], [Desde], [ClAbPre])
     WHERE [ProtegidoPorExtension] = 1;
-END
+GO
+
+-- Verificación
+PRINT 'Verificación post-migración:';
+SELECT
+    CASE WHEN COL_LENGTH('dbo.PermisosEIncapacidadesSAP', 'ProtegidoPorExtension') IS NOT NULL
+         THEN 'OK' ELSE 'FALTA' END AS ProtegidoPorExtension,
+    CASE WHEN COL_LENGTH('dbo.PermisosEIncapacidadesSAP', 'PermisoOriginalId') IS NOT NULL
+         THEN 'OK' ELSE 'FALTA' END AS PermisoOriginalId,
+    CASE WHEN EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = N'IX_PEI_Protegido_NominaDesdeClAbPre'
+              AND object_id = OBJECT_ID(N'dbo.PermisosEIncapacidadesSAP'))
+         THEN 'OK' ELSE 'FALTA' END AS Indice;
 GO
