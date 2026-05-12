@@ -35,6 +35,9 @@ namespace tiempo_libre.Services
         /// Permite reprogramar días perdidos dentro de una incapacidad aún activa,
         /// siempre que el día específico ya haya pasado (lo valida el filtro de
         /// vacaciones en <see cref="ObtenerVacacionesEnIncapacidadAsync"/>).
+        /// IMPORTANTE: la tabla PermisosEIncapacidadesSAP también ingesta las
+        /// vacaciones de SAP (ClAbPre = 1100). Se excluyen explícitamente porque
+        /// vacación-sobre-vacación no aplica a este flujo.
         /// </summary>
         public async Task<List<IncapacidadConsumidaDto>> ObtenerIncapacidadesConsumidasAsync(int empleadoId)
         {
@@ -49,6 +52,7 @@ namespace tiempo_libre.Services
             return await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Nomina == empleado.Nomina.Value &&
                             p.Desde <= hoy &&
+                            p.ClAbPre != 1100 &&
                             (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                 .OrderByDescending(p => p.Hasta)
                 .Select(p => new IncapacidadConsumidaDto

@@ -52,8 +52,21 @@ export function SolicitarReprogramacionPostIncapacidadModal({
         reprogramacionPostIncapacidadService.getIncapacidadesConsumidas(empleadoId)
             .then(incs => {
                 if (cancel) return
-                setIncapacidades(incs)
-                if (!incs.length) toast.info('El empleado no tiene incapacidades/permisos consumidos.')
+                // Defensa cliente: la tabla PermisosEIncapacidadesSAP ingesta
+                // también las vacaciones SAP (ClAbPre=1100). No deben aparecer
+                // como permisos en este dropdown.
+                const sinVacacionesSAP = (incs || []).filter(i => {
+                    if (i.clAbPre === 1100) return false
+                    const clase = (i.claseAbsentismo || '').toLowerCase()
+                    if (clase.includes('vacaci')) return false
+                    return true
+                })
+                if (incs && incs.length !== sinVacacionesSAP.length) {
+                    console.warn('[ReprogPostIncapacidad] Backend incluyó vacaciones SAP (1100) en incapacidades; filtrando en cliente:',
+                        incs.filter(i => !sinVacacionesSAP.includes(i)))
+                }
+                setIncapacidades(sinVacacionesSAP)
+                if (!sinVacacionesSAP.length) toast.info('El empleado no tiene incapacidades/permisos consumidos.')
             })
             .catch((e: unknown) => {
                 console.error(e)
