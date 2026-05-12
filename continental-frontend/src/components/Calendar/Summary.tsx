@@ -19,6 +19,14 @@ const parseDateToLocal = (d: string | Date | undefined | null): Date => {
     return new Date(d);
 };
 
+const todayStr = (() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+})();
+
 export const Summary = ({
     assignedDays,
     availableDays,
@@ -103,37 +111,43 @@ export const Summary = ({
                 )}
 
                 <div className="flex flex-col justify-between gap-2">
-                    {selectedDays.map((day) => (
-                        <div
-                            key={day.date}
-                            className={`flex items-center p-2 border border-continental-gray-4 justify-between`}
-                        >
-                            <p>
-                                {format(parseDateToLocal(day.date), "EEE, d 'de' MMMM 'de' yyyy", {
-                                    locale: es,
-                                })}
-                            </p>
+                    {selectedDays.map((day) => {
+                        // Una vacación seleccionada ya consumida (fecha <= hoy) no
+                        // puede reprogramarse desde aquí: para días perdidos por
+                        // incapacidad existe el flujo "Reprogramación post-incapacidad".
+                        const yaConsumida = day.date <= todayStr;
+                        return (
+                            <div
+                                key={day.date}
+                                className={`flex items-center p-2 border border-continental-gray-4 justify-between ${yaConsumida ? 'opacity-70' : ''}`}
+                            >
+                                <p>
+                                    {format(parseDateToLocal(day.date), "EEE, d 'de' MMMM 'de' yyyy", {
+                                        locale: es,
+                                    })}
+                                    {yaConsumida && (
+                                        <span className="ml-2 text-xs text-gray-500">(ya consumida)</span>
+                                    )}
+                                </p>
 
-                            {/* ✅ LÓGICA CORREGIDA: Verificar AMBAS condiciones */}
-                            {handleRemoveDay && !isViewMode ? (
-                                // Modo edición normal: mostrar botón de eliminar
-                                <Trash
-                                    onClick={() => handleRemoveDay(day.date)}
-                                    color="#FF0000"
-                                    size={20}
-                                    className="cursor-pointer"
-                                />
-                            ) : period === PeriodOptions.reprogramming && isDelegadoSindicato && handleEdit ? (
-                                // ✅ Solo mostrar si es periodo de reprogramación Y es delegado sindical
-                                <CalendarSync
-                                    onClick={() => handleEdit(day.date)}
-                                    className="cursor-pointer"
-                                    color="#004eaf"
-                                    size={20}
-                                />
-                            ) : null}
-                        </div>
-                    ))}
+                                {handleRemoveDay && !isViewMode ? (
+                                    <Trash
+                                        onClick={() => handleRemoveDay(day.date)}
+                                        color="#FF0000"
+                                        size={20}
+                                        className="cursor-pointer"
+                                    />
+                                ) : period === PeriodOptions.reprogramming && isDelegadoSindicato && handleEdit && !yaConsumida ? (
+                                    <CalendarSync
+                                        onClick={() => handleEdit(day.date)}
+                                        className="cursor-pointer"
+                                        color="#004eaf"
+                                        size={20}
+                                    />
+                                ) : null}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {workedHoliday && workedHoliday?.length > 0 ? (

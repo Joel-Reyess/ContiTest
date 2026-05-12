@@ -65,6 +65,19 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 (typeof role === 'string' ? role : role.name) === UserRole.SUPER_ADMIN
             ));
     const handleEdit = (day: string) => {
+        // Bloqueo: no se puede reprogramar una vacación cuyo día ya pasó o
+        // es hoy. Para días perdidos por incapacidad existe el flujo
+        // "Reprogramación post-incapacidad".
+        const hoy = new Date();
+        const y = hoy.getFullYear();
+        const m = String(hoy.getMonth() + 1).padStart(2, '0');
+        const d = String(hoy.getDate()).padStart(2, '0');
+        const hoyStr = `${y}-${m}-${d}`;
+        if (day <= hoyStr) {
+            toast.error("No se puede reprogramar una vacación ya consumida. Si se perdió por incapacidad, usa 'Reprogramación post-incapacidad'.");
+            return;
+        }
+
         // Buscar la vacaciÃ³n correspondiente al dÃ­a seleccionado
         const vacation = vacacionesData?.vacaciones.find(v => {
             // Convertir ambas fechas al mismo formato para comparar

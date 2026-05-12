@@ -116,17 +116,19 @@ namespace tiempo_libre.Services
                 }
 
                 // 5. Validar fechas
-                //if (vacacionOriginal.FechaVacacion <= DateOnly.FromDateTime(DateTime.Today))
-                //{
-                //    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                //        "No se pueden reprogramar vacaciones de fechas pasadas o del dA-a actual");
-                //}
+                var hoy = DateOnly.FromDateTime(DateTime.Today);
+                if (vacacionOriginal.FechaVacacion <= hoy)
+                {
+                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
+                        "No se pueden reprogramar vacaciones de fechas pasadas o del día actual. " +
+                        "Si el día se perdió por una incapacidad, usa la opción 'Reprogramación post-incapacidad'.");
+                }
 
-                //if (request.FechaNueva <= DateOnly.FromDateTime(DateTime.Today))
-                //{
-                //    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                //        "La fecha nueva no puede ser en el pasado o el dA-a actual");
-                //}
+                if (request.FechaNueva <= hoy)
+                {
+                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
+                        "La fecha nueva no puede ser en el pasado o el día actual.");
+                }
                 if (request.FechaNueva.Year < 2025)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
@@ -777,19 +779,20 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
-                //if (vacacionOriginal.FechaVacacion <= DateOnly.FromDateTime(DateTime.Today))
-                //{
-                //    response.EsValida = false;
-                //    response.MotivoInvalidez = "No se pueden reprogramar vacaciones pasadas";
-                //    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
-                //}
+                var hoyValidar = DateOnly.FromDateTime(DateTime.Today);
+                if (vacacionOriginal.FechaVacacion <= hoyValidar)
+                {
+                    response.EsValida = false;
+                    response.MotivoInvalidez = "No se pueden reprogramar vacaciones pasadas o del día actual";
+                    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
+                }
 
-                //if (request.FechaNueva <= DateOnly.FromDateTime(DateTime.Today))
-                //{
-                //    response.EsValida = false;
-                //    response.MotivoInvalidez = "La fecha nueva no puede ser en el pasado";
-                //    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
-                //}
+                if (request.FechaNueva <= hoyValidar)
+                {
+                    response.EsValida = false;
+                    response.MotivoInvalidez = "La fecha nueva no puede ser en el pasado ni el día actual";
+                    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
+                }
 
                 var esDiaInhabil = await _db.DiasInhabiles
                     .AnyAsync(d => d.Fecha == request.FechaNueva);
