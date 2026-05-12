@@ -31,7 +31,10 @@ namespace tiempo_libre.Services
         // ─── Listas para los dropdowns del modal ───────────────────────────────
 
         /// <summary>
-        /// Incapacidades / permisos del empleado ya consumidos (Hasta &lt; hoy).
+        /// Incapacidades / permisos del empleado que ya comenzaron (Desde &lt;= hoy).
+        /// Permite reprogramar días perdidos dentro de una incapacidad aún activa,
+        /// siempre que el día específico ya haya pasado (lo valida el filtro de
+        /// vacaciones en <see cref="ObtenerVacacionesEnIncapacidadAsync"/>).
         /// </summary>
         public async Task<List<IncapacidadConsumidaDto>> ObtenerIncapacidadesConsumidasAsync(int empleadoId)
         {
@@ -45,7 +48,7 @@ namespace tiempo_libre.Services
 
             return await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Nomina == empleado.Nomina.Value &&
-                            p.Hasta < hoy &&
+                            p.Desde <= hoy &&
                             (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                 .OrderByDescending(p => p.Hasta)
                 .Select(p => new IncapacidadConsumidaDto
@@ -88,9 +91,11 @@ namespace tiempo_libre.Services
 
         /// <summary>
         /// Vacaciones "Anual" del empleado cuya fecha cae DENTRO del rango de un
-        /// permiso/incapacidad específico (no se gozaron porque el operador estaba
-        /// incapacitado). Punto 7: estas son las únicas candidatas reales para
-        /// reprogramar después de una incapacidad.
+        /// permiso/incapacidad específico y que YA PASARON (no se gozaron porque
+        /// el operador estaba incapacitado ese día). Punto 7: estas son las
+        /// únicas candidatas reales para reprogramar.
+        /// Los días futuros dentro del rango aún no son candidatos: el empleado
+        /// podría reincorporarse y gozarlos normalmente, o aplica otro flujo.
         /// </summary>
         public async Task<List<VacacionDisponibleDto>> ObtenerVacacionesEnIncapacidadAsync(int empleadoId, int permisoId)
         {
@@ -98,12 +103,14 @@ namespace tiempo_libre.Services
                 .FirstOrDefaultAsync(p => p.Id == permisoId);
             if (permiso == null) return new List<VacacionDisponibleDto>();
 
+            var hoy = DateOnly.FromDateTime(DateTime.Today);
             return await _db.VacacionesProgramadas
                 .Where(v => v.EmpleadoId == empleadoId &&
                             v.EstadoVacacion == "Activa" &&
                             v.TipoVacacion == "Anual" &&
                             v.FechaVacacion >= permiso.Desde &&
-                            v.FechaVacacion <= permiso.Hasta)
+                            v.FechaVacacion <= permiso.Hasta &&
+                            v.FechaVacacion < hoy)
                 .OrderBy(v => v.FechaVacacion)
                 .Select(v => new VacacionDisponibleDto
                 {
@@ -144,13 +151,17 @@ namespace tiempo_libre.Services
                     "El permiso/incapacidad no existe o no corresponde al empleado.");
 
             var hoy = DateOnly.FromDateTime(DateTime.Today);
-            if (permiso.Hasta >= hoy)
+            if (permiso.Desde > hoy)
                 return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
-                    "El permiso/incapacidad aún no termina; debe estar consumido.");
+                    "El permiso/incapacidad aún no inicia; no aplica reprogramar.");
 
             if (fechaNueva <= permiso.Hasta)
                 return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
                     "La fecha nueva debe ser posterior al fin del permiso/incapacidad.");
+
+            if (fechaNueva <= hoy)
+                return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
+                    "La fecha nueva debe ser estrictamente posterior al día de hoy.");
 
             var vacacion = await _db.VacacionesProgramadas
                 .FirstOrDefaultAsync(v => v.Id == request.VacacionOriginalId &&
@@ -173,6 +184,13 @@ namespace tiempo_libre.Services
                     $"La vacación seleccionada ({vacacion.FechaVacacion:yyyy-MM-dd}) no cae dentro " +
                     $"del rango de la incapacidad ({permiso.Desde:yyyy-MM-dd} → {permiso.Hasta:yyyy-MM-dd}). " +
                     "Solo se pueden reprogramar días que el operador no gozó por estar incapacitado.");
+
+            // El día específico debe haber pasado: futuros días dentro de la
+            // incapacidad podrían no perderse (extensión, alta médica, etc.).
+            if (vacacion.FechaVacacion >= hoy)
+                return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
+                    $"La vacación del {vacacion.FechaVacacion:yyyy-MM-dd} aún no ha llegado; " +
+                    "sólo pueden reprogramarse días ya transcurridos dentro de la incapacidad.");
 
             // Evitar duplicados: misma vacación con solicitud pendiente
             var existePendiente = await _db.SolicitudesReprogramacionPostIncapacidad

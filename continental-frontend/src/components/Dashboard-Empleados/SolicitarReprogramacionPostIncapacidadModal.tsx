@@ -33,9 +33,16 @@ export function SolicitarReprogramacionPostIncapacidadModal({
     const incapacidadSel = permisoId ? incapacidades.find(i => i.id === permisoId) : null
     const vacacionSel = vacacionId ? vacaciones.find(v => v.id === vacacionId) : null
 
-    // Fecha mínima permitida = día siguiente al "hasta" de la incapacidad
+    // Fecha mínima permitida = el día siguiente más tardío entre el fin de la
+    // incapacidad y "hoy" (no se puede reprogramar a fechas pasadas ni a un día
+    // todavía dentro de la incapacidad).
+    const hoyStr = format(new Date(), 'yyyy-MM-dd')
     const fechaMinima = incapacidadSel
-        ? format(addDays(parseISO(incapacidadSel.hasta), 1), 'yyyy-MM-dd')
+        ? (() => {
+            const tras = format(addDays(parseISO(incapacidadSel.hasta), 1), 'yyyy-MM-dd')
+            const manana = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+            return tras > manana ? tras : manana
+        })()
         : ''
 
     useEffect(() => {
@@ -80,19 +87,23 @@ export function SolicitarReprogramacionPostIncapacidadModal({
                 //      incapacidad) y por tanto no aplica reprogramar.
                 const desde = inc.desde
                 const hasta = inc.hasta
+                // Sólo días Anual que cayeron dentro del rango Y ya pasaron.
+                // Días futuros dentro del rango aún podrían gozarse normalmente
+                // (extensión médica, alta anticipada, etc.).
                 const filtradas = (vacs || []).filter(v =>
                     v.tipoVacacion === 'Anual' &&
                     v.fecha >= desde &&
-                    v.fecha <= hasta
+                    v.fecha <= hasta &&
+                    v.fecha < hoyStr
                 )
                 if (vacs && vacs.length !== filtradas.length) {
                     console.warn('[ReprogPostIncapacidad] Backend regresó vacaciones inválidas; filtrando en cliente:',
                         vacs.map(v => ({ id: v.id, fecha: v.fecha, tipo: v.tipoVacacion })),
-                        '— rango incapacidad:', desde, '→', hasta)
+                        '— rango incapacidad:', desde, '→', hasta, '— hoy:', hoyStr)
                 }
                 setVacaciones(filtradas)
                 setVacacionId(null)
-                if (!filtradas.length) toast.info('No hay vacaciones seleccionadas (Anual) del empleado dentro del rango de esta incapacidad.')
+                if (!filtradas.length) toast.info('No hay vacaciones Anual ya transcurridas del empleado dentro del rango de esta incapacidad.')
             })
             .catch((e: unknown) => {
                 console.error(e)
@@ -124,6 +135,10 @@ export function SolicitarReprogramacionPostIncapacidadModal({
         }
         if (incapacidadSel && fechaNueva <= incapacidadSel.hasta) {
             toast.error('La fecha nueva debe ser posterior al fin de la incapacidad.')
+            return
+        }
+        if (fechaNueva <= hoyStr) {
+            toast.error('La fecha nueva debe ser estrictamente posterior a hoy.')
             return
         }
 
@@ -176,11 +191,12 @@ export function SolicitarReprogramacionPostIncapacidadModal({
                         </div>
 
                         <p className="text-sm text-gray-600 mb-4">
-                            Selecciona la incapacidad/permiso ya consumido y una vacación
-                            seleccionada del empleado que cayó <span className="font-semibold">dentro</span> de
-                            ese rango (no la gozó por estar incapacitado). Solo aplica a vacaciones
-                            tipo "Anual"; los días asignados por la empresa se reprograman desde
-                            el módulo de SuperUsuario.
+                            Selecciona la incapacidad/permiso del empleado (puede seguir activa)
+                            y una vacación seleccionada (Anual) que <span className="font-semibold">ya pasó</span> dentro
+                            de ese rango — esos son los días que el operador no gozó por estar
+                            incapacitado. Sólo aplica a Anuales; los días asignados por la empresa
+                            se reprograman desde SuperUsuario. La fecha nueva debe ser posterior a
+                            hoy y al fin de la incapacidad.
                         </p>
 
                         {loadingData ? (
@@ -216,7 +232,7 @@ export function SolicitarReprogramacionPostIncapacidadModal({
                                 {/* Vacación a mover (filtrada al rango de la incapacidad) */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Vacación seleccionada dentro del rango de la incapacidad
+                                        Vacación seleccionada (Anual) ya transcurrida dentro del rango
                                     </label>
                                     <select
                                         value={vacacionId ?? ''}
