@@ -65,28 +65,41 @@ export function SolicitarReprogramacionPostIncapacidadModal({
             setVacacionId(null)
             return
         }
+        const inc = incapacidades.find(i => i.id === permisoId)
+        if (!inc) return
         let cancel = false
         reprogramacionPostIncapacidadService.getVacacionesEnIncapacidad(empleadoId, permisoId)
             .then(vacs => {
                 if (cancel) return
-                // Defensa cliente: aún si el backend regresa otros tipos
-                // (cache/legacy), mostramos sólo vacaciones seleccionadas (Anual).
-                // Las asignadas por la empresa se reprograman desde SuperUsuario.
-                const soloAnuales = (vacs || []).filter(v => v.tipoVacacion === 'Anual')
-                if (vacs && vacs.length !== soloAnuales.length) {
-                    console.warn('[ReprogPostIncapacidad] Backend regresó tipos no-Anual; filtrando en cliente:',
-                        vacs.map(v => v.tipoVacacion))
+                // Defensa cliente (dos capas) por si el backend está corriendo
+                // código legacy:
+                //   1. sólo Anual (las asignadas se reprograman desde SuperUsuario)
+                //   2. fecha de la vacación debe caer DENTRO del rango de la
+                //      incapacidad — si la vacación cayó fuera de ese rango,
+                //      el empleado sí la gozó (o nunca la tuvo bloqueada por
+                //      incapacidad) y por tanto no aplica reprogramar.
+                const desde = inc.desde
+                const hasta = inc.hasta
+                const filtradas = (vacs || []).filter(v =>
+                    v.tipoVacacion === 'Anual' &&
+                    v.fecha >= desde &&
+                    v.fecha <= hasta
+                )
+                if (vacs && vacs.length !== filtradas.length) {
+                    console.warn('[ReprogPostIncapacidad] Backend regresó vacaciones inválidas; filtrando en cliente:',
+                        vacs.map(v => ({ id: v.id, fecha: v.fecha, tipo: v.tipoVacacion })),
+                        '— rango incapacidad:', desde, '→', hasta)
                 }
-                setVacaciones(soloAnuales)
+                setVacaciones(filtradas)
                 setVacacionId(null)
-                if (!soloAnuales.length) toast.info('No hay vacaciones seleccionadas (Anual) del empleado dentro del rango de esta incapacidad.')
+                if (!filtradas.length) toast.info('No hay vacaciones seleccionadas (Anual) del empleado dentro del rango de esta incapacidad.')
             })
             .catch((e: unknown) => {
                 console.error(e)
                 if (!cancel) toast.error('Error al cargar vacaciones en rango de incapacidad')
             })
         return () => { cancel = true }
-    }, [empleadoId, permisoId])
+    }, [empleadoId, permisoId, incapacidades])
 
     const limpiar = () => {
         setPermisoId(null)
