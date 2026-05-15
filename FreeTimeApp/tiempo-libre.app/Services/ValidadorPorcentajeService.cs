@@ -37,6 +37,22 @@ namespace tiempo_libre.Services
             return (int)Math.Ceiling(minimoExacto);
         }
 
+        // Resuelve el manning aplicable a un área para una fecha: respeta la
+        // excepción mensual capturada por el SuperUsuario (ExcepcionesManning)
+        // antes de caer al Manning base del área. Si nada aplica, retorna 0
+        // para que el llamador decida (típicamente fallback a totalEmpleados).
+        private async Task<int> ObtenerManningAplicableAsync(int areaId, int manningBaseArea, DateOnly fecha)
+        {
+            var excepcion = await _db.ExcepcionesManning
+                .Where(e => e.AreaId == areaId &&
+                            e.Anio == fecha.Year &&
+                            e.Mes == fecha.Month &&
+                            e.Activa)
+                .Select(e => (int?)e.ManningRequeridoExcepcion)
+                .FirstOrDefaultAsync();
+            return excepcion ?? manningBaseArea;
+        }
+
         /// <summary>
         /// Valida si un grupo puede tener ausencias respetando el porcentaje configurado
         /// </summary>
@@ -102,7 +118,9 @@ namespace tiempo_libre.Services
                 }
 
                 // REGLA NORMAL: Grupos grandes usan el porcentaje
-                var manning = grupo.Area.Manning > 0 ? grupo.Area.Manning : totalEmpleados;
+                var hoyManning = DateOnly.FromDateTime(DateTime.Today);
+                var manningArea = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, hoyManning);
+                var manning = manningArea > 0 ? manningArea : totalEmpleados;
 
                 // Calcular cuántos estarían ausentes con la nueva solicitud
                 if (!ausenciasActuales.HasValue)
@@ -167,7 +185,8 @@ namespace tiempo_libre.Services
             var minimoEmpleados = CalcularMinimoEmpleadosParaPorcentaje(config.PorcentajeAusenciaMaximo);
             var esGrupoPequeno = totalEmpleados < minimoEmpleados;
 
-            var manning = grupo.Area.Manning > 0 ? grupo.Area.Manning : totalEmpleados;
+            var manningAreaEstado = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, hoy);
+            var manning = manningAreaEstado > 0 ? manningAreaEstado : totalEmpleados;
             var disponibles = totalEmpleados - ausenciasActuales;
             var porcentajeDeficit = manning > 0 ? ((decimal)(manning - disponibles) / manning) * 100 : 0;
 

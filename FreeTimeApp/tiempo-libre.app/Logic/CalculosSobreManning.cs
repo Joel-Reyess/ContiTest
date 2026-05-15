@@ -85,6 +85,14 @@ public class CalculosSobreManning
 
         var manningporDia = _db.ManningPorDia.FirstOrDefault(m => m.IdArea == area.AreaId && m.Fecha == dateOnly);
         var manningPorMes = _db.ManningPorMes.FirstOrDefault(m => m.IdArea == area.AreaId && m.Anio == dateOnly.Year && m.Mes == dateOnly.Month);
+        // Excepción mensual capturada por el SuperUsuario (tabla ExcepcionesManning).
+        // Tiene prioridad sobre area.Manning base, pero ManningPorDia / ManningPorMes
+        // (configuraciones más granulares) siguen ganando si existen.
+        var excepcionManning = _db.ExcepcionesManning.FirstOrDefault(e =>
+            e.AreaId == area.AreaId &&
+            e.Anio == dateOnly.Year &&
+            e.Mes == dateOnly.Month &&
+            e.Activa);
 
         if (manningporDia != null)
         {
@@ -93,6 +101,10 @@ public class CalculosSobreManning
         else if (manningPorMes != null)
         {
             return manningPorMes.PorcentajeManning;
+        }
+        else if (excepcionManning != null)
+        {
+            return excepcionManning.ManningRequeridoExcepcion;
         }
 
         return area.Manning;
