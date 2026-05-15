@@ -214,18 +214,26 @@ public class AreaController : ControllerBase
         {
             return BadRequest(new ApiResponse<Area>(false, null, "UnidadOrganizativaSap y NombreGeneral son requeridos"));
         }
-        // Validar que NombreGeneral no se repita en otra área
-        if (_db.Areas.Any(a => a.NombreGeneral == update.NombreGeneral && a.AreaId != id))
+        // Validar duplicados solo si el valor cambió (tras trim, case-insensitive).
+        // De lo contrario, cualquier edición que no toque SAP/Nombre — como cambiar
+        // solo el Manning — falla si la BD tiene duplicados históricos.
+        var sapNuevo = update.UnidadOrganizativaSap.Trim();
+        var nombreNuevo = update.NombreGeneral.Trim();
+        var sapActual = (area.UnidadOrganizativaSap ?? "").Trim();
+        var nombreActual = (area.NombreGeneral ?? "").Trim();
+
+        if (!string.Equals(nombreNuevo, nombreActual, StringComparison.OrdinalIgnoreCase) &&
+            _db.Areas.Any(a => a.NombreGeneral == nombreNuevo && a.AreaId != id))
         {
             return BadRequest(new ApiResponse<Area>(false, null, "El nombre general ya existe"));
         }
-        // Validar que UnidadOrganizativaSap no se repita en otra área
-        if (_db.Areas.Any(a => a.UnidadOrganizativaSap == update.UnidadOrganizativaSap && a.AreaId != id))
+        if (!string.Equals(sapNuevo, sapActual, StringComparison.OrdinalIgnoreCase) &&
+            _db.Areas.Any(a => a.UnidadOrganizativaSap == sapNuevo && a.AreaId != id))
         {
             return BadRequest(new ApiResponse<Area>(false, null, "La unidad organizativa SAP ya existe"));
         }
-        area.UnidadOrganizativaSap = update.UnidadOrganizativaSap;
-        area.NombreGeneral = update.NombreGeneral;
+        area.UnidadOrganizativaSap = sapNuevo;
+        area.NombreGeneral = nombreNuevo;
         area.Manning = update.Manning;
         await _db.SaveChangesAsync();
         return Ok(new ApiResponse<Area>(true, area));
