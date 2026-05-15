@@ -41,7 +41,7 @@ namespace tiempo_libre.Services
         // excepción mensual capturada por el SuperUsuario (ExcepcionesManning)
         // antes de caer al Manning base del área. Si nada aplica, retorna 0
         // para que el llamador decida (típicamente fallback a totalEmpleados).
-        private async Task<int> ObtenerManningAplicableAsync(int areaId, int manningBaseArea, DateOnly fecha)
+        private async Task<decimal> ObtenerManningAplicableAsync(int areaId, decimal manningBaseArea, DateOnly fecha)
         {
             var excepcion = await _db.ExcepcionesManning
                 .Where(e => e.AreaId == areaId &&
