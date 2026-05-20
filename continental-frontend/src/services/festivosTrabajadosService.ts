@@ -210,6 +210,29 @@ class FestivosTrabajadosService {
   }
 
   /**
+   * Obtiene el historial de solicitudes de festivos creadas por el usuario autenticado
+   * (típicamente delegado sindical o jefe de área).
+   */
+  async getCreadasPorMi(anio?: number): Promise<HistorialFestivosResponse> {
+    try {
+      const params = anio ? `?anio=${anio}` : ''
+
+      const response = await httpClient.get<ApiResponse<HistorialFestivosResponse>>(
+        `${this.baseUrl}/creadas-por-mi${params}`
+      )
+
+      if (response.success && response.data) {
+        return response.data as unknown as HistorialFestivosResponse
+      }
+
+      throw new Error(response.errorMsg || 'Error al obtener solicitudes creadas por el usuario')
+    } catch (error) {
+      console.error('Error fetching creadas por mi (festivos):', error)
+      throw error
+    }
+  }
+
+  /**
    * Obtiene festivos trabajados por número de nómina
    */
   async getFestivosPorNomina(nomina: number, anio?: number): Promise<FestivosDisponiblesResponse> {

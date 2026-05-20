@@ -167,6 +167,7 @@ namespace tiempo_libre.DTOs
         public DateTime? FechaDesde { get; set; }
         public DateTime? FechaHasta { get; set; }
         public int? AreaId { get; set; }
+        public int? SolicitadoPorId { get; set; }
     }
 
     /// <summary>

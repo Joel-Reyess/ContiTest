@@ -176,6 +176,23 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>Solicitudes creadas por el usuario autenticado (delegado/jefe).</summary>
+        [HttpGet("creadas-por-mi")]
+        public async Task<IActionResult> ObtenerCreadasPorMi([FromQuery] int? anio = null)
+        {
+            try
+            {
+                var usuarioId = ObtenerUsuarioId();
+                var data = await _service.ObtenerCreadasPorUsuarioAsync(usuarioId, anio);
+                return Ok(new ApiResponse<object>(true, data));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error consultando solicitudes post-incapacidad creadas por el usuario");
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+            }
+        }
+
         /// <summary>Todas las solicitudes del área del jefe (historial).</summary>
         [HttpGet("solicitudes-area")]
         [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]

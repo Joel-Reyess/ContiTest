@@ -302,6 +302,51 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
+        /// Obtener solicitudes de festivos creadas por el usuario autenticado
+        /// (típicamente delegado sindical o jefe de área).
+        /// </summary>
+        [HttpGet("creadas-por-mi")]
+        public async Task<IActionResult> ObtenerSolicitudesCreadasPorMi([FromQuery] int? anio = null)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var usuarioId))
+                {
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+                }
+
+                var request = new ConsultaSolicitudesFestivoRequest
+                {
+                    SolicitadoPorId = usuarioId
+                };
+
+                if (anio.HasValue)
+                {
+                    request.FechaDesde = new DateTime(anio.Value, 1, 1);
+                    request.FechaHasta = new DateTime(anio.Value, 12, 31, 23, 59, 59);
+                }
+
+                _logger.LogInformation("Usuario {UserId} consultando solicitudes de festivos que creó (año: {Anio})",
+                    usuarioId, anio);
+
+                var response = await _festivoService.ConsultarSolicitudesAsync(request, usuarioId);
+
+                if (!response.Success)
+                {
+                    return BadRequest(response);
+                }
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener solicitudes de festivos creadas por el usuario");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Obtener solicitudes pendientes de aprobación para el jefe de área actual
         /// </summary>
         /// <returns>Lista de solicitudes pendientes del área del jefe</returns>

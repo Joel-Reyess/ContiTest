@@ -314,6 +314,24 @@ namespace tiempo_libre.Services
                 .ToListAsync();
         }
 
+        public async Task<List<SolicitudReprogramacionPostIncapacidadDto>> ObtenerCreadasPorUsuarioAsync(
+            int usuarioId, int? anio = null)
+        {
+            var query = BaseQuery().Where(s => s.SolicitadoPorId == usuarioId);
+
+            if (anio.HasValue)
+            {
+                var desde = new DateTime(anio.Value, 1, 1);
+                var hasta = new DateTime(anio.Value, 12, 31, 23, 59, 59);
+                query = query.Where(s => s.FechaSolicitud >= desde && s.FechaSolicitud <= hasta);
+            }
+
+            return await query
+                .OrderByDescending(s => s.FechaSolicitud)
+                .Select(MapearSelector())
+                .ToListAsync();
+        }
+
         public async Task<List<SolicitudReprogramacionPostIncapacidadDto>> ObtenerPorJefeAsync(
             int jefeId, string? estado = null)
         {

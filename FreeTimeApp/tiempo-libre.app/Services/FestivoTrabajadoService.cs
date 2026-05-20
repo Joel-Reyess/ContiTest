@@ -409,6 +409,11 @@ namespace tiempo_libre.Services
                     query = query.Where(s => s.EmpleadoId == request.EmpleadoId.Value);
                 }
 
+                if (request.SolicitadoPorId.HasValue)
+                {
+                    query = query.Where(s => s.SolicitadoPorId == request.SolicitadoPorId.Value);
+                }
+
                 if (request.JefeAreaId.HasValue)
                 {
                     query = query.Where(s => s.JefeAreaId == request.JefeAreaId.Value);

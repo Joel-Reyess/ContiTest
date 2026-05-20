@@ -113,4 +113,11 @@ export const reprogramacionPostIncapacidadService = {
             httpClient.get(`${BASE}/solicitudes-area${qs}`)
         )
     },
+
+    getCreadasPorMi: (anio?: number) => {
+        const qs = anio ? `?anio=${anio}` : ''
+        return unwrap<SolicitudReprogramacionPostIncapacidad[]>(
+            httpClient.get(`${BASE}/creadas-por-mi${qs}`)
+        )
+    },
 }

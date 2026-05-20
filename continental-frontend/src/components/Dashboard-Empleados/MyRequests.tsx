@@ -24,6 +24,10 @@ import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { PeriodOptions } from "@/interfaces/Calendar.interface";
 import { UserRole } from "@/interfaces/User.interface";
 import { solicitudesPermisosService } from "@/services/solicitudesPermisosService";
+import {
+    reprogramacionPostIncapacidadService,
+    type SolicitudReprogramacionPostIncapacidad,
+} from "@/services/reprogramacionPostIncapacidadService";
 
 export type RequestStatus = "approved" | "rejected" | "pending" | "cancelled";
 export type RequestType = "day_exchange" | "holiday_worked" | "permission_request";
@@ -99,6 +103,31 @@ const mapFestivoToRequest = (
         employeeNomina: fallbackNomina, // 🆕 Agregado
         requester: festivoData.solicitadoPor || null,
         reviewer: solicitud.aprobadoPor || festivoData.aprobadoPor || null,
+    };
+};
+
+const mapPostIncapacidadToRequest = (
+    s: SolicitudReprogramacionPostIncapacidad
+): VacationRequest => {
+    const status: RequestStatus =
+        s.estadoSolicitud === 'Aprobada' ? 'approved' :
+            s.estadoSolicitud === 'Rechazada' ? 'rejected' :
+                s.estadoSolicitud === 'Cancelada' ? 'cancelled' : 'pending';
+    return {
+        id: `pi-${s.id}`,
+        type: "day_exchange",
+        requestDate: s.fechaSolicitud,
+        responseDate: s.fechaRespuesta || undefined,
+        status,
+        rejectionReason: s.motivoRechazo || undefined,
+        requestedDay: s.fechaNueva,
+        dayToGive: s.fechaOriginal,
+        employeeName: s.nombreEmpleado || undefined,
+        employeeArea: s.areaEmpleado || undefined,
+        employeeGroup: s.grupoEmpleado || undefined,
+        employeeNomina: s.nomina ? s.nomina.toString() : undefined,
+        requester: s.nombreSolicitadoPor || null,
+        reviewer: s.nombreAprobadoPor || null,
     };
 };
 
@@ -193,6 +222,7 @@ const MyRequests = () => {
                 let reprogramacionesRequests: VacationRequest[] = [];
                 let festivosRequests: VacationRequest[] = [];
                 let permisosRequests: VacationRequest[] = [];
+                let postIncapacidadRequests: VacationRequest[] = [];
 
                 // Cargar reprogramaciones
                 try {
@@ -214,24 +244,57 @@ const MyRequests = () => {
 
                 // Cargar festivos trabajados
                 try {
-                    const targetEmpleadoId = currentEmployee?.id || user?.id;
-                    if (targetEmpleadoId) {
-                        const historialFestivos = await festivosTrabajadosService.getHistorialFestivos(
-                            targetEmpleadoId,
-                            yearFilter
+                    if (isDelegadoSindical) {
+                        const historialCreadas = await festivosTrabajadosService.getCreadasPorMi(yearFilter);
+                        festivosRequests = (historialCreadas?.solicitudes ?? []).map((s) =>
+                            mapFestivoToRequest(s)
                         );
-                        festivosRequests = (historialFestivos?.solicitudes ?? []).map((s) =>
-                            mapFestivoToRequest(
-                                s,
-                                currentEmployee?.area?.nombreGeneral,
-                                currentEmployee?.grupo?.rol,
-                                currentEmployee?.nomina // 🆕 Agregado
-                            )
-                        );
-                        console.log('✅ Historial festivos:', historialFestivos);
+                        console.log('✅ Historial festivos creadas por mi:', historialCreadas);
+                    } else {
+                        const targetEmpleadoId = currentEmployee?.id || user?.id;
+                        if (targetEmpleadoId) {
+                            const historialFestivos = await festivosTrabajadosService.getHistorialFestivos(
+                                targetEmpleadoId,
+                                yearFilter
+                            );
+                            festivosRequests = (historialFestivos?.solicitudes ?? []).map((s) =>
+                                mapFestivoToRequest(
+                                    s,
+                                    currentEmployee?.area?.nombreGeneral,
+                                    currentEmployee?.grupo?.rol,
+                                    currentEmployee?.nomina // 🆕 Agregado
+                                )
+                            );
+                            console.log('✅ Historial festivos:', historialFestivos);
+                        }
                     }
                 } catch (err) {
                     console.error('Error al cargar historial de festivos trabajados:', err);
+                }
+
+                // Cargar reprogramaciones post-incapacidad
+                try {
+                    if (isDelegadoSindical) {
+                        const data = await reprogramacionPostIncapacidadService.getCreadasPorMi(yearFilter);
+                        postIncapacidadRequests = (data ?? [])
+                            .filter((s) => {
+                                const y = new Date(s.fechaSolicitud).getFullYear();
+                                return y === yearFilter;
+                            })
+                            .map(mapPostIncapacidadToRequest);
+                        console.log('✅ Historial post-incapacidad creadas por mi:', data);
+                    } else if (currentEmployee?.id) {
+                        const data = await reprogramacionPostIncapacidadService.getPorEmpleado(currentEmployee.id);
+                        postIncapacidadRequests = (data ?? [])
+                            .filter((s) => {
+                                const y = new Date(s.fechaSolicitud).getFullYear();
+                                return y === yearFilter;
+                            })
+                            .map(mapPostIncapacidadToRequest);
+                        console.log('✅ Historial post-incapacidad empleado:', data);
+                    }
+                } catch (err) {
+                    console.error('Error al cargar historial post-incapacidad:', err);
                 }
 
                 // Cargar solicitudes de permisos
@@ -249,7 +312,7 @@ const MyRequests = () => {
                     console.error('Error al cargar historial de permisos:', err);
                 }
 
-                const allRequests = [...reprogramacionesRequests, ...festivosRequests, ...permisosRequests];
+                const allRequests = [...reprogramacionesRequests, ...festivosRequests, ...permisosRequests, ...postIncapacidadRequests];
                 allRequests.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
                 console.log('✅ Total solicitudes cargadas:', allRequests.length);
