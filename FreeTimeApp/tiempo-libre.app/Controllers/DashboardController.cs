@@ -134,6 +134,37 @@ namespace tiempo_libre.Controllers
                 : TurnosHelper.ObtenerTurnoParaFecha(rolGrupo, fecha);
         }
 
+        private record SemanaRango(int Semana, DateOnly Inicio, DateOnly Fin);
+
+        /// <summary>
+        /// Devuelve las semanas lunes→domingo que contienen al menos un día del mes.
+        /// La semana se numera 1..N en orden cronológico. Si una semana cruza meses
+        /// (típico en bordes de mes), se devuelven los 7 días reales — el consumidor
+        /// decide si recortar al mes o usarla completa.
+        /// </summary>
+        private static List<SemanaRango> CalcularSemanasLunesDomingo(int anio, int mes)
+        {
+            static DateOnly LunesDe(DateOnly d)
+            {
+                int diff = ((int)d.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+                return d.AddDays(-diff);
+            }
+
+            var primero = new DateOnly(anio, mes, 1);
+            var ultimo = new DateOnly(anio, mes, DateTime.DaysInMonth(anio, mes));
+
+            var lunes = LunesDe(primero);
+            var ultimoLunes = LunesDe(ultimo);
+
+            var resultado = new List<SemanaRango>();
+            int idx = 1;
+            for (var l = lunes; l <= ultimoLunes; l = l.AddDays(7))
+            {
+                resultado.Add(new SemanaRango(idx++, l, l.AddDays(6)));
+            }
+            return resultado;
+        }
+
         // ─── Ausencias ────────────────────────────────────────────────────────
 
         /// <summary>
@@ -263,8 +294,9 @@ namespace tiempo_libre.Controllers
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
-            var inicio = new DateOnly(anio, mes, 1);
-            var fin = new DateOnly(anio, mes, DateTime.DaysInMonth(anio, mes));
+            var semanas = CalcularSemanasLunesDomingo(anio, mes);
+            var rangoInicio = semanas.First().Inicio;
+            var rangoFin = semanas.Last().Fin;
 
             var empleados = await CargarEmpleadosAsync(areasIds);
             var totalEmpleados = empleados.Count;
@@ -279,31 +311,22 @@ namespace tiempo_libre.Controllers
 
             var vacaciones = await _db.VacacionesProgramadas
                 .Where(v => empleadoIds.Contains(v.EmpleadoId) &&
-                            v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
+                            v.FechaVacacion >= rangoInicio && v.FechaVacacion <= rangoFin &&
                             v.EstadoVacacion == "Activa")
                 .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion })
                 .ToListAsync();
 
             var permisos = await _db.PermisosEIncapacidadesSAP
-                .Where(p => p.Desde <= fin && p.Hasta >= inicio &&
+                .Where(p => p.Desde <= rangoFin && p.Hasta >= rangoInicio &&
                             nominasActivasList.Contains(p.Nomina) &&
                             (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                 .Select(p => new { p.Nomina, p.Desde, p.Hasta, p.ClaseAbsentismo })
                 .ToListAsync();
 
-            int GetWeek(DateOnly d) => (d.Day - 1) / 7 + 1;
-
-            var resultado = Enumerable.Range(1, 5).Select(semana =>
+            var resultado = semanas.Select(s =>
             {
-                var diasSemana = Enumerable.Range(1, DateTime.DaysInMonth(anio, mes))
-                    .Select(d => new DateOnly(anio, mes, d))
-                    .Where(d => GetWeek(d) == semana)
-                    .ToList();
-
-                if (!diasSemana.Any()) return null;
-
-                var semInicio = diasSemana.Min();
-                var semFin = diasSemana.Max();
+                var semInicio = s.Inicio;
+                var semFin = s.Fin;
 
                 var setVac = new HashSet<int>();
                 var setRep = new HashSet<int>();
@@ -337,16 +360,18 @@ namespace tiempo_libre.Controllers
 
                 return (object)new
                 {
-                    semana,
+                    semana = s.Semana,
+                    semanaInicio = s.Inicio.ToString("yyyy-MM-dd"),
+                    semanaFin = s.Fin.ToString("yyyy-MM-dd"),
                     totalEmpleados,
-                    turnosDisponibles = diasSemana.Count * totalEmpleados,
+                    turnosDisponibles = 7 * totalEmpleados,
                     vacacion = setVac.Count,
                     reprogramacion = setRep.Count,
                     festivoTrabajado = setFest.Count,
                     permiso = setPerm.Count,
                     incapacidad = setInc.Count,
                 };
-            }).Where(x => x != null).ToList();
+            }).ToList();
 
             return Ok(new ApiResponse<object>(true, resultado));
         }
@@ -487,24 +512,28 @@ namespace tiempo_libre.Controllers
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
             var resumen = await CalcularResumenTiempoExtraMes(anio, mes, areasIds);
+            var semanas = CalcularSemanasLunesDomingo(anio, mes);
+            var cal = System.Globalization.CultureInfo.InvariantCulture.Calendar;
 
-            static int GetWeekOfYear(int anio, int mes, int semana)
+            var resultado = resumen.Select(r =>
             {
-                var primerDia = new DateOnly(anio, mes, Math.Min((semana - 1) * 7 + 1, DateTime.DaysInMonth(anio, mes)));
-                var jan1 = new DateTime(primerDia.Year, 1, 1);
-                var fecha = primerDia.ToDateTime(TimeOnly.MinValue);
-                return (int)Math.Ceiling((fecha - jan1).TotalDays / 7) + 1;
-            }
-
-            var resultado = resumen.Select(r => (object)new
-            {
-                semana = r.Semana,
-                semanaAnual = GetWeekOfYear(anio, mes, r.Semana),
-                horasNormales = Math.Round(r.HorasNormales, 1),
-                horasExtra = Math.Round(r.HorasExtra, 1),
-                pctExtra = r.HorasNormales > 0
-                    ? Math.Round(r.HorasExtra / r.HorasNormales * 100, 1)
-                    : 0.0
+                var s = semanas.First(x => x.Semana == r.Semana);
+                int semanaAnual = cal.GetWeekOfYear(
+                    s.Inicio.ToDateTime(TimeOnly.MinValue),
+                    System.Globalization.CalendarWeekRule.FirstFourDayWeek,
+                    DayOfWeek.Monday);
+                return (object)new
+                {
+                    semana = r.Semana,
+                    semanaAnual,
+                    semanaInicio = s.Inicio.ToString("yyyy-MM-dd"),
+                    semanaFin = s.Fin.ToString("yyyy-MM-dd"),
+                    horasNormales = Math.Round(r.HorasNormales, 1),
+                    horasExtra = Math.Round(r.HorasExtra, 1),
+                    pctExtra = r.HorasNormales > 0
+                        ? Math.Round(r.HorasExtra / r.HorasNormales * 100, 1)
+                        : 0.0
+                };
             }).ToList();
 
             return Ok(new ApiResponse<object>(true, resultado));
@@ -568,8 +597,9 @@ namespace tiempo_libre.Controllers
         private async Task<List<ResumenSemanaDto>> CalcularResumenTiempoExtraMes(
             int anio, int mes, List<int>? areasIds)
         {
-            var inicio = new DateOnly(anio, mes, 1);
-            var fin = new DateOnly(anio, mes, DateTime.DaysInMonth(anio, mes));
+            var semanas = CalcularSemanasLunesDomingo(anio, mes);
+            var rangoInicio = semanas.First().Inicio;
+            var rangoFin = semanas.Last().Fin;
 
             var gruposQuery = _db.Grupos.Include(g => g.Area).AsQueryable();
             if (areasIds != null)
@@ -589,18 +619,18 @@ namespace tiempo_libre.Controllers
             var nominasActivasList = empleadosPorGrupo.Where(e => e.Nomina.HasValue)
                 .Select(e => e.Nomina!.Value).Distinct().ToList();
 
-            var diasInhabiles = await CargarDiasInhabilesAsync(inicio, fin);
+            var diasInhabiles = await CargarDiasInhabilesAsync(rangoInicio, rangoFin);
 
             var vacaciones = await _db.VacacionesProgramadas
                 .Where(v => empleadosIds.Contains(v.EmpleadoId) &&
-                            v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
+                            v.FechaVacacion >= rangoInicio && v.FechaVacacion <= rangoFin &&
                             v.EstadoVacacion == "Activa")
                 .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion })
                 .ToListAsync();
 
             var permisos = await _db.PermisosEIncapacidadesSAP
                 .Where(p => nominasActivasList.Contains(p.Nomina) &&
-                            p.Desde <= fin && p.Hasta >= inicio &&
+                            p.Desde <= rangoFin && p.Hasta >= rangoInicio &&
                             (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                 .Select(p => new { p.Nomina, p.Desde, p.Hasta })
                 .ToListAsync();
@@ -615,24 +645,20 @@ namespace tiempo_libre.Controllers
                 .GroupBy(p => p.Nomina)
                 .ToDictionary(g => g.Key, g => g.Select(x => (x.Desde, x.Hasta)).ToList());
 
-            var permutasMap = await CargarPermutasAsync(inicio, fin, empleadosIds);
+            var permutasMap = await CargarPermutasAsync(rangoInicio, rangoFin, empleadosIds);
 
             var excepcionesManning = await _db.ExcepcionesManning
                 .Where(e => grupos.Select(g => g.AreaId).Contains(e.AreaId) &&
                             e.Anio == anio && e.Mes == mes && e.Activa)
                 .ToListAsync();
 
-            static int GetWeek(DateOnly d) => (d.Day - 1) / 7 + 1;
-
             var resultado = new List<ResumenSemanaDto>();
 
-            for (int semana = 1; semana <= 5; semana++)
+            foreach (var s in semanas)
             {
-                var diasSemana = Enumerable.Range(1, DateTime.DaysInMonth(anio, mes))
-                    .Select(d => new DateOnly(anio, mes, d))
-                    .Where(d => GetWeek(d) == semana)
+                var diasSemana = Enumerable.Range(0, 7)
+                    .Select(i => s.Inicio.AddDays(i))
                     .ToList();
-                if (!diasSemana.Any()) continue;
 
                 double totalHorasNormales = 0;
                 double totalHorasExtra = 0;
@@ -685,7 +711,7 @@ namespace tiempo_libre.Controllers
                     }
                 }
 
-                resultado.Add(new ResumenSemanaDto(semana, totalHorasExtra, totalHorasNormales));
+                resultado.Add(new ResumenSemanaDto(s.Semana, totalHorasExtra, totalHorasNormales));
             }
 
             return resultado;

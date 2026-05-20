@@ -6,7 +6,7 @@ import {
 import { ausenciasService } from '@/services/ausenciasService';
 import { httpClient } from '@/services/httpClient';
 import { areasService } from '@/services/areasService';
-import type { AusenciasPorGrupo } from '@/interfaces/Ausencias.interface';
+import type { AusenciasPorGrupo, EmpleadoAusente, EmpleadoDisponible } from '@/interfaces/Ausencias.interface';
 import type { Area } from '@/interfaces/Areas.interface';
 import useAuth from '@/hooks/useAuth';
 import { UserRole } from '@/interfaces/User.interface';
@@ -234,22 +234,92 @@ export const Dashboard: React.FC = () => {
         areaSelId !== 'all' ? `${prefix}areaId=${areaSelId}` : ''
     , [areaSelId]);
 
-    // Datos del día
+    // Datos del período (día / semana lunes-domingo / mes).
+    // Cuando es semana o mes, agregamos personas únicas (un empleado con
+    // ausencia en 1+ días del período se cuenta una sola vez).
     useEffect(() => {
         setLoadingHoy(true);
-        const fecha = new Date(fechaEfectiva + 'T00:00:00');
+
+        let fechaInicio: Date;
+        let fechaFin: Date | undefined;
+        let view: 'daily' | 'weekly' | 'monthly';
+
+        if (diaSel) {
+            fechaInicio = new Date(diaSel + 'T00:00:00');
+            view = 'daily';
+        } else if (semanaSel !== 'all') {
+            // Lunes-domingo de la semana N relativa al mes seleccionado.
+            const primero = new Date(anioSel, mesSel - 1, 1);
+            const offset = (primero.getDay() + 6) % 7; // 0=lunes
+            const lunesIni = new Date(anioSel, mesSel - 1, 1 - offset);
+            fechaInicio = new Date(lunesIni);
+            fechaInicio.setDate(lunesIni.getDate() + (Number(semanaSel) - 1) * 7);
+            fechaFin = new Date(fechaInicio);
+            fechaFin.setDate(fechaInicio.getDate() + 6);
+            view = 'weekly';
+        } else {
+            fechaInicio = new Date(anioSel, mesSel - 1, 1);
+            fechaFin = new Date(anioSel, mesSel, 0);
+            view = 'monthly';
+        }
+
         ausenciasService.calcularAusenciasParaCalendario({
-            fechaInicio: fecha,
-            view: 'daily',
+            fechaInicio,
+            fechaFin,
+            view,
             areaId: areaSelId !== 'all' ? areaSelId : undefined,
         })
             .then(data => {
-                const diaData = data.find(d => d.fecha === fechaEfectiva);
-                setGrupos(diaData?.ausenciasPorGrupo ?? []);
+                if (view === 'daily') {
+                    const iso = fechaInicio.toISOString().split('T')[0];
+                    const diaData = data.find(d => d.fecha === iso);
+                    setGrupos(diaData?.ausenciasPorGrupo ?? []);
+                    return;
+                }
+                // Agregación: por grupo, union de empleados únicos.
+                const porGrupo = new Map<number, {
+                    base: AusenciasPorGrupo;
+                    ausentes: Map<number, EmpleadoAusente>;
+                    disponibles: Map<number, EmpleadoDisponible>;
+                }>();
+                data.forEach(dia => {
+                    dia.ausenciasPorGrupo.forEach(g => {
+                        let entry = porGrupo.get(g.grupoId);
+                        if (!entry) {
+                            entry = { base: g, ausentes: new Map(), disponibles: new Map() };
+                            porGrupo.set(g.grupoId, entry);
+                        }
+                        (g.empleadosAusentes ?? []).forEach(e => {
+                            if (!entry!.ausentes.has(e.empleadoId)) entry!.ausentes.set(e.empleadoId, e);
+                        });
+                        (g.empleadosDisponibles ?? []).forEach(e => {
+                            if (!entry!.disponibles.has(e.empleadoId)) entry!.disponibles.set(e.empleadoId, e);
+                        });
+                    });
+                });
+                const agregado: AusenciasPorGrupo[] = Array.from(porGrupo.values()).map(({ base, ausentes, disponibles }) => {
+                    // Si alguien apareció como ausente algún día, no lo contamos en disponibles.
+                    ausentes.forEach((_v, id) => disponibles.delete(id));
+                    const ausentesArr = Array.from(ausentes.values());
+                    const disponiblesArr = Array.from(disponibles.values());
+                    const personalTotal = ausentesArr.length + disponiblesArr.length;
+                    return {
+                        ...base,
+                        personalTotal,
+                        personalNoDisponible: ausentesArr.length,
+                        personalDisponible: disponiblesArr.length,
+                        porcentajeAusencia: personalTotal > 0 ? (ausentesArr.length / personalTotal) * 100 : 0,
+                        porcentajeDisponible: personalTotal > 0 ? (disponiblesArr.length / personalTotal) * 100 : 0,
+                        excedeLimite: false,
+                        empleadosAusentes: ausentesArr,
+                        empleadosDisponibles: disponiblesArr,
+                    };
+                });
+                setGrupos(agregado);
             })
             .catch(console.error)
             .finally(() => setLoadingHoy(false));
-    }, [fechaEfectiva, areaSelId]);
+    }, [diaSel, semanaSel, anioSel, mesSel, areaSelId]);
 
     // Datos históricos
     useEffect(() => {
@@ -374,29 +444,55 @@ export const Dashboard: React.FC = () => {
         };
     }, [anualData, mesSel]);
 
+    // gruposUnicos: cuando hay un área específica, un registro por grupoId.
+    // Cuando es "todas las áreas", consolidamos por nombreGrupo (turnos similares
+    // en distintas áreas) haciendo union de empleados únicos en lugar de sumar
+    // contadores — `grupos` ya viene agregado por período, así que sumar
+    // produciría doble conteo si el mismo empleado apareciera en dos días.
     const gruposUnicos = useMemo(() => {
         if (areaSelId !== 'all') {
             const map = new Map<number, AusenciasPorGrupo>();
             grupos.forEach(g => { if (!map.has(g.grupoId)) map.set(g.grupoId, g); });
             return Array.from(map.values());
         }
-        const map = new Map<string, AusenciasPorGrupo>();
+        const map = new Map<string, {
+            base: AusenciasPorGrupo;
+            ausentes: Map<number, EmpleadoAusente>;
+            disponibles: Map<number, EmpleadoDisponible>;
+            excede: boolean;
+        }>();
         grupos.forEach(g => {
             const key = g.nombreGrupo;
-            if (!map.has(key)) {
-                map.set(key, { ...g, empleadosAusentes: [...(g.empleadosAusentes ?? [])], empleadosDisponibles: [...(g.empleadosDisponibles ?? [])] });
-            } else {
-                const ex = map.get(key)!;
-                ex.personalTotal        += g.personalTotal;
-                ex.personalDisponible   += g.personalDisponible;
-                ex.personalNoDisponible += g.personalNoDisponible;
-                ex.porcentajeAusencia    = ex.personalTotal > 0 ? (ex.personalNoDisponible / ex.personalTotal) * 100 : 0;
-                ex.excedeLimite          = ex.excedeLimite || g.excedeLimite;
-                ex.empleadosAusentes     = [...(ex.empleadosAusentes ?? []), ...(g.empleadosAusentes ?? [])];
-                ex.empleadosDisponibles  = [...(ex.empleadosDisponibles ?? []), ...(g.empleadosDisponibles ?? [])];
+            let entry = map.get(key);
+            if (!entry) {
+                entry = { base: g, ausentes: new Map(), disponibles: new Map(), excede: false };
+                map.set(key, entry);
             }
+            (g.empleadosAusentes ?? []).forEach(e => {
+                if (!entry!.ausentes.has(e.empleadoId)) entry!.ausentes.set(e.empleadoId, e);
+            });
+            (g.empleadosDisponibles ?? []).forEach(e => {
+                if (!entry!.disponibles.has(e.empleadoId)) entry!.disponibles.set(e.empleadoId, e);
+            });
+            entry.excede = entry.excede || g.excedeLimite;
         });
-        return Array.from(map.values());
+        return Array.from(map.values()).map(({ base, ausentes, disponibles, excede }) => {
+            ausentes.forEach((_v, id) => disponibles.delete(id));
+            const ausentesArr = Array.from(ausentes.values());
+            const disponiblesArr = Array.from(disponibles.values());
+            const personalTotal = ausentesArr.length + disponiblesArr.length;
+            return {
+                ...base,
+                personalTotal,
+                personalNoDisponible: ausentesArr.length,
+                personalDisponible: disponiblesArr.length,
+                porcentajeAusencia: personalTotal > 0 ? (ausentesArr.length / personalTotal) * 100 : 0,
+                porcentajeDisponible: personalTotal > 0 ? (disponiblesArr.length / personalTotal) * 100 : 0,
+                excedeLimite: excede,
+                empleadosAusentes: ausentesArr,
+                empleadosDisponibles: disponiblesArr,
+            };
+        });
     }, [grupos, areaSelId]);
 
     const totales       = useMemo(() => gruposUnicos.reduce(
@@ -499,7 +595,10 @@ export const Dashboard: React.FC = () => {
                                     className="border border-gray-300 rounded px-2 py-1.5 text-sm"
                                 >
                                     <option value="all">Todas</option>
-                                    {[1,2,3,4,5].map(s => <option key={s} value={s}>Semana {s}</option>)}
+                                    {(semanalData.length > 0
+                                        ? semanalData.map(r => r.semana)
+                                        : [1,2,3,4,5]
+                                    ).map(s => <option key={s} value={s}>Semana {s}</option>)}
                                 </select>
                             </div>
                             <div className="flex flex-col gap-1">
