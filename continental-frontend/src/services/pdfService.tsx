@@ -189,6 +189,7 @@ export const downloadConstanciaEmpleadoActualPDF = async (
         vacaciones: Array<{
             fechaVacacion: string;
             tipoVacacion: string;
+            estadoVacacion?: string;
         }>;
     },
     anioVigente: number
@@ -309,6 +310,7 @@ export const generateConstanciaAntiguedadPDFBlob = async (
         vacaciones: Array<{
             fechaVacacion: string;
             tipoVacacion: string;
+            estadoVacacion?: string;
         }>;
     },
     anioVigente: number
