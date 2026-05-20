@@ -203,11 +203,11 @@ export const downloadConstanciaEmpleadoActualPDF = async (
         }
 
         const automaticas = vacacionesData.vacaciones
-            .filter((v) => v.tipoVacacion === "Automatica")
+            .filter((v) => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
             .map((v) => ({ date: v.fechaVacacion }));
 
         const anuales = vacacionesData.vacaciones
-            .filter((v) => v.tipoVacacion === "Anual")
+            .filter((v) => (v.tipoVacacion === "Anual" || v.tipoVacacion === "Reprogramacion") && v.estadoVacacion === "Activa")
             .map((v) => ({ date: v.fechaVacacion }));
 
         const diasOtorgadosEmpresa = convertDaysToIndividualEntries(automaticas, "Automatica");
@@ -323,11 +323,11 @@ export const generateConstanciaAntiguedadPDFBlob = async (
         }
 
         const automaticas = vacacionesData.vacaciones
-            .filter((v) => v.tipoVacacion === "Automatica")
+            .filter((v) => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
             .map((v) => ({ date: v.fechaVacacion }));
 
         const anuales = vacacionesData.vacaciones
-            .filter((v) => v.tipoVacacion === "Anual")
+            .filter((v) => (v.tipoVacacion === "Anual" || v.tipoVacacion === "Reprogramacion") && v.estadoVacacion === "Activa")
             .map((v) => ({ date: v.fechaVacacion }));
 
         const diasOtorgadosEmpresa = convertDaysToIndividualEntries(automaticas, "Automatica");

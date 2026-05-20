@@ -165,9 +165,21 @@ export const DetallesEmpleado = ({
           console.log('📅📅📅📅 ', {resp})
 
           // Separar vacaciones por tipo (igual que en MyVacations.tsx)
-          const automaticas = vacs.filter(v => v.tipoVacacion === "Automatica").map(v => ({ date: v.fechaVacacion }));
-          const festivosTrabajados = vacs.filter(v => v.tipoVacacion === "FestivoTrabajado").map(v => ({ date: v.fechaVacacion }));
-          const reprogramacionesYAnuales = vacs.filter(v => v.tipoVacacion === "Reprogramacion" || v.tipoVacacion === "Anual").map(v => ({ date: v.fechaVacacion }));
+          // IMPORTANTE: filtrar también por estadoVacacion="Activa" — sin esto
+          // aparecen tanto la fecha original (Cancelada tras aprobar reprogramación)
+          // como la nueva (Activa), duplicando días en la vista del empleado.
+          const automaticas = vacs
+            .filter(v => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
+            .map(v => ({ date: v.fechaVacacion }));
+          const festivosTrabajados = vacs
+            .filter(v => v.tipoVacacion === "FestivoTrabajado" && v.estadoVacacion === "Activa")
+            .map(v => ({ date: v.fechaVacacion }));
+          const reprogramacionesYAnuales = vacs
+            .filter(v =>
+              (v.tipoVacacion === "Reprogramacion" || v.tipoVacacion === "Anual") &&
+              v.estadoVacacion === "Activa"
+            )
+            .map(v => ({ date: v.fechaVacacion }));
           
           console.log('📅 Vacaciones automáticas:', automaticas);
           console.log('🎉 Festivos trabajados:', festivosTrabajados);

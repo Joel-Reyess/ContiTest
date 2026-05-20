@@ -165,9 +165,14 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
             };
         }
 
-        const automaticas = vacacionesData.vacaciones.filter(v => v.tipoVacacion === "Automatica").length;
+        // Filtrar también por estadoVacacion="Activa" para no contar las
+        // canceladas (la fecha original queda Cancelada al aprobar reprogramación).
+        const automaticas = vacacionesData.vacaciones.filter(v =>
+            v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa"
+        ).length;
         const anualesYReprogramacion = vacacionesData.vacaciones.filter(v =>
-            v.tipoVacacion === "Anual" || v.tipoVacacion === "Reprogramacion"
+            (v.tipoVacacion === "Anual" || v.tipoVacacion === "Reprogramacion") &&
+            v.estadoVacacion === "Activa"
         ).length;
 
         return {
