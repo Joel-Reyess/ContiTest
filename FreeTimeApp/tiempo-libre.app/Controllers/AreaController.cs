@@ -239,6 +239,29 @@ public class AreaController : ControllerBase
         return Ok(new ApiResponse<Area>(true, area));
     }
 
+    // PATCH: api/Area/{id}/manning
+    // Endpoint dedicado para que Ingeniero Industrial pueda ajustar sólo el manning
+    // base del área sin recibir permiso para tocar nombre/SAP/jefes.
+    [HttpPatch("{id}/manning")]
+    [Authorize(Roles = "SuperUsuario,Super Usuario,Ingeniero Industrial,IngenieroIndustrial")]
+    public async Task<IActionResult> UpdateManning(int id, [FromBody] tiempo_libre.DTOs.AreaManningUpdateRequest request)
+    {
+        if (request == null || request.Manning < 0)
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "Manning inválido"));
+        }
+
+        var area = await _db.Areas.FindAsync(id);
+        if (area == null)
+        {
+            return NotFound(new ApiResponse<object>(false, null, "Área no encontrada"));
+        }
+
+        area.Manning = request.Manning;
+        await _db.SaveChangesAsync();
+        return Ok(new ApiResponse<Area>(true, area));
+    }
+
     // PATCH: api/Area/{id}/asignar-jefes
     [HttpPatch("{id}/asignar-jefes")]
     [Authorize(Roles = "SuperUsuario")]

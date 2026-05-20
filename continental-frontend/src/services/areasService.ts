@@ -136,6 +136,31 @@ export const areasService = {
   },
 
   /**
+   * Actualiza únicamente el manning base de un área. Disponible para
+   * Ingenieros Industriales y SuperUsuario (PATCH /api/Area/{id}/manning).
+   */
+  async updateAreaManning(areaId: number, manning: number): Promise<AreaUpdateResponse> {
+    try {
+      logger.apiRequest('PATCH', `/api/Area/${areaId}/manning`, { Manning: manning });
+
+      const response: ApiResponse<AreaUpdateResponse> = await httpClient.patch<AreaUpdateResponse>(
+        `/api/Area/${areaId}/manning`,
+        { Manning: manning }
+      );
+
+      if (!response.success || !response.data) {
+        throw new Error(response.errorMsg || 'Error al actualizar el manning del área');
+      }
+
+      logger.apiResponse('PATCH', `/api/Area/${areaId}/manning`, 200, response.data);
+      return response.data;
+    } catch (error) {
+      logger.error('Error updating area manning', error, 'AREAS_SERVICE');
+      throw error;
+    }
+  },
+
+  /**
    * Asigna un jefe a un área específica
    * @param areaId ID del área
    * @param jefeId ID del jefe a asignar

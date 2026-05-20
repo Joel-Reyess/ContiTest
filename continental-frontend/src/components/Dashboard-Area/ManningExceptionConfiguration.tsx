@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, Save, X, Calendar } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useVacationConfig } from '@/hooks/useVacationConfig';
 import { excepcionesManningService } from '@/services/excepcionesManningService';
+import { areasService } from '@/services/areasService';
 import type { ExcepcionManning } from '@/interfaces/Api.interface';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -41,6 +42,10 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
     const [loading, setLoading] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [editingException, setEditingException] = useState<ExcepcionManning | null>(null);
+    const [editingBase, setEditingBase] = useState(false);
+    const [baseDraft, setBaseDraft] = useState<number>(0);
+    const [savingBase, setSavingBase] = useState(false);
+    const [baseOverride, setBaseOverride] = useState<number | null>(null);
     const [formData, setFormData] = useState<ExceptionFormData>({
         anio: config?.anioVigente || currentDate.getFullYear(),
         mes: currentDate.getMonth() + 1,
@@ -53,12 +58,40 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
 
     // Obtener manning base del área seleccionada
     const getManningBase = (): number => {
+        if (baseOverride !== null) return baseOverride;
         if (!areaId || !areas) return manningBase;
         const selectedArea = areas.find(area => area.id === areaId.toString());
         return selectedArea?.manning || manningBase;
     };
 
     const actualManningBase = getManningBase();
+
+    // Resetear el override cuando cambia el área
+    useEffect(() => {
+        setBaseOverride(null);
+        setEditingBase(false);
+    }, [areaId]);
+
+    const handleSaveBaseManning = async () => {
+        if (!areaId) return;
+        if (baseDraft <= 0) {
+            toast.error('El manning debe ser mayor a 0');
+            return;
+        }
+        setSavingBase(true);
+        try {
+            await areasService.updateAreaManning(areaId, baseDraft);
+            setBaseOverride(baseDraft);
+            setEditingBase(false);
+            onManningChange(baseDraft);
+            toast.success('Manning base actualizado');
+        } catch (error: any) {
+            console.error('Error updating base manning:', error);
+            toast.error(error?.message || 'Error al actualizar el manning base');
+        } finally {
+            setSavingBase(false);
+        }
+    };
 
     // Cargar excepciones al montar el componente y cuando cambie el área o fecha
     useEffect(() => {
@@ -260,6 +293,51 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                     <div className="text-xs text-gray-500 mb-3">
                         {format(currentDate, "MMMM 'de' yyyy", { locale: es })}
                     </div>
+
+                    {/* Editar manning base del área (PATCH /api/Area/{id}/manning) */}
+                    {editingBase ? (
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                            <input
+                                type="number"
+                                min={1}
+                                max={500}
+                                value={baseDraft}
+                                onChange={(e) => setBaseDraft(parseInt(e.target.value) || 0)}
+                                className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                            />
+                            <Button
+                                onClick={handleSaveBaseManning}
+                                disabled={savingBase}
+                                className="text-xs py-1 px-2"
+                                style={{ backgroundColor: 'var(--color-continental-yellow)' }}
+                            >
+                                <Save size={12} className="mr-1" />
+                                Guardar
+                            </Button>
+                            <Button
+                                onClick={() => { setEditingBase(false); }}
+                                variant="outline"
+                                className="text-xs py-1 px-2"
+                            >
+                                <X size={12} />
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="flex justify-center mb-2">
+                            <Button
+                                onClick={() => {
+                                    setBaseDraft(actualManningBase);
+                                    setEditingBase(true);
+                                }}
+                                variant="outline"
+                                className="text-xs py-1 px-2"
+                            >
+                                <Edit2 size={12} className="mr-1" />
+                                Editar manning base
+                            </Button>
+                        </div>
+                    )}
+
                     {currentException?.motivo && (
                         <div className="text-xs text-gray-600 bg-orange-50 p-2 rounded">
                             {currentException.motivo}
