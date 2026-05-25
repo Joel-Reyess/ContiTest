@@ -14,10 +14,14 @@ namespace tiempo_libre.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly FreeTimeDbContext _db;
+        private readonly tiempo_libre.Services.RolSemanalCalculoService _rolSemanal;
 
-        public DashboardController(FreeTimeDbContext db)
+        public DashboardController(
+            FreeTimeDbContext db,
+            tiempo_libre.Services.RolSemanalCalculoService rolSemanal)
         {
             _db = db;
+            _rolSemanal = rolSemanal;
         }
 
         // ─── Helpers de autorización ──────────────────────────────────────────
@@ -85,54 +89,6 @@ namespace tiempo_libre.Controllers
         }
 
         // ─── Helpers de cálculo ───────────────────────────────────────────────
-
-        /// <summary>
-        /// Carga las permutas aprobadas en el rango y construye un mapa
-        /// (empleadoId, fecha) → turnoNuevo. Cubre permutas AB e individuales.
-        /// </summary>
-        private async Task<Dictionary<(int empleadoId, DateOnly fecha), string>> CargarPermutasAsync(
-            DateOnly inicio, DateOnly fin, List<int> empleadosIds)
-        {
-            var permutas = await _db.Permutas
-                .Where(p => p.EstadoSolicitud == "Aprobada" &&
-                            p.FechaPermuta >= inicio && p.FechaPermuta <= fin)
-                .Select(p => new
-                {
-                    p.EmpleadoOrigenId,
-                    p.EmpleadoDestinoId,
-                    p.FechaPermuta,
-                    p.TurnoEmpleadoOrigen,
-                    p.TurnoEmpleadoDestino
-                })
-                .ToListAsync();
-
-            var mapa = new Dictionary<(int, DateOnly), string>();
-            var idsSet = empleadosIds.ToHashSet();
-
-            foreach (var p in permutas)
-            {
-                if (idsSet.Contains(p.EmpleadoOrigenId))
-                    mapa[(p.EmpleadoOrigenId, p.FechaPermuta)] = p.TurnoEmpleadoOrigen ?? "";
-
-                if (p.EmpleadoDestinoId.HasValue && idsSet.Contains(p.EmpleadoDestinoId.Value))
-                    mapa[(p.EmpleadoDestinoId.Value, p.FechaPermuta)] = p.TurnoEmpleadoDestino ?? "";
-            }
-
-            return mapa;
-        }
-
-        /// <summary>
-        /// Devuelve el turno efectivo de un empleado en una fecha,
-        /// aplicando permuta aprobada si existe.
-        /// </summary>
-        private static string TurnoEfectivo(
-            int empleadoId, DateOnly fecha, string rolGrupo,
-            Dictionary<(int, DateOnly), string> permutas)
-        {
-            return permutas.TryGetValue((empleadoId, fecha), out var turnoPermuta)
-                ? turnoPermuta
-                : TurnosHelper.ObtenerTurnoParaFecha(rolGrupo, fecha);
-        }
 
         private record SemanaRango(int Semana, DateOnly Inicio, DateOnly Fin);
 
@@ -608,49 +564,20 @@ namespace tiempo_libre.Controllers
             var grupos = await gruposQuery.ToListAsync();
             if (!grupos.Any()) return new List<ResumenSemanaDto>();
 
-            var grupoIds = grupos.Select(g => g.GrupoId).ToList();
-            var empleadosPorGrupo = await _db.Users
-                .Where(u => grupoIds.Contains(u.GrupoId ?? 0) &&
-                            u.Status == tiempo_libre.Models.Enums.UserStatus.Activo)
-                .Select(u => new { u.Id, u.GrupoId, u.Nomina })
-                .ToListAsync();
-
-            var empleadosIds = empleadosPorGrupo.Select(e => e.Id).ToList();
-            var nominasActivasList = empleadosPorGrupo.Where(e => e.Nomina.HasValue)
-                .Select(e => e.Nomina!.Value).Distinct().ToList();
-
-            var diasInhabiles = await CargarDiasInhabilesAsync(rangoInicio, rangoFin);
-
-            var vacaciones = await _db.VacacionesProgramadas
-                .Where(v => empleadosIds.Contains(v.EmpleadoId) &&
-                            v.FechaVacacion >= rangoInicio && v.FechaVacacion <= rangoFin &&
-                            v.EstadoVacacion == "Activa")
-                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion })
-                .ToListAsync();
-
-            var permisos = await _db.PermisosEIncapacidadesSAP
-                .Where(p => nominasActivasList.Contains(p.Nomina) &&
-                            p.Desde <= rangoFin && p.Hasta >= rangoInicio &&
-                            (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-                .Select(p => new { p.Nomina, p.Desde, p.Hasta })
-                .ToListAsync();
-
-            // Indices para lookup rápido
-            var vacacionesPorEmp = vacaciones
-                .Where(v => v.TipoVacacion != "FestivoTrabajado")
-                .GroupBy(v => v.EmpleadoId)
-                .ToDictionary(g => g.Key, g => g.Select(x => x.FechaVacacion).ToHashSet());
-
-            var permisosPorNomina = permisos
-                .GroupBy(p => p.Nomina)
-                .ToDictionary(g => g.Key, g => g.Select(x => (x.Desde, x.Hasta)).ToList());
-
-            var permutasMap = await CargarPermutasAsync(rangoInicio, rangoFin, empleadosIds);
-
             var excepcionesManning = await _db.ExcepcionesManning
                 .Where(e => grupos.Select(g => g.AreaId).Contains(e.AreaId) &&
                             e.Anio == anio && e.Mes == mes && e.Activa)
                 .ToListAsync();
+
+            // Calcular el código de turno FINAL por empleado y día usando el
+            // mismo servicio que el rol semanal (WeeklyRoles). Una sola llamada
+            // por grupo cubre todo el rango del mes.
+            var codigosPorGrupo = new Dictionary<int, Dictionary<(int, DateOnly), string>>();
+            foreach (var grupo in grupos)
+            {
+                codigosPorGrupo[grupo.GrupoId] =
+                    await _rolSemanal.CalcularCodigosTurnoGrupoAsync(grupo.GrupoId, rangoInicio, rangoFin);
+            }
 
             var resultado = new List<ResumenSemanaDto>();
 
@@ -665,43 +592,32 @@ namespace tiempo_libre.Controllers
 
                 foreach (var grupo in grupos)
                 {
-                    var empGrupo = empleadosPorGrupo.Where(e => e.GrupoId == grupo.GrupoId).ToList();
-                    if (empGrupo.Count == 0) continue;
-
-                    var rolGrupo = grupo.Rol ?? string.Empty;
                     var excManning = excepcionesManning.FirstOrDefault(e => e.AreaId == grupo.AreaId);
                     var manning = (double)(excManning?.ManningRequeridoExcepcion ?? grupo.Area?.Manning ?? 0);
                     if (manning <= 0) continue;
 
+                    var codigos = codigosPorGrupo[grupo.GrupoId];
+
                     foreach (var dia in diasSemana)
                     {
-                        if (diasInhabiles.Contains(dia)) continue;
+                        // Misma fórmula que WeeklyRoles.tsx:
+                        //   ausentes  = códigos ∈ {E,A,R,M,V,P,G,H,O,S,T}
+                        //   descanso  = código "D"
+                        //   personalTiempoNormal = total − ausentes − descanso
+                        //   díaDescanso = nadie con turno de trabajo {1,2,3,F}
+                        var codigosDia = codigos
+                            .Where(kv => kv.Key.Item2 == dia)
+                            .Select(kv => kv.Value)
+                            .ToList();
 
-                        // Personas del grupo que están "en tiempo normal" ese día:
-                        // turno efectivo ∈ {1, 2, 3, F} y no estén ausentes (vac/permiso)
-                        int personalTiempoNormal = 0;
-                        bool grupoTrabajaDia = false;
+                        if (codigosDia.Count == 0) continue;
 
-                        foreach (var emp in empGrupo)
-                        {
-                            var turno = TurnoEfectivo(emp.Id, dia, rolGrupo, permutasMap);
-                            if (turno != "1" && turno != "2" && turno != "3" && turno != "F")
-                                continue;
-
-                            grupoTrabajaDia = true;
-
-                            if (vacacionesPorEmp.TryGetValue(emp.Id, out var fechasVac) && fechasVac.Contains(dia))
-                                continue;
-
-                            if (emp.Nomina.HasValue &&
-                                permisosPorNomina.TryGetValue(emp.Nomina!.Value, out var rangos) &&
-                                rangos.Any(r => r.Desde <= dia && r.Hasta >= dia))
-                                continue;
-
-                            personalTiempoNormal++;
-                        }
-
+                        bool grupoTrabajaDia = codigosDia.Any(EsTurnoTrabajo);
                         if (!grupoTrabajaDia) continue;
+
+                        int ausentes = codigosDia.Count(EsAusente);
+                        int descanso = codigosDia.Count(c => c == "D");
+                        int personalTiempoNormal = Math.Max(0, codigosDia.Count - ausentes - descanso);
 
                         // Fórmula WeeklyRoles: sin cap al manning
                         totalHorasNormales += personalTiempoNormal * 8;
@@ -716,6 +632,17 @@ namespace tiempo_libre.Controllers
 
             return resultado;
         }
+
+        // Códigos de turno de trabajo efectivo (cuentan como personal presente).
+        private static bool EsTurnoTrabajo(string c) =>
+            c == "1" || c == "2" || c == "3" || c == "F";
+
+        // Códigos que representan ausencia (descuentan de personal tiempo normal),
+        // igual que WeeklyRoles.tsx: E (incapacidad), A/R/M (APC), V (vacación),
+        // P/G/H/O (permisos), S (castigo), T (fuera de tiempo).
+        private static bool EsAusente(string c) =>
+            c == "E" || c == "A" || c == "R" || c == "M" || c == "V" ||
+            c == "P" || c == "G" || c == "H" || c == "O" || c == "S" || c == "T";
 
         // ─── Helpers de carga ─────────────────────────────────────────────────
 

@@ -34,6 +34,7 @@ builder.Services.AddDbContext<FreeTimeDbContext>(options =>
 builder.Services.AddScoped<tiempo_libre.Services.GeneraReservacionTurnosService>();
 builder.Services.AddScoped<tiempo_libre.Services.CalendariosEmpleadosService>();
 builder.Services.AddScoped<tiempo_libre.Services.CalendarioGrupoService>();
+builder.Services.AddScoped<tiempo_libre.Services.RolSemanalCalculoService>();
 builder.Services.AddScoped<tiempo_libre.Services.VacacionesService>();
 builder.Services.AddScoped<tiempo_libre.Services.AusenciaService>();
 builder.Services.AddScoped<tiempo_libre.Services.ConfiguracionVacacionesService>();

@@ -83,8 +83,21 @@ namespace tiempo_libre.Services
                                 p.Desde <= fechaMax &&
                                 p.Hasta >= fechaMin &&
                                 (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-                    .Select(p => new { p.Nomina, p.Desde, p.Hasta, p.ClaseAbsentismo })
+                    .Select(p => new { p.Nomina, p.Desde, p.Hasta, p.ClaseAbsentismo, p.ClAbPre })
                     .ToListAsync();
+
+                // ─── 4b. Reprogramaciones aprobadas (1 query) ────────────────────────
+                // El día ORIGINAL de una vacación SAP (1100) reprogramada ya no debe
+                // contar como ausencia: la ausencia se movió al día nuevo, que aparece
+                // como VacacionesProgramadas "Reprogramacion". El registro SAP 1100
+                // original nunca se cancela, así que hay que excluirlo aquí (igual que
+                // hace el rol semanal en RolSemanalCalculoService).
+                var reprogramadasBatch = await _db.SolicitudesReprogramacion
+                    .Where(s => s.EstadoSolicitud == "Aprobada" && empleadoIdSet.Contains(s.EmpleadoId))
+                    .Select(s => new { s.EmpleadoId, s.FechaOriginalGuardada })
+                    .ToListAsync();
+                var reprogramadasSet = new HashSet<(int, DateOnly)>(
+                    reprogramadasBatch.Select(r => (r.EmpleadoId, r.FechaOriginalGuardada)));
 
                 // ─── 5. Festivos trabajados del rango (1 query) ──────────────────────
                 var festivosBatch = await _db.SolicitudesFestivosTrabajados
@@ -178,6 +191,9 @@ namespace tiempo_libre.Services
                             .Select(p => {
                                 var emp = nominaToEmpleado.GetValueOrDefault(p.Nomina);
                                 if (emp == null) return null!;
+                                // Día original de una vacación SAP (1100) reprogramada → ya no es ausencia
+                                if (p.ClAbPre == 1100 && reprogramadasSet.Contains((emp.Id, fecha)))
+                                    return null!;
                                 return new EmpleadoAusenteDto
                                 {
                                     EmpleadoId = emp.Id,
@@ -494,6 +510,15 @@ namespace tiempo_libre.Services
                 })
                 .ToListAsync();
 
+            // Día original de vacaciones SAP (1100) reprogramadas en esta fecha:
+            // el registro SAP no se cancela, así que hay que excluirlo abajo para
+            // no contarlo como ausencia (la ausencia ya se movió al día nuevo).
+            var empleadosReprogramadosIds = await _db.SolicitudesReprogramacion
+                .Where(s => s.EstadoSolicitud == "Aprobada" && s.FechaOriginalGuardada == fecha)
+                .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == Models.Enums.UserStatus.Activo),
+                      s => s.EmpleadoId, u => u.Id, (s, u) => u.Id)
+                .ToListAsync();
+
             // 2. Permisos e Incapacidades SAP
             // Si tiene FechaSolicitud = es solicitud manual, requiere aprobacion
             // Si NO tiene FechaSolicitud = viene de Excel/SAP, siempre se muestra
@@ -504,6 +529,7 @@ namespace tiempo_libre.Services
                       p => p.Nomina,
                       u => u.Nomina,
                       (p, u) => new { Permiso = p, Usuario = u })
+                .Where(pu => !(pu.Permiso.ClAbPre == 1100 && empleadosReprogramadosIds.Contains(pu.Usuario.Id)))
                 .Select(pu => new EmpleadoAusenteDto
                 {
                     EmpleadoId = pu.Usuario.Id,
