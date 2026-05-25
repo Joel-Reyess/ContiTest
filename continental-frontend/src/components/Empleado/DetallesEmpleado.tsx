@@ -102,6 +102,9 @@ export const DetallesEmpleado = ({
       hasRole(UserRole.SUPER_ADMIN) ||
       hasRole(UserRole.AREA_ADMIN) ||
       hasRole(UserRole.INDUSTRIAL);
+  // Jefe de Área e Ingeniero Industrial no deben registrar permisos/incapacidades
+  const puedeRegistrarPermiso =
+      !hasRole(UserRole.AREA_ADMIN) && !hasRole(UserRole.INDUSTRIAL);
 
   const getEmployeeDetails = useCallback(async (id: string) => {
     if (!id) return;
@@ -830,7 +833,8 @@ const handleRemoveDay = async (fecha: string) => {
               <Key size={16} />
               Generar nueva contraseña
             </Button>
-            {/* NUEVO: Botón Registrar Permiso */}
+            {/* NUEVO: Botón Registrar Permiso — oculto para Jefe de Área e Ingeniero Industrial */}
+            {puedeRegistrarPermiso && (
             <Button
               variant="outline"
               onClick={() => setShowPermisoModal(true)}
@@ -839,6 +843,7 @@ const handleRemoveDay = async (fecha: string) => {
               <FileText size={16} />
               Registrar Permiso/Incapacidad
             </Button>
+            )}
             {puedeExtenderIncapacidad && (
               <Button
                 variant="outline"
