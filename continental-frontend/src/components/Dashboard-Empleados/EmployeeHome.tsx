@@ -212,6 +212,10 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
         navigate("/empleados/roles-semanales");
     };
 
+    const goToConsultaConstancia = () => {
+        navigate("/empleados/consulta-constancia");
+    };
+
     // Fecha de finalización del turno actual (ejemplo: en 2 días)
     const turnEndDate = new Date();
     turnEndDate.setDate(turnEndDate.getDate() + 2);
@@ -443,6 +447,13 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                                     onClick={goToWeeklyRoles}
                                 >
                                     Roles semanales
+                                </Button>
+                                <Button
+                                    variant="continentalOutline"
+                                    className="cursor-pointer w-full"
+                                    onClick={goToConsultaConstancia}
+                                >
+                                    Constancia de antigüedad
                                 </Button>
                             </div>
                         </div>

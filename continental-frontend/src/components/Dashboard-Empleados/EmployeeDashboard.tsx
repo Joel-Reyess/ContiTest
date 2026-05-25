@@ -11,6 +11,7 @@ import { useVacationConfig } from '@/hooks/useVacationConfig'
 import WeeklyRoles from './WeeklyRoles'
 import MisPermutas from './MisPermutas';
 import EdicionDiasEmpresa from './EdicionDiasEmpresa';
+import ConsultaConstancia from './ConsultaConstancia';
 
 
 const EmployeeDashboard = (): JSX.Element => {
@@ -81,6 +82,7 @@ const EmployeeDashboard = (): JSX.Element => {
                     <Route path="roles-semanales" element={<WeeklyRoles />} />
                     <Route path="mis-permutas" element={<MisPermutas />} />
                     <Route path="edicion-dias-empresa" element={<EdicionDiasEmpresa />} />
+                    <Route path="consulta-constancia" element={<ConsultaConstancia />} />
                 </Routes>
             </div>
         </div>

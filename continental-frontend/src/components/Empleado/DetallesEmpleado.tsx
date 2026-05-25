@@ -950,8 +950,8 @@ const handleRemoveDay = async (fecha: string) => {
             )
           }
 
-          {/* Asignar vacaciones: solo superusuario y jefe de area */}
-          {vacacionesData && (
+          {/* Asignar vacaciones: solo superusuario */}
+          {vacacionesData && isSuperUsuario && (
             <Button 
               variant="outline" 
               className="w-full cursor-pointer border-blue-300 text-blue-700 hover:bg-blue-50" 
