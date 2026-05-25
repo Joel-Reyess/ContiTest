@@ -242,8 +242,8 @@ namespace tiempo_libre.Services
             foreach (var key in resultado.Keys.ToList())
             {
                 if (!turnosNormales.Contains(resultado[key])) continue;
-                var fechaStr = key.fecha.ToString("yyyy-MM-dd");
-                if (festivosSet.Contains((key.empleadoId, fechaStr)))
+                var fechaStr = key.Item2.ToString("yyyy-MM-dd");
+                if (festivosSet.Contains((key.Item1, fechaStr)))
                     resultado[key] = "F";
                 else if (vacacionesSet.Contains(key))
                     resultado[key] = "V";
