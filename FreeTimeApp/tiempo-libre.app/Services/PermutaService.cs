@@ -144,30 +144,29 @@ namespace tiempo_libre.Services
                 var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
                 var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
 
-                // ✅ BUSCAR ÁREA EN MÚLTIPLES LUGARES
-                int? areaDelJefe = usuarioConsulta.AreaId ?? usuarioConsulta.Grupo?.Area?.AreaId;
-
-                // ✅ SI NO TIENE ÁREA EN Usuario NI en Grupo, buscar en Areas.JefeId
-                if (!areaDelJefe.HasValue && esJefeArea)
-                {
-                    var areaComoJefe = await _db.Areas
+                // ✅ TODAS las áreas donde este usuario está registrado como JefeId
+                // (un jefe puede liderar múltiples áreas; el código anterior solo tomaba la primera).
+                var areasComoJefe = esJefeArea
+                    ? await _db.Areas
                         .Where(a => a.JefeId == usuarioId)
                         .Select(a => a.AreaId)
-                        .FirstOrDefaultAsync();
+                        .ToListAsync()
+                    : new List<int>();
 
-                    if (areaComoJefe > 0)
-                    {
-                        areaDelJefe = areaComoJefe;
-                        _logger.LogInformation("📌 Área encontrada en Areas.JefeId: {AreaId}", areaDelJefe);
-                    }
+                // Fallback: si no aparece como JefeId en ninguna área pero tiene rol jefe,
+                // intentamos por su AreaId / Grupo.Area (compatibilidad con data legacy).
+                if (esJefeArea && areasComoJefe.Count == 0)
+                {
+                    var areaFallback = usuarioConsulta.AreaId ?? usuarioConsulta.Grupo?.Area?.AreaId;
+                    if (areaFallback.HasValue) areasComoJefe.Add(areaFallback.Value);
                 }
 
-                _logger.LogInformation("👤 Usuario: {Nombre}, Roles: {Roles}, AreaIdDirecto: {AreaIdDirecto}, AreaDelGrupo: {AreaDelGrupo}, AreaFinal: {AreaFinal}, EsJefe: {EsJefe}, EsSuper: {EsSuper}, AreaFiltro: {AreaFiltro}",
+                _logger.LogInformation("👤 Usuario: {Nombre}, Roles: {Roles}, AreaIdDirecto: {AreaIdDirecto}, AreaDelGrupo: {AreaDelGrupo}, ÁreasComoJefe: [{Areas}], EsJefe: {EsJefe}, EsSuper: {EsSuper}, AreaFiltro: {AreaFiltro}",
                     usuarioConsulta.FullName,
                     string.Join(", ", usuarioConsulta.Roles.Select(r => r.Name)),
                     usuarioConsulta.AreaId,
                     usuarioConsulta.Grupo?.Area?.AreaId,
-                    areaDelJefe,
+                    string.Join(", ", areasComoJefe),
                     esJefeArea,
                     esSuperUsuario,
                     areaIdFiltro);
@@ -183,29 +182,36 @@ namespace tiempo_libre.Services
                     .Include(p => p.JefeAprobador)
                     .AsQueryable();
 
-                // ✅ DETERMINAR QUÉ ÁREA FILTRAR
-                int? areaIdAplicar = null;
-
                 if (areaIdFiltro.HasValue)
                 {
-                    areaIdAplicar = areaIdFiltro.Value;
-                    _logger.LogInformation("🔹 Usando área del FILTRO FRONTEND: {AreaId}", areaIdAplicar);
-                }
-                else if (esJefeArea && !esSuperUsuario && areaDelJefe.HasValue)
-                {
-                    areaIdAplicar = areaDelJefe.Value;
-                    _logger.LogInformation("🔹 Usando área del JEFE: {AreaId}", areaIdAplicar);
-                }
-
-                if (areaIdAplicar.HasValue)
-                {
-                    _logger.LogInformation("🔒 APLICANDO FILTRO DE ÁREA: {AreaId}", areaIdAplicar.Value);
+                    // Frontend mandó área específica. Defensivo: para jefes, también
+                    // incluimos permutas asignadas a él como JefeAprobadorId y las que
+                    // tocan al empleado DESTINO (no solo origen).
+                    var area = areaIdFiltro.Value;
+                    var jefeIdLocal = usuarioId!.Value;
+                    _logger.LogInformation("🔒 APLICANDO FILTRO DE ÁREA: {AreaId}", area);
 
                     query = query.Where(p =>
-                        p.EmpleadoOrigen.Grupo != null &&
-                        p.EmpleadoOrigen.Grupo.Area != null &&
-                        p.EmpleadoOrigen.Grupo.Area.AreaId == areaIdAplicar.Value
-                    );
+                        (p.EmpleadoOrigen.Grupo != null && p.EmpleadoOrigen.Grupo.Area != null &&
+                         p.EmpleadoOrigen.Grupo.Area.AreaId == area) ||
+                        (p.EmpleadoDestino != null && p.EmpleadoDestino.Grupo != null && p.EmpleadoDestino.Grupo.Area != null &&
+                         p.EmpleadoDestino.Grupo.Area.AreaId == area) ||
+                        (esJefeArea && p.JefeAprobadorId == jefeIdLocal));
+                }
+                else if (esJefeArea && !esSuperUsuario && areasComoJefe.Count > 0)
+                {
+                    // Sin filtro frontend: auto-restringir a TODAS las áreas que lidera
+                    // este jefe (origen O destino) + permutas asignadas a él.
+                    var jefeIdLocal = usuarioId!.Value;
+                    _logger.LogInformation("🔒 APLICANDO FILTRO MULTI-ÁREA del jefe: [{Areas}]",
+                        string.Join(", ", areasComoJefe));
+
+                    query = query.Where(p =>
+                        (p.EmpleadoOrigen.Grupo != null && p.EmpleadoOrigen.Grupo.Area != null &&
+                         areasComoJefe.Contains(p.EmpleadoOrigen.Grupo.Area.AreaId)) ||
+                        (p.EmpleadoDestino != null && p.EmpleadoDestino.Grupo != null && p.EmpleadoDestino.Grupo.Area != null &&
+                         areasComoJefe.Contains(p.EmpleadoDestino.Grupo.Area.AreaId)) ||
+                        p.JefeAprobadorId == jefeIdLocal);
                 }
                 else
                 {
