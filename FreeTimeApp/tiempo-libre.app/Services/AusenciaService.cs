@@ -173,8 +173,15 @@ namespace tiempo_libre.Services
                         var porcentajeMaximo = excPct?.PorcentajeMaximoPermitido ?? porcentajeDefault;
 
                         // Ausentes del día (de memoria)
+                        // Defensivo: aunque vacacionesBatch ya filtra EstadoVacacion="Activa",
+                        // si por data inconsistente la vacación original no quedó "Cancelada",
+                        // también la excluimos cuando hay una reprogramación aprobada para
+                        // (empleado, fecha). La entrada NUEVA (PeriodoProgramacion="Reprogramacion")
+                        // siempre se conserva.
                         var ausentesVac = vacacionesBatch
                             .Where(v => empIdsGrupo.Contains(v.EmpleadoId) && v.FechaVacacion == fecha)
+                            .Where(v => v.PeriodoProgramacion == "Reprogramacion"
+                                        || !reprogramadasSet.Contains((v.EmpleadoId, fecha)))
                             .Select(v => new EmpleadoAusenteDto
                             {
                                 EmpleadoId = v.EmpleadoId,
@@ -489,10 +496,24 @@ namespace tiempo_libre.Services
 
         private async Task<List<EmpleadoAusenteDto>> ObtenerEmpleadosAusentesAsync(DateOnly fecha, int grupoId)
         {
+            // Día original de vacaciones SAP (1100) reprogramadas en esta fecha:
+            // el registro SAP no se cancela, así que hay que excluirlo abajo para
+            // no contarlo como ausencia (la ausencia ya se movió al día nuevo).
+            var empleadosReprogramadosIds = await _db.SolicitudesReprogramacion
+                .Where(s => s.EstadoSolicitud == "Aprobada" && s.FechaOriginalGuardada == fecha)
+                .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == Models.Enums.UserStatus.Activo),
+                      s => s.EmpleadoId, u => u.Id, (s, u) => u.Id)
+                .ToListAsync();
+
             // 1. Vacaciones activas (todos los tipos: Anual, Automatica, Programable, FestivoTrabajado, etc.)
-            // Incluye reprogramaciones aprobadas (PeriodoProgramacion == "Reprogramacion")
+            // Incluye reprogramaciones aprobadas (PeriodoProgramacion == "Reprogramacion").
+            // Defensivo: si por data inconsistente la vacación original no quedó "Cancelada",
+            // también la excluimos cuando hay una reprogramación aprobada para (empleado, fecha).
+            // La entrada NUEVA (PeriodoProgramacion="Reprogramacion") siempre se conserva.
             var vacaciones = await _db.VacacionesProgramadas
                 .Where(v => v.FechaVacacion == fecha && v.EstadoVacacion == "Activa")
+                .Where(v => v.PeriodoProgramacion == "Reprogramacion"
+                            || !empleadosReprogramadosIds.Contains(v.EmpleadoId))
                 .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == Models.Enums.UserStatus.Activo),
                       v => v.EmpleadoId,
                       u => u.Id,
@@ -508,15 +529,6 @@ namespace tiempo_libre.Services
                         : vu.Vacacion.TipoVacacion,
                     Maquina = vu.Usuario.Maquina
                 })
-                .ToListAsync();
-
-            // Día original de vacaciones SAP (1100) reprogramadas en esta fecha:
-            // el registro SAP no se cancela, así que hay que excluirlo abajo para
-            // no contarlo como ausencia (la ausencia ya se movió al día nuevo).
-            var empleadosReprogramadosIds = await _db.SolicitudesReprogramacion
-                .Where(s => s.EstadoSolicitud == "Aprobada" && s.FechaOriginalGuardada == fecha)
-                .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == Models.Enums.UserStatus.Activo),
-                      s => s.EmpleadoId, u => u.Id, (s, u) => u.Id)
                 .ToListAsync();
 
             // 2. Permisos e Incapacidades SAP
