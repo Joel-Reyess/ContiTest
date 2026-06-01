@@ -383,9 +383,18 @@ namespace tiempo_libre.Services
                         "Usuario no encontrado");
                 }
 
+                var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
                 var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" ||
-                                                               r.Name == "Jefe De Area" ||
-                                                               r.Name == "SuperUsuario");
+                                                                r.Name == "Jefe De Area");
+
+                // Áreas donde este usuario está registrado como JefeId (para jefes,
+                // no para SuperUsuario que ve todo).
+                var areasJefeIds = (esJefeArea && !esSuperUsuario)
+                    ? await _db.Areas
+                        .Where(a => a.JefeId == usuarioConsultaId)
+                        .Select(a => a.AreaId)
+                        .ToListAsync()
+                    : new List<int>();
 
                 // Construir query base
                 var query = _db.SolicitudesFestivosTrabajados
@@ -432,9 +441,25 @@ namespace tiempo_libre.Services
 
                 if (request.AreaId.HasValue)
                 {
+                    // Defensivo: para jefes de área, también incluir solicitudes donde
+                    // ellos quedaron asignados como JefeAreaId al momento de crearla,
+                    // por si el empleado se movió de área después.
+                    var jefeIdParaFiltro = usuarioConsultaId;
                     query = query.Where(s =>
                         s.Empleado.AreaId == request.AreaId.Value ||
-                        s.Empleado.Grupo.Area.AreaId == request.AreaId.Value);
+                        s.Empleado.Grupo.Area.AreaId == request.AreaId.Value ||
+                        (esJefeArea && s.JefeAreaId == jefeIdParaFiltro));
+                }
+                else if (esJefeArea && !esSuperUsuario)
+                {
+                    // Si el jefe no manda areaId, restringimos automáticamente a las
+                    // áreas donde es JefeId (replica el patrón de PermutaService) o a
+                    // las solicitudes asignadas a él como JefeAreaId.
+                    var jefeIdParaFiltro = usuarioConsultaId;
+                    query = query.Where(s =>
+                        (s.Empleado.AreaId.HasValue && areasJefeIds.Contains(s.Empleado.AreaId.Value)) ||
+                        (s.Empleado.Grupo != null && areasJefeIds.Contains(s.Empleado.Grupo.AreaId)) ||
+                        s.JefeAreaId == jefeIdParaFiltro);
                 }
 
                 var solicitudes = await query
