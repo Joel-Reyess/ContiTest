@@ -112,7 +112,22 @@ namespace tiempo_libre.Controllers
         {
             try
             {
-                var response = await _solicitudesService.ConsultarSolicitudesAsync(request);
+                // Si el caller es Jefe de Área (no SuperUsuario), auto-restringimos
+                // las solicitudes a las que le correspondan: las asignadas a él como
+                // JefeAprobadorId. Sin esto, la pestaña 'Todas' mostraba solicitudes
+                // de otras áreas y se veía inconsistente vs 'Pendiente' (que sí
+                // filtra por jefe).
+                int? jefeIdAutoFiltro = null;
+                if (User.IsInRole("Jefe De Area") && !User.IsInRole("SuperUsuario"))
+                {
+                    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out var uid))
+                    {
+                        jefeIdAutoFiltro = uid;
+                    }
+                }
+
+                var response = await _solicitudesService.ConsultarSolicitudesAsync(request, jefeIdAutoFiltro);
 
                 if (!response.Success)
                 {
