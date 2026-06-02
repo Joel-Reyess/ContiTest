@@ -244,10 +244,12 @@ const MyRequests = () => {
 
                 // Cargar festivos trabajados
                 try {
-                    if (isDelegadoSindical && !currentEmployee?.id) {
+                    if (isDelegadoSindical && !selectedEmployee?.id) {
                         // Delegado sin empleado seleccionado: TODAS las solicitudes
                         // (sin filtro de fecha en backend porque filtra por FechaSolicitud
                         // y no por FechaNuevaSolicitada). Filtramos del lado cliente.
+                        // OJO: revisar selectedEmployee, no currentEmployee (que cae al
+                        // usuario logueado si no hay empleado seleccionado).
                         const todas = await festivosTrabajadosService.getSolicitudes({});
                         const filtradas = (todas ?? []).filter((s: any) => {
                             const f = s.fechaNuevaSolicitada || s.fechaSolicitud;
@@ -305,8 +307,10 @@ const MyRequests = () => {
 
                 // Cargar solicitudes de permisos
                 try {
-                    if (isDelegadoSindical && !currentEmployee?.nomina) {
+                    if (isDelegadoSindical && !selectedEmployee?.id) {
                         // Delegado sin empleado seleccionado: TODAS las solicitudes.
+                        // OJO: revisar selectedEmployee, no currentEmployee (que cae al
+                        // usuario logueado si no hay empleado seleccionado).
                         // Sin filtro de fecha en backend porque el filtro es estricto
                         // (Desde >= y Hasta <= dentro del año, descarta permisos que cruzan año).
                         // El endpoint /consultar solo regresa las que tienen EstadoSolicitud != null
