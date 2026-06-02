@@ -299,14 +299,24 @@ const MyRequests = () => {
 
                 // Cargar solicitudes de permisos
                 try {
-                    const targetNomina = currentEmployee?.nomina || user?.nomina;
-                    if (targetNomina) {
-                        const historialPermisos = await solicitudesPermisosService.obtenerHistorialPorNomina(
-                            parseInt(targetNomina, 10),
-                            yearFilter
-                        );
-                        permisosRequests = (historialPermisos?.solicitudes ?? []).map(mapPermisoToRequest);
-                        console.log('✅ Historial permisos:', historialPermisos);
+                    if (isDelegadoSindical && !currentEmployee?.nomina) {
+                        // Delegado sin empleado seleccionado: TODAS las solicitudes que él creó
+                        const historialPermisos = await solicitudesPermisosService.obtenerMisSolicitudes();
+                        const solicitudes = (historialPermisos?.solicitudes ?? [])
+                            .filter((s: any) => !yearFilter ||
+                                (s.fechaSolicitud ? new Date(s.fechaSolicitud).getFullYear() === yearFilter : true));
+                        permisosRequests = solicitudes.map(mapPermisoToRequest);
+                        console.log('✅ Historial permisos (delegado - creadas por mí):', historialPermisos);
+                    } else {
+                        const targetNomina = currentEmployee?.nomina || user?.nomina;
+                        if (targetNomina) {
+                            const historialPermisos = await solicitudesPermisosService.obtenerHistorialPorNomina(
+                                parseInt(targetNomina, 10),
+                                yearFilter
+                            );
+                            permisosRequests = (historialPermisos?.solicitudes ?? []).map(mapPermisoToRequest);
+                            console.log('✅ Historial permisos:', historialPermisos);
+                        }
                     }
                 } catch (err) {
                     console.error('Error al cargar historial de permisos:', err);
