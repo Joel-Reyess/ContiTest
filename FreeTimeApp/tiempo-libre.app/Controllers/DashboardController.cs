@@ -492,6 +492,123 @@ namespace tiempo_libre.Controllers
             return Ok(new ApiResponse<object>(true, resultado));
         }
 
+        /// <summary>
+        /// Debug: desglose por grupo y por día de cómo se compone una semana del
+        /// tiempo extra. Útil para comparar contra WeeklyRoles cuando los totales
+        /// no cuadran. NO consumido por la UI normal.
+        /// </summary>
+        [HttpGet("resumen-tiempo-extra-debug")]
+        public async Task<IActionResult> GetResumenTiempoExtraDebug(
+            [FromQuery] int anio = 0,
+            [FromQuery] int mes = 0,
+            [FromQuery] int semana = 0,
+            [FromQuery] int? areaId = null)
+        {
+            if (anio == 0) anio = DateTime.Today.Year;
+            if (mes == 0) mes = DateTime.Today.Month;
+
+            var areasIds = await ResolverAreasAsync(areaId);
+            if (areasIds != null && areasIds.Count == 0)
+                return Ok(new ApiResponse<object>(true, new { error = "Sin áreas resueltas" }));
+
+            var semanas = CalcularSemanasLunesDomingo(anio, mes);
+            var semanaSel = semana > 0
+                ? semanas.FirstOrDefault(x => x.Semana == semana)
+                : semanas.FirstOrDefault();
+            if (semanaSel == null)
+                return Ok(new ApiResponse<object>(true, new { error = "Semana no encontrada" }));
+
+            var gruposQuery = _db.Grupos.Include(g => g.Area).AsQueryable();
+            if (areasIds != null)
+                gruposQuery = gruposQuery.Where(g => areasIds.Contains(g.AreaId));
+            var grupos = await gruposQuery.ToListAsync();
+
+            var excepcionesManning = await _db.ExcepcionesManning
+                .Where(e => grupos.Select(g => g.AreaId).Contains(e.AreaId) &&
+                            e.Anio == anio && e.Mes == mes && e.Activa)
+                .ToListAsync();
+
+            var diasSemana = Enumerable.Range(0, 7).Select(i => semanaSel.Inicio.AddDays(i)).ToList();
+            var detalle = new List<object>();
+            double totalNormal = 0, totalExtra = 0;
+
+            foreach (var grupo in grupos)
+            {
+                var excManning = excepcionesManning.FirstOrDefault(e => e.AreaId == grupo.AreaId);
+                var manningBase = grupo.Area?.Manning ?? 0;
+                var manningExc = excManning?.ManningRequeridoExcepcion;
+                var manning = (double)(manningExc ?? manningBase);
+
+                var codigos = await _rolSemanal.CalcularCodigosTurnoGrupoAsync(
+                    grupo.GrupoId, semanaSel.Inicio, semanaSel.Fin);
+
+                var dias = new List<object>();
+                foreach (var dia in diasSemana)
+                {
+                    var codigosDia = codigos.Where(kv => kv.Key.Item2 == dia)
+                        .Select(kv => kv.Value).ToList();
+
+                    bool trabaja = codigosDia.Any(EsTurnoTrabajo);
+                    int ausentes = codigosDia.Count(EsAusente);
+                    int descanso = codigosDia.Count(c => c == "D");
+                    int personalNormal = Math.Max(0, codigosDia.Count - ausentes - descanso);
+                    double hNormal = trabaja ? personalNormal * 8.0 : 0;
+                    double hExtra = (trabaja && manning > personalNormal) ? (manning - personalNormal) * 8.0 : 0;
+
+                    if (trabaja)
+                    {
+                        totalNormal += hNormal;
+                        totalExtra += hExtra;
+                    }
+
+                    var conteoPorCodigo = codigosDia
+                        .GroupBy(c => string.IsNullOrEmpty(c) ? "(vacío)" : c)
+                        .OrderBy(g => g.Key)
+                        .ToDictionary(g => g.Key, g => g.Count());
+
+                    dias.Add(new
+                    {
+                        fecha = dia.ToString("yyyy-MM-dd"),
+                        diaSemana = dia.DayOfWeek.ToString(),
+                        totalEmpleados = codigosDia.Count,
+                        trabajaDia = trabaja,
+                        ausentes,
+                        descanso,
+                        personalTiempoNormal = personalNormal,
+                        manningAplicado = manning,
+                        deficit = trabaja ? Math.Max(0, manning - personalNormal) : 0,
+                        horasNormales = hNormal,
+                        horasExtra = hExtra,
+                        conteoPorCodigo
+                    });
+                }
+
+                detalle.Add(new
+                {
+                    grupoId = grupo.GrupoId,
+                    rol = grupo.Rol,
+                    areaId = grupo.AreaId,
+                    area = grupo.Area?.NombreGeneral,
+                    manningBase,
+                    manningExcepcion = manningExc,
+                    manningAplicado = manning,
+                    dias
+                });
+            }
+
+            return Ok(new ApiResponse<object>(true, new
+            {
+                anio,
+                mes,
+                semanaLocal = semanaSel.Semana,
+                semanaInicio = semanaSel.Inicio.ToString("yyyy-MM-dd"),
+                semanaFin = semanaSel.Fin.ToString("yyyy-MM-dd"),
+                totalHorasNormales = Math.Round(totalNormal, 1),
+                totalHorasExtra = Math.Round(totalExtra, 1),
+                detalle
+            }));
+        }
+
         [HttpGet("resumen-tiempo-extra-semanal-v2")]
         public async Task<IActionResult> GetResumenTiempoExtraSemanalV2(
             [FromQuery] int anio = 0,
