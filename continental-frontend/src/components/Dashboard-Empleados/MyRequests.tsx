@@ -244,12 +244,16 @@ const MyRequests = () => {
 
                 // Cargar festivos trabajados
                 try {
-                    if (isDelegadoSindical) {
-                        const historialCreadas = await festivosTrabajadosService.getCreadasPorMi(yearFilter);
-                        festivosRequests = (historialCreadas?.solicitudes ?? []).map((s) =>
-                            mapFestivoToRequest(s)
-                        );
-                        console.log('✅ Historial festivos creadas por mi:', historialCreadas);
+                    if (isDelegadoSindical && !currentEmployee?.id) {
+                        // Delegado sin empleado seleccionado: TODAS las solicitudes del año
+                        // (no solo las que él creó), porque también las pueden crear los empleados
+                        // directamente o el sistema SAP.
+                        const todas = await festivosTrabajadosService.getSolicitudes({
+                            fechaDesde: `${yearFilter}-01-01`,
+                            fechaHasta: `${yearFilter}-12-31`,
+                        });
+                        festivosRequests = (todas ?? []).map((s) => mapFestivoToRequest(s));
+                        console.log('✅ Historial festivos (delegado - todas del año):', todas);
                     } else {
                         const targetEmpleadoId = currentEmployee?.id || user?.id;
                         if (targetEmpleadoId) {
@@ -300,13 +304,15 @@ const MyRequests = () => {
                 // Cargar solicitudes de permisos
                 try {
                     if (isDelegadoSindical && !currentEmployee?.nomina) {
-                        // Delegado sin empleado seleccionado: TODAS las solicitudes que él creó
-                        const historialPermisos = await solicitudesPermisosService.obtenerMisSolicitudes();
-                        const solicitudes = (historialPermisos?.solicitudes ?? [])
-                            .filter((s: any) => !yearFilter ||
-                                (s.fechaSolicitud ? new Date(s.fechaSolicitud).getFullYear() === yearFilter : true));
-                        permisosRequests = solicitudes.map(mapPermisoToRequest);
-                        console.log('✅ Historial permisos (delegado - creadas por mí):', historialPermisos);
+                        // Delegado sin empleado seleccionado: TODAS las solicitudes del año
+                        // (las que él creó + las creadas por otros delegados / jefes / sistema).
+                        // El endpoint /consultar solo regresa las que tienen EstadoSolicitud != null.
+                        const historialPermisos = await solicitudesPermisosService.consultarSolicitudes({
+                            fechaInicio: `${yearFilter}-01-01`,
+                            fechaFin: `${yearFilter}-12-31`,
+                        });
+                        permisosRequests = (historialPermisos?.solicitudes ?? []).map(mapPermisoToRequest);
+                        console.log('✅ Historial permisos (delegado - todas del año):', historialPermisos);
                     } else {
                         const targetNomina = currentEmployee?.nomina || user?.nomina;
                         if (targetNomina) {
