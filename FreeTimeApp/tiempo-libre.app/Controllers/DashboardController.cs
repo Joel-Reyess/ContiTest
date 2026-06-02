@@ -194,14 +194,11 @@ namespace tiempo_libre.Controllers
                 var setPerm = new HashSet<int>();
                 var setInc = new HashSet<int>();
 
+                var setOtros = new HashSet<int>();
+
                 foreach (var v in vacaciones.Where(v => v.FechaVacacion.Month == mes))
                 {
-                    switch (v.TipoVacacion)
-                    {
-                        case "Anual":            setVac.Add(v.EmpleadoId); break;
-                        case "Reprogramacion":   setRep.Add(v.EmpleadoId); break;
-                        case "FestivoTrabajado": setFest.Add(v.EmpleadoId); break;
-                    }
+                    CategorizarVacacion(v.TipoVacacion, v.EmpleadoId, setVac, setRep, setFest);
                 }
 
                 foreach (var p in permisos)
@@ -211,11 +208,7 @@ namespace tiempo_libre.Controllers
                     if (pIni > pFin) continue;
                     if (!nominaToEmpId.TryGetValue(p.Nomina, out var empId)) continue;
 
-                    var clase = p.ClaseAbsentismo ?? "";
-                    if (clase.Contains("Incapacidad") || clase.Contains("Accidente") || clase.Contains("Maternidad"))
-                        setInc.Add(empId);
-                    else if (clase.Contains("Permiso") || clase.Contains("Enfermedad"))
-                        setPerm.Add(empId);
+                    CategorizarPermiso(p.ClaseAbsentismo, empId, setPerm, setInc, setOtros);
                 }
 
                 return new
@@ -228,10 +221,62 @@ namespace tiempo_libre.Controllers
                     festivoTrabajado = setFest.Count,
                     permiso = setPerm.Count,
                     incapacidad = setInc.Count,
+                    otros = setOtros.Count,
                 };
             }).ToList<object>();
 
             return Ok(new ApiResponse<object>(true, resultado));
+        }
+
+        // ─── Categorización compartida ───────────────────────────────────────
+        // Centraliza las reglas de clasificación de tipos de vacación / permiso
+        // para que ausencias-anuales y ausencias-semanales se comporten igual.
+
+        private static void CategorizarVacacion(
+            string? tipoVacacion, int empleadoId,
+            HashSet<int> setVac, HashSet<int> setRep, HashSet<int> setFest)
+        {
+            switch (tipoVacacion)
+            {
+                case "Reprogramacion":
+                    setRep.Add(empleadoId);
+                    break;
+                case "FestivoTrabajado":
+                    setFest.Add(empleadoId);
+                    break;
+                case "Anual":
+                case "Automatica":
+                case "Programable":
+                default:
+                    // Cualquier otro tipo de vacación (incluyendo NULL/vacío) cuenta como vacación.
+                    setVac.Add(empleadoId);
+                    break;
+            }
+        }
+
+        private static void CategorizarPermiso(
+            string? claseAbsentismo, int empleadoId,
+            HashSet<int> setPerm, HashSet<int> setInc, HashSet<int> setOtros)
+        {
+            var clase = claseAbsentismo ?? "";
+
+            // Orden importa: "Inc." gana sobre "Enfermedad" para no clasificar
+            // "Inc. Enfermedad General" como permiso. Cubre también
+            // "Inc. Pble. Riesgo Trabajo" y similares.
+            if (clase.Contains("Incapacidad") || clase.StartsWith("Inc.") || clase.Contains(" Inc.") ||
+                clase.Contains("Accidente") || clase.Contains("Maternidad"))
+            {
+                setInc.Add(empleadoId);
+            }
+            else if (clase.Contains("Permiso") || clase.Contains("Enfermedad"))
+            {
+                setPerm.Add(empleadoId);
+            }
+            else
+            {
+                // Suspensión y cualquier otra clase no reconocida.
+                setOtros.Add(empleadoId);
+            }
         }
 
         /// <summary>
@@ -289,15 +334,11 @@ namespace tiempo_libre.Controllers
                 var setFest = new HashSet<int>();
                 var setPerm = new HashSet<int>();
                 var setInc = new HashSet<int>();
+                var setOtros = new HashSet<int>();
 
                 foreach (var v in vacaciones.Where(v => v.FechaVacacion >= semInicio && v.FechaVacacion <= semFin))
                 {
-                    switch (v.TipoVacacion)
-                    {
-                        case "Anual":            setVac.Add(v.EmpleadoId); break;
-                        case "Reprogramacion":   setRep.Add(v.EmpleadoId); break;
-                        case "FestivoTrabajado": setFest.Add(v.EmpleadoId); break;
-                    }
+                    CategorizarVacacion(v.TipoVacacion, v.EmpleadoId, setVac, setRep, setFest);
                 }
 
                 foreach (var p in permisos)
@@ -307,11 +348,7 @@ namespace tiempo_libre.Controllers
                     if (pIni > pFin) continue;
                     if (!nominaToEmpId.TryGetValue(p.Nomina, out var empId)) continue;
 
-                    var clase = p.ClaseAbsentismo ?? "";
-                    if (clase.Contains("Incapacidad") || clase.Contains("Accidente") || clase.Contains("Maternidad"))
-                        setInc.Add(empId);
-                    else if (clase.Contains("Permiso") || clase.Contains("Enfermedad"))
-                        setPerm.Add(empId);
+                    CategorizarPermiso(p.ClaseAbsentismo, empId, setPerm, setInc, setOtros);
                 }
 
                 return (object)new
@@ -326,6 +363,7 @@ namespace tiempo_libre.Controllers
                     festivoTrabajado = setFest.Count,
                     permiso = setPerm.Count,
                     incapacidad = setInc.Count,
+                    otros = setOtros.Count,
                 };
             }).ToList();
 
