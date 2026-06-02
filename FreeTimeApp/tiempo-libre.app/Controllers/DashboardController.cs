@@ -552,14 +552,13 @@ namespace tiempo_libre.Controllers
                     int ausentes = codigosDia.Count(EsAusente);
                     int descanso = codigosDia.Count(c => c == "D");
                     int personalNormal = Math.Max(0, codigosDia.Count - ausentes - descanso);
-                    double hNormal = trabaja ? personalNormal * 8.0 : 0;
+                    // Horas normales se cuentan SIEMPRE (igual que WeeklyRoles).
+                    // Horas extra solo cuando el grupo trabaja el día.
+                    double hNormal = personalNormal * 8.0;
                     double hExtra = (trabaja && manning > personalNormal) ? (manning - personalNormal) * 8.0 : 0;
 
-                    if (trabaja)
-                    {
-                        totalNormal += hNormal;
-                        totalExtra += hExtra;
-                    }
+                    totalNormal += hNormal;
+                    if (trabaja) totalExtra += hExtra;
 
                     var conteoPorCodigo = codigosDia
                         .GroupBy(c => string.IsNullOrEmpty(c) ? "(vacío)" : c)
@@ -767,18 +766,25 @@ namespace tiempo_libre.Controllers
 
                         if (codigosDia.Count == 0) continue;
 
-                        bool grupoTrabajaDia = codigosDia.Any(EsTurnoTrabajo);
-                        if (!grupoTrabajaDia) continue;
-
                         int ausentes = codigosDia.Count(EsAusente);
                         int descanso = codigosDia.Count(c => c == "D");
                         int personalTiempoNormal = Math.Max(0, codigosDia.Count - ausentes - descanso);
 
-                        // Fórmula WeeklyRoles: sin cap al manning
+                        // Fórmula WeeklyRoles: horasTiempoNormal se contabiliza
+                        // SIEMPRE (incluso en días donde el grupo descansa), igual
+                        // que personalTiempoNormal × 8 en la fila correspondiente
+                        // de WeeklyRoles. El cap por manning solo aplica cuando el
+                        // grupo realmente trabaja el día — si descansa, no hay
+                        // déficit (no se requieren turnos esa fecha).
                         totalHorasNormales += personalTiempoNormal * 8;
-                        var deficit = manning - personalTiempoNormal;
-                        if (deficit > 0)
-                            totalHorasExtra += deficit * 8;
+
+                        bool grupoTrabajaDia = codigosDia.Any(EsTurnoTrabajo);
+                        if (grupoTrabajaDia)
+                        {
+                            var deficit = manning - personalTiempoNormal;
+                            if (deficit > 0)
+                                totalHorasExtra += deficit * 8;
+                        }
                     }
                 }
 
