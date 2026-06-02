@@ -245,15 +245,17 @@ const MyRequests = () => {
                 // Cargar festivos trabajados
                 try {
                     if (isDelegadoSindical && !currentEmployee?.id) {
-                        // Delegado sin empleado seleccionado: TODAS las solicitudes del año
-                        // (no solo las que él creó), porque también las pueden crear los empleados
-                        // directamente o el sistema SAP.
-                        const todas = await festivosTrabajadosService.getSolicitudes({
-                            fechaDesde: `${yearFilter}-01-01`,
-                            fechaHasta: `${yearFilter}-12-31`,
+                        // Delegado sin empleado seleccionado: TODAS las solicitudes
+                        // (sin filtro de fecha en backend porque filtra por FechaSolicitud
+                        // y no por FechaNuevaSolicitada). Filtramos del lado cliente.
+                        const todas = await festivosTrabajadosService.getSolicitudes({});
+                        const filtradas = (todas ?? []).filter((s: any) => {
+                            const f = s.fechaNuevaSolicitada || s.fechaSolicitud;
+                            if (!f) return true;
+                            return new Date(f).getFullYear() === yearFilter;
                         });
-                        festivosRequests = (todas ?? []).map((s) => mapFestivoToRequest(s));
-                        console.log('✅ Historial festivos (delegado - todas del año):', todas);
+                        festivosRequests = filtradas.map((s) => mapFestivoToRequest(s));
+                        console.log('✅ Historial festivos (delegado - todas):', { total: todas?.length, filtradas: filtradas.length });
                     } else {
                         const targetEmpleadoId = currentEmployee?.id || user?.id;
                         if (targetEmpleadoId) {
@@ -304,15 +306,21 @@ const MyRequests = () => {
                 // Cargar solicitudes de permisos
                 try {
                     if (isDelegadoSindical && !currentEmployee?.nomina) {
-                        // Delegado sin empleado seleccionado: TODAS las solicitudes del año
-                        // (las que él creó + las creadas por otros delegados / jefes / sistema).
-                        // El endpoint /consultar solo regresa las que tienen EstadoSolicitud != null.
-                        const historialPermisos = await solicitudesPermisosService.consultarSolicitudes({
-                            fechaInicio: `${yearFilter}-01-01`,
-                            fechaFin: `${yearFilter}-12-31`,
+                        // Delegado sin empleado seleccionado: TODAS las solicitudes.
+                        // Sin filtro de fecha en backend porque el filtro es estricto
+                        // (Desde >= y Hasta <= dentro del año, descarta permisos que cruzan año).
+                        // El endpoint /consultar solo regresa las que tienen EstadoSolicitud != null
+                        // (esto es OK: 'solicitudes' por definición tienen estado).
+                        const historialPermisos = await solicitudesPermisosService.consultarSolicitudes({});
+                        const filtradas = (historialPermisos?.solicitudes ?? []).filter((s: any) => {
+                            const f = s.fechaSolicitud || s.desde;
+                            if (!f) return true;
+                            return new Date(f).getFullYear() === yearFilter;
                         });
-                        permisosRequests = (historialPermisos?.solicitudes ?? []).map(mapPermisoToRequest);
-                        console.log('✅ Historial permisos (delegado - todas del año):', historialPermisos);
+                        permisosRequests = filtradas.map(mapPermisoToRequest);
+                        console.log('✅ Historial permisos (delegado - todas):', {
+                            total: historialPermisos?.solicitudes?.length, filtradas: filtradas.length
+                        });
                     } else {
                         const targetNomina = currentEmployee?.nomina || user?.nomina;
                         if (targetNomina) {
