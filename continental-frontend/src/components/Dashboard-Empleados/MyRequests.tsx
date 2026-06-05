@@ -321,7 +321,7 @@ const MyRequests = () => {
                             if (!f) return true;
                             return new Date(f).getFullYear() === yearFilter;
                         });
-                        permisosRequests = filtradas.map(mapPermisoToRequest);
+                        permisosRequests = (filtradas as unknown as SolicitudPermisoDto[]).map(mapPermisoToRequest);
                         console.log('✅ Historial permisos (delegado - todas):', {
                             total: historialPermisos?.solicitudes?.length, filtradas: filtradas.length
                         });
