@@ -284,7 +284,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                         grupo={user?.grupo?.rol.toString() || ""}
                     />
                 </div>
-            ) : currentPeriod === PeriodOptions.reprogramming ? (
+            ) : currentPeriod === PeriodOptions.reprogramming && !isDelegadoSindical ? (
                 <div className="mt-8">
                     <Notifications selectedEmployee={selectedEmployee.fullName ? selectedEmployee : user as unknown as UsuarioInfoDto} />
                 </div>

@@ -196,6 +196,7 @@ export const Dashboard: React.FC = () => {
     const [loadingHist,    setLoadingHist]    = useState(true);
     const [loadingTE,      setLoadingTE]      = useState(false);
     const [grupoExpandido, setGrupoExpandido] = useState<number | null>(null);
+    const [motivoFiltro,   setMotivoFiltro]   = useState<string>('');
 
     // Cargar áreas (admin: todas; otros: solo las asignadas)
     useEffect(() => {
@@ -494,6 +495,34 @@ export const Dashboard: React.FC = () => {
             };
         });
     }, [grupos, areaSelId]);
+
+    // Aplicar filtro de motivo: recalcula counters / % al vuelo sobre los empleados
+    // ausentes para que la tabla "Detalle por grupo" sólo refleje ese motivo.
+    const gruposFiltradosMotivo = useMemo(() => {
+        if (!motivoFiltro) return gruposUnicos;
+        return gruposUnicos.map(g => {
+            const ausFiltrados = (g.empleadosAusentes ?? []).filter(e => e.tipoAusencia === motivoFiltro);
+            const disp = g.empleadosDisponibles ?? [];
+            const total = ausFiltrados.length + disp.length;
+            return {
+                ...g,
+                empleadosAusentes: ausFiltrados,
+                personalNoDisponible: ausFiltrados.length,
+                personalDisponible:  disp.length,
+                personalTotal:       total,
+                porcentajeAusencia:  total > 0 ? (ausFiltrados.length / total) * 100 : 0,
+                porcentajeDisponible: total > 0 ? (disp.length / total) * 100 : 0,
+            };
+        });
+    }, [gruposUnicos, motivoFiltro]);
+
+    const motivosDisponibles = useMemo(() => {
+        const set = new Set<string>();
+        gruposUnicos.forEach(g => (g.empleadosAusentes ?? []).forEach(e => {
+            if (e.tipoAusencia) set.add(e.tipoAusencia);
+        }));
+        return Array.from(set).sort();
+    }, [gruposUnicos]);
 
     const totales       = useMemo(() => gruposUnicos.reduce(
         (acc, g) => ({ disponible: acc.disponible + g.personalDisponible, ausente: acc.ausente + g.personalNoDisponible }),
@@ -800,7 +829,22 @@ export const Dashboard: React.FC = () => {
 
                         {/* Tabla resumen por grupo */}
                         <div className="bg-white border border-gray-200 rounded-lg p-6">
-                            <h2 className="text-base font-semibold text-gray-700 mb-4">Detalle por grupo — {labelPeriodo}</h2>
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                <h2 className="text-base font-semibold text-gray-700">Detalle por grupo — {labelPeriodo}</h2>
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-500">Motivo</label>
+                                    <select
+                                        value={motivoFiltro}
+                                        onChange={e => setMotivoFiltro(e.target.value)}
+                                        className="border border-gray-300 rounded px-2 py-1 text-xs min-w-[140px]"
+                                    >
+                                        <option value="">Todos los motivos</option>
+                                        {motivosDisponibles.map(m => (
+                                            <option key={m} value={m}>{m}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
                             {loadingHoy ? (
                                 <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
                             ) : (
@@ -811,12 +855,12 @@ export const Dashboard: React.FC = () => {
                                                 <th className="text-left px-3 py-2">Grupo</th>
                                                 <th className="text-center px-3 py-2">Total</th>
                                                 <th className="text-center px-3 py-2">Disp.</th>
-                                                <th className="text-center px-3 py-2">Aus.</th>
+                                                <th className="text-center px-3 py-2">Aus.{motivoFiltro && <span className="ml-1 text-[10px] text-blue-600">({motivoFiltro})</span>}</th>
                                                 <th className="text-center px-3 py-2">%</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {gruposUnicos.map(g => (
+                                            {gruposFiltradosMotivo.map(g => (
                                                 <React.Fragment key={g.grupoId}>
                                                     <tr
                                                         className={`border-t cursor-pointer hover:bg-gray-50 transition-colors ${g.excedeLimite ? 'bg-red-50' : ''} ${grupoExpandido === g.grupoId ? 'bg-blue-50' : ''}`}
@@ -1025,90 +1069,62 @@ export const Dashboard: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Tabla detalle por grupo */}
+                    {/* Resumen tiempo extra por semana — métrica WeeklyRoles (NO mezcla ausencias) */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
-                        <h2 className="text-base font-semibold text-gray-700 mb-4">
-                            Detalle por grupo — {MESES[mesSel-1]} {anioSel}
+                        <h2 className="text-base font-semibold text-gray-700 mb-1">
+                            Resumen tiempo extra — {MESES[mesSel-1]} {anioSel}
                         </h2>
-                        {loadingHoy ? (
+                        <p className="text-xs text-gray-400 mb-4">
+                            Horas normales = personal en tiempo normal × 8.
+                            Horas extra = déficit de manning × 8 en días con turno de trabajo.
+                            % = horas extra ÷ horas normales. (Misma fórmula que la vista de Roles Semanales.)
+                        </p>
+                        {loadingTE ? (
                             <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
+                        ) : tiempoExtraForChart.length === 0 ? (
+                            <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Sin datos para el periodo seleccionado</div>
                         ) : (
                             <div className="overflow-auto max-h-[380px]">
                                 <table className="w-full text-sm">
                                     <thead className="sticky top-0 bg-white">
                                         <tr className="bg-gray-50 text-gray-600">
-                                            <th className="text-left px-3 py-2">Grupo</th>
-                                            <th className="text-center px-3 py-2">Total</th>
-                                            <th className="text-center px-3 py-2">Disp.</th>
-                                            <th className="text-center px-3 py-2">Aus.</th>
-                                            <th className="text-center px-3 py-2">%</th>
+                                            <th className="text-left px-3 py-2">Semana</th>
+                                            <th className="text-center px-3 py-2">Horas normales</th>
+                                            <th className="text-center px-3 py-2">Horas extra</th>
+                                            <th className="text-center px-3 py-2">% T. Extra</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {gruposUnicos.map(g => (
-                                            <React.Fragment key={g.grupoId}>
-                                                <tr
-                                                    className={`border-t cursor-pointer hover:bg-gray-50 transition-colors ${g.excedeLimite ? 'bg-red-50' : ''} ${grupoExpandido === g.grupoId ? 'bg-blue-50' : ''}`}
-                                                    onClick={() => setGrupoExpandido(p => p === g.grupoId ? null : g.grupoId)}
-                                                >
-                                                    <td className="px-3 py-2 font-medium">
-                                                        <span className="text-gray-400 text-xs mr-1">{grupoExpandido === g.grupoId ? '▼' : '▶'}</span>
-                                                        {g.nombreGrupo}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-center">{g.personalTotal}</td>
-                                                    <td className="px-3 py-2 text-center text-green-600">{g.personalDisponible}</td>
-                                                    <td className="px-3 py-2 text-center text-red-600">{g.personalNoDisponible}</td>
-                                                    <td className={`px-3 py-2 text-center font-semibold ${g.excedeLimite ? 'text-red-600' : 'text-gray-700'}`}>
-                                                        {g.porcentajeAusencia.toFixed(1)}%
-                                                        {g.excedeLimite && <span className="ml-1">⚠️</span>}
+                                        {tiempoExtraForChart.map(r => {
+                                            const alto = r.pctExtra >= 10;
+                                            return (
+                                                <tr key={`te-${r.semana}`} className={`border-t hover:bg-gray-50 ${alto ? 'bg-amber-50' : ''}`}>
+                                                    <td className="px-3 py-2 font-medium">{r.semanaLabel}</td>
+                                                    <td className="px-3 py-2 text-center text-emerald-700">{r.horasNormales}</td>
+                                                    <td className="px-3 py-2 text-center text-red-600">{r.horasExtra}</td>
+                                                    <td className={`px-3 py-2 text-center font-semibold ${alto ? 'text-amber-700' : 'text-gray-700'}`}>
+                                                        {r.pctExtra}%
+                                                        {alto && <span className="ml-1">⚠️</span>}
                                                     </td>
                                                 </tr>
-                                                {grupoExpandido === g.grupoId && (
-                                                    <tr>
-                                                        <td colSpan={5} className="px-4 py-3 bg-gray-50 border-b">
-                                                            {g.empleadosAusentes?.length > 0 ? (
-                                                                <>
-                                                                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Empleados ausentes ({g.personalNoDisponible})</p>
-                                                                    <table className="w-full text-xs mb-3">
-                                                                        <thead>
-                                                                            <tr className="text-gray-400">
-                                                                                <th className="text-left py-1 pr-3">Nombre</th>
-                                                                                <th className="text-left py-1 pr-3">Nómina</th>
-                                                                                <th className="text-left py-1 pr-3">Motivo</th>
-                                                                                <th className="text-left py-1">Subtipo</th>
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody>
-                                                                            {g.empleadosAusentes.map(emp => (
-                                                                                <tr key={emp.empleadoId} className="border-t border-gray-200">
-                                                                                    <td className="py-1 pr-3 font-medium text-gray-800">{emp.nombreCompleto}</td>
-                                                                                    <td className="py-1 pr-3 text-gray-500">{emp.nomina ?? '—'}</td>
-                                                                                    <td className="py-1 pr-3">
-                                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                                                                            emp.tipoAusencia === 'Vacacion'         ? 'bg-purple-100 text-purple-700'
-                                                                                            : emp.tipoAusencia === 'Reprogramacion' ? 'bg-blue-100 text-blue-700'
-                                                                                            : emp.tipoAusencia === 'Incapacidad'    ? 'bg-red-100 text-red-700'
-                                                                                            : emp.tipoAusencia === 'Permiso'        ? 'bg-green-100 text-green-700'
-                                                                                            : 'bg-gray-100 text-gray-700'
-                                                                                        }`}>{emp.tipoAusencia}</span>
-                                                                                    </td>
-                                                                                    <td className="py-1 text-gray-400">{emp.tipoVacacion ?? '—'}</td>
-                                                                                </tr>
-                                                                            ))}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </>
-                                                            ) : (
-                                                                <p className="text-xs text-gray-400 mb-3">Sin empleados ausentes</p>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </React.Fragment>
-                                        ))}
-                                        {grupos.length === 0 && (
-                                            <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Sin datos para el periodo seleccionado</td></tr>
-                                        )}
+                                            );
+                                        })}
+                                        <tr className="border-t-2 bg-gray-50 font-semibold">
+                                            <td className="px-3 py-2">Total mes</td>
+                                            <td className="px-3 py-2 text-center text-emerald-700">
+                                                {tiempoExtraForChart.reduce((s, r) => s + (r.horasNormales || 0), 0)}
+                                            </td>
+                                            <td className="px-3 py-2 text-center text-red-600">
+                                                {tiempoExtraForChart.reduce((s, r) => s + (r.horasExtra || 0), 0)}
+                                            </td>
+                                            <td className="px-3 py-2 text-center">
+                                                {(() => {
+                                                    const tn = tiempoExtraForChart.reduce((s, r) => s + (r.horasNormales || 0), 0);
+                                                    const te = tiempoExtraForChart.reduce((s, r) => s + (r.horasExtra || 0), 0);
+                                                    return tn > 0 ? `${Math.round(te / tn * 1000) / 10}%` : '0%';
+                                                })()}
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>

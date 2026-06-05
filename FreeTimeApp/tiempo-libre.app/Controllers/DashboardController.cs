@@ -155,7 +155,7 @@ namespace tiempo_libre.Controllers
                 .Where(v => empleadoIds.Contains(v.EmpleadoId) &&
                             v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
                             v.EstadoVacacion == "Activa")
-                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion })
+                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion, v.PeriodoProgramacion })
                 .ToListAsync();
 
             var permisosRaw = await _db.PermisosEIncapacidadesSAP
@@ -198,7 +198,12 @@ namespace tiempo_libre.Controllers
 
                 foreach (var v in vacaciones.Where(v => v.FechaVacacion.Month == mes))
                 {
-                    CategorizarVacacion(v.TipoVacacion, v.EmpleadoId, setVac, setRep, setFest);
+                    // Reprogramación tiene prioridad: una vacación con PeriodoProgramacion == "Reprogramacion"
+                    // se cuenta como reprogramada aunque su TipoVacacion aún diga "Anual".
+                    var tipoEfectivo = v.PeriodoProgramacion == "Reprogramacion"
+                        ? "Reprogramacion"
+                        : v.TipoVacacion;
+                    CategorizarVacacion(tipoEfectivo, v.EmpleadoId, setVac, setRep, setFest);
                 }
 
                 foreach (var p in permisos)
@@ -314,7 +319,7 @@ namespace tiempo_libre.Controllers
                 .Where(v => empleadoIds.Contains(v.EmpleadoId) &&
                             v.FechaVacacion >= rangoInicio && v.FechaVacacion <= rangoFin &&
                             v.EstadoVacacion == "Activa")
-                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion })
+                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion, v.PeriodoProgramacion })
                 .ToListAsync();
 
             var permisos = await _db.PermisosEIncapacidadesSAP
@@ -338,7 +343,12 @@ namespace tiempo_libre.Controllers
 
                 foreach (var v in vacaciones.Where(v => v.FechaVacacion >= semInicio && v.FechaVacacion <= semFin))
                 {
-                    CategorizarVacacion(v.TipoVacacion, v.EmpleadoId, setVac, setRep, setFest);
+                    // Reprogramación tiene prioridad: una vacación con PeriodoProgramacion == "Reprogramacion"
+                    // se cuenta como reprogramada aunque su TipoVacacion aún diga "Anual".
+                    var tipoEfectivo = v.PeriodoProgramacion == "Reprogramacion"
+                        ? "Reprogramacion"
+                        : v.TipoVacacion;
+                    CategorizarVacacion(tipoEfectivo, v.EmpleadoId, setVac, setRep, setFest);
                 }
 
                 foreach (var p in permisos)
@@ -398,7 +408,7 @@ namespace tiempo_libre.Controllers
                 .Where(v => empleadoIds.Contains(v.EmpleadoId) &&
                             v.FechaVacacion >= dia && v.FechaVacacion <= diaFin &&
                             v.EstadoVacacion == "Activa")
-                .Select(v => new { v.EmpleadoId, v.TipoVacacion })
+                .Select(v => new { v.EmpleadoId, v.TipoVacacion, v.PeriodoProgramacion })
                 .ToListAsync();
 
             var permisos = await _db.PermisosEIncapacidadesSAP
@@ -420,7 +430,12 @@ namespace tiempo_libre.Controllers
             }
 
             foreach (var v in vacaciones)
-                AddMotivo(v.TipoVacacion ?? "Vacaciones", v.EmpleadoId);
+            {
+                var motivo = v.PeriodoProgramacion == "Reprogramacion"
+                    ? "Reprogramacion"
+                    : (v.TipoVacacion ?? "Vacaciones");
+                AddMotivo(motivo, v.EmpleadoId);
+            }
 
             foreach (var p in permisos)
             {

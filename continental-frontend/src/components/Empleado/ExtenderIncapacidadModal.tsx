@@ -31,9 +31,22 @@ export const ExtenderIncapacidadModal = ({
         permisosService.consultarPermisos({ nomina })
             .then(resp => {
                 if (cancel) return
-                const list = [...resp.permisos].sort((a, b) => b.hasta.localeCompare(a.hasta))
+                // Excluir vacaciones — sólo se permite extender permisos / incapacidades.
+                // ClAbPre 1100 = Vacaciones (V) en SAP; además filtramos por nombre por seguridad.
+                const esVacacion = (p: PermisoIncapacidad) => {
+                    const clase = (p.claseAbsentismo || '').toLowerCase()
+                    const clave = (p.claveVisualizacion || '').toUpperCase()
+                    return p.clAbPre === '1100'
+                        || clase.includes('vacac')
+                        || clase.includes('festivo')
+                        || clase.includes('reprogram')
+                        || clave === 'V'
+                        || clave === 'F'
+                }
+                const filtrados = resp.permisos.filter(p => !esVacacion(p))
+                const list = filtrados.sort((a, b) => b.hasta.localeCompare(a.hasta))
                 setPermisos(list)
-                if (!list.length) toast.info('El empleado no tiene permisos/incapacidades registrados.')
+                if (!list.length) toast.info('El empleado no tiene permisos / incapacidades extendibles.')
             })
             .catch((e: any) => toast.error(e?.message || 'Error al cargar permisos'))
             .finally(() => { if (!cancel) setLoadingData(false) })

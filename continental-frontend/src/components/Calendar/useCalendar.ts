@@ -134,6 +134,9 @@ export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; us
                                 turno = parseInt(entry.turno) || undefined;
                             } else {
                                 eventType = "not-work";
+                                razon = entry.tipo
+                                    ? `No laborable (${entry.tipo})`
+                                    : "Día sin turno asignado";
                             }
                         }
 

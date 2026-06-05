@@ -767,6 +767,16 @@ const handleRemoveDay = async (fecha: string) => {
               Antigüedad: {sindicalizado?.antiguedad}
             </div>
 
+            {/* 5.b Área */}
+            <div className="text-[16px] font-medium text-continental-black">
+              Área: {sindicalizado?.area || 'Sin área'}
+            </div>
+
+            {/* 5.c Grupo */}
+            <div className="text-[16px] font-medium text-continental-black">
+              Grupo: {sindicalizado?.grupo || 'Sin grupo'}
+            </div>
+
             {/* 6. Líder sindical */}
             {
               sindicalizado?.roles?.some(role => role.abreviation === 'Del') || sindicalizado?.area.includes('Sindicato') && (

@@ -399,6 +399,19 @@ namespace tiempo_libre.Services
                 if (permiso == null)
                     return new ApiResponse<object>(false, null, "Permiso/incapacidad no encontrado.");
 
+                // Bloquear extensiones sobre registros de vacaciones (SAP ClAbPre 1100
+                // o cualquier ClaseAbsentismo que represente vacaciones/festivos).
+                // Las vacaciones se reprograman, no se extienden.
+                var claseVac = (permiso.ClaseAbsentismo ?? string.Empty).ToLowerInvariant();
+                if (permiso.ClAbPre == 1100
+                    || claseVac.Contains("vacac")
+                    || claseVac.Contains("festivo")
+                    || claseVac.Contains("reprogram"))
+                {
+                    return new ApiResponse<object>(false, null,
+                        "Las vacaciones no pueden extenderse desde este flujo. Usa reprogramación o asignación de vacaciones.");
+                }
+
                 if (request.NuevaFechaHasta <= permiso.Hasta)
                     return new ApiResponse<object>(false, null,
                         $"La nueva fecha Hasta ({request.NuevaFechaHasta:yyyy-MM-dd}) debe ser posterior a la actual ({permiso.Hasta:yyyy-MM-dd}).");

@@ -135,6 +135,7 @@ const CustomDateCellWrapper = ({
         break;
       case "not-work":
         className += " not-work-day";
+        title = eventData.razon || "Día no laborable";
         break;
       case "inability": {
         // Override del color por nomenclatura SAP cuando esté disponible.
