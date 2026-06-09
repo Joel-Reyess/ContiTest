@@ -15,6 +15,7 @@ import { exportWeeklyRolesExcel } from "@/utils/weeklyRolesExcel";
 import { UserRole } from "@/interfaces/User.interface";
 import { httpClient } from '@/services/httpClient'; 
 import { vacacionesService } from "@/services/vacacionesService";
+import { excepcionesManningService } from "@/services/excepcionesManningService";
 
 const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
@@ -156,12 +157,45 @@ const WeeklyRoles = () => {
     }, []);
 
     const [areaManningBase, setAreaManningBase] = useState<number>(0);
+    const [areaManningExcepcion, setAreaManningExcepcion] = useState<number | null>(null);
 
     useEffect(() => {
         if (!selectedArea || selectedArea === "all") return;
         const area = areas.find(a => a.areaId === selectedArea);
         if (area) setAreaManningBase((area as any).manning ?? 0);
     }, [selectedArea, areas]);
+
+    // Buscar excepción de manning para el (año, mes) de la semana mostrada.
+    // El backend del dashboard usa la misma lógica: excepción activa para
+    // ese mes gana sobre Area.Manning base. Si no hay excepción, queda null
+    // y cae al base.
+    useEffect(() => {
+        if (!selectedArea || selectedArea === "all") {
+            setAreaManningExcepcion(null);
+            return;
+        }
+        const areaIdNum = typeof selectedArea === "number"
+            ? selectedArea
+            : parseInt(selectedArea as any, 10);
+        if (!Number.isFinite(areaIdNum)) {
+            setAreaManningExcepcion(null);
+            return;
+        }
+        const anio = weekStart.getFullYear();
+        const mes = weekStart.getMonth() + 1;
+        let cancelled = false;
+        excepcionesManningService
+            .getExcepcionActivaParaMes(areaIdNum, anio, mes)
+            .then(exc => {
+                if (cancelled) return;
+                setAreaManningExcepcion(exc?.manningRequeridoExcepcion ?? null);
+            })
+            .catch(() => { if (!cancelled) setAreaManningExcepcion(null); });
+        return () => { cancelled = true; };
+    }, [selectedArea, weekStart]);
+
+    // Manning efectivo del mes mostrado (excepción si existe, si no el base)
+    const areaManningEfectivo = areaManningExcepcion ?? areaManningBase;
 
     // Ajustar grupo al cambiar el área seleccionada
     useEffect(() => {
@@ -514,8 +548,9 @@ const WeeklyRoles = () => {
         if (!weeklyData || employees.length === 0) return null;
 
         const currentGroup = groups.find(g => g.grupoId?.toString() === selectedGroup);
-        // Manning dinámico: viene del área seleccionada a través del grupo
-        const manning = areaManningBase > 0 ? areaManningBase : (currentGroup?.personasPorTurno ?? 0);
+        // Manning dinámico: excepción del mes si existe, si no Area.Manning base,
+        // si no personasPorTurno del grupo.
+        const manning = areaManningEfectivo > 0 ? areaManningEfectivo : (currentGroup?.personasPorTurno ?? 0);
         const totalEnRol = employees.length;
 
         return weekDays.map(day => {
@@ -537,7 +572,7 @@ const WeeklyRoles = () => {
             const totalNoDispo = inc + apc + vac + permiso + castigo + fueraTiempo;
             const totalEnRol = employees.length;
             const totalDispo = Math.max(0, totalEnRol - totalNoDispo - descanso);
-            const manning = areaManningBase > 0 ? areaManningBase : 0;
+            const manning = areaManningEfectivo > 0 ? areaManningEfectivo : 0;
             const diferencia = totalDispo - manning;
 
             const horasDispo = totalDispo * 8;
@@ -565,7 +600,7 @@ const WeeklyRoles = () => {
                 esDiaDescanso: !tienesTurnoTrabajo,
             };
         });
-    }, [weeklyData, employees, weekDays, groups, selectedGroup, areaManningBase]);
+    }, [weeklyData, employees, weekDays, groups, selectedGroup, areaManningEfectivo]);
 
     return (
         <div className="flex flex-col min-h-screen w-full bg-white p-6 md:p-10 max-w-[2000px] mx-auto">
