@@ -3,7 +3,6 @@ import { Plus, Edit2, Trash2, Save, X, Calendar } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useVacationConfig } from '@/hooks/useVacationConfig';
 import { excepcionesManningService } from '@/services/excepcionesManningService';
-import { areasService } from '@/services/areasService';
 import type { ExcepcionManning } from '@/interfaces/Api.interface';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -80,14 +79,42 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
         }
         setSavingBase(true);
         try {
-            await areasService.updateAreaManning(areaId, baseDraft);
-            setBaseOverride(baseDraft);
+            // Aislamos por mes: guardamos como excepción del mes mostrado, NO
+            // como manning base global. Si ya existe excepción del mes, la
+            // actualizamos; si no, la creamos. Los dashboards leen
+            // ExcepcionesManning por (anio, mes) con fallback al base, así que
+            // este cambio no contamina los demás meses.
+            const existingExc = excepciones.find(
+                e => e.anio === currentYear && e.mes === currentMonth && e.activa
+            );
+            if (existingExc) {
+                const updated = await excepcionesManningService.updateExcepcionManning(
+                    existingExc.id,
+                    {
+                        areaId,
+                        anio: currentYear,
+                        mes: currentMonth,
+                        manningRequeridoExcepcion: baseDraft,
+                        motivo: existingExc.motivo || undefined,
+                    }
+                );
+                setExcepciones(prev => prev.map(e => e.id === updated.id ? updated : e));
+            } else {
+                const created = await excepcionesManningService.createExcepcionManning({
+                    areaId,
+                    anio: currentYear,
+                    mes: currentMonth,
+                    manningRequeridoExcepcion: baseDraft,
+                    motivo: 'Ajuste de manning del mes',
+                });
+                setExcepciones(prev => [...prev, created]);
+            }
             setEditingBase(false);
             onManningChange(baseDraft);
-            toast.success('Manning base actualizado');
+            toast.success(`Manning de ${MESES[currentMonth - 1]} ${currentYear} actualizado`);
         } catch (error: any) {
-            console.error('Error updating base manning:', error);
-            toast.error(error?.message || 'Error al actualizar el manning base');
+            console.error('Error updating month manning:', error);
+            toast.error(error?.message || 'Error al actualizar el manning del mes');
         } finally {
             setSavingBase(false);
         }
@@ -294,7 +321,7 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                         {format(currentDate, "MMMM 'de' yyyy", { locale: es })}
                     </div>
 
-                    {/* Editar manning base del área (PATCH /api/Area/{id}/manning) */}
+                    {/* Editar manning del mes mostrado vía excepción (anio, mes) */}
                     {editingBase ? (
                         <div className="flex items-center justify-center gap-2 mb-2">
                             <input
@@ -333,7 +360,7 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                                 className="text-xs py-1 px-2"
                             >
                                 <Edit2 size={12} className="mr-1" />
-                                Editar manning base
+                                Editar manning de {MESES[currentMonth - 1]}
                             </Button>
                         </div>
                     )}
