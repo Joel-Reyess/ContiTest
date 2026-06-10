@@ -33,6 +33,10 @@ export const excepcionesManningService = {
                 params.append('mes', mes.toString());
             }
             params.append('soloActivas', soloActivas.toString());
+            // Cache-buster: el GET de excepciones se cacheaba en el browser y
+            // tras una edición posterior F5 mostraba el valor viejo. Forzamos
+            // URL única por request para evitar 304/cache.
+            params.append('_t', Date.now().toString());
 
             const queryString = params.toString();
             const url = `/api/configuracion-vacaciones/excepciones-manning${queryString ? `?${queryString}` : ''}`;
