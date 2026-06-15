@@ -1135,3 +1135,33 @@ export interface CrearConfiguracionEdicionRequest {
     descripcion?: string;
     habilitado: boolean;
 }
+
+// ============================================================
+// Reglas de Turno (vista de superusuario)
+// ============================================================
+export interface ReglaTurno {
+    id: number;
+    codigo: string;
+    patron: string[];
+    fechaReferencia: string;
+    ultimaRotacion?: string | null;
+    ultimoUsuarioRotacionId?: number | null;
+    ultimoUsuarioRotacionNombre?: string | null;
+    diasRotadosAcumulado: number;
+    notas?: string | null;
+    createdAt: string;
+    updatedAt?: string | null;
+}
+
+export interface ActualizarPatronReglaTurnoRequest {
+    patron: string[];
+    fechaReferencia?: string;
+    notas?: string;
+}
+
+export interface RotarReglasTurnoRequest {
+    codigos: string[];
+    dias: number;
+    notas?: string;
+}
+

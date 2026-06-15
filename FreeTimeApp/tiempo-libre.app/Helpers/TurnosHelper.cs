@@ -1,15 +1,25 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using tiempo_libre.Models;
 
 namespace tiempo_libre.Helpers
 {
     /// <summary>
-    /// Helper centralizado para manejar la lógica de turnos y reglas de calendario
+    /// Helper centralizado para manejar la lógica de turnos y reglas de calendario.
+    /// REGLAS se carga desde la tabla ReglasTurno al startup (ver Reload). Los valores
+    /// hardcoded de FALLBACK_REGLAS son el seed inicial — si la BD aún no existe o falla
+    /// la carga, se usan estos para que el sistema siga arrancando.
     /// </summary>
     public static class TurnosHelper
     {
-        // Reglas definidas basadas en el código TypeScript - ÚNICA FUENTE DE VERDAD
-        public static readonly Dictionary<string, string[]> REGLAS = new()
+        /// <summary>
+        /// Seed inicial — coincide exactamente con Scripts/Migration_ReglasTurno.sql.
+        /// Sirve de fallback antes de que se ejecute la migración o si falla la carga.
+        /// </summary>
+        private static readonly Dictionary<string, string[]> FALLBACK_REGLAS = new()
         {
             ["R0144"] = new[] { "3", "D", "2", "2", "D", "1", "1" ,"1", "1", "1", "1", "1", "D", "D", "D", "3", "3", "3", "3", "3", "D", "2", "2", "D", "D", "2", "2", "3" },
             ["N0439"] = new[] { "1", "1", "1", "1", "1", "D", "D" },
@@ -25,9 +35,66 @@ namespace tiempo_libre.Helpers
         };
 
         /// <summary>
-        /// Fecha de referencia para cálculos de calendario (15 de septiembre de 2025)
+        /// Reglas activas. Se reemplazan en Reload(db). Empieza con los valores de fallback
+        /// para que el sistema funcione mientras Reload todavía no se ha llamado.
         /// </summary>
-        public static readonly DateTime FECHA_REFERENCIA = new DateTime(2025, 9, 15);
+        public static Dictionary<string, string[]> REGLAS { get; private set; } = new(FALLBACK_REGLAS);
+
+        /// <summary>
+        /// Fecha de referencia para cálculos de calendario.
+        /// Por defecto 15-sep-2025; se actualiza desde la BD en Reload si las reglas
+        /// tienen otra FechaReferencia.
+        /// </summary>
+        public static DateTime FECHA_REFERENCIA { get; private set; } = new DateTime(2025, 9, 15);
+
+        private static readonly object _lock = new();
+
+        /// <summary>
+        /// Recarga REGLAS y FECHA_REFERENCIA desde la tabla ReglasTurno. Se llama al
+        /// startup y después de cada edición/rotación desde ReglasTurnoService.
+        /// Idempotente y silencioso ante fallos (no debe tumbar el arranque).
+        /// </summary>
+        public static void Reload(FreeTimeDbContext db)
+        {
+            try
+            {
+                var filas = db.ReglasTurno.AsNoTracking().ToList();
+                if (filas.Count == 0)
+                    return;
+
+                var nuevoDict = new Dictionary<string, string[]>(filas.Count);
+                foreach (var fila in filas)
+                {
+                    try
+                    {
+                        var patron = JsonSerializer.Deserialize<string[]>(fila.PatronJson);
+                        if (patron != null && patron.Length > 0)
+                            nuevoDict[fila.Codigo] = patron;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[WARN] TurnosHelper.Reload: patrón inválido para {fila.Codigo}: {ex.Message}");
+                    }
+                }
+
+                if (nuevoDict.Count == 0)
+                    return;
+
+                var fechaRef = filas.Min(f => f.FechaReferencia);
+
+                lock (_lock)
+                {
+                    REGLAS = nuevoDict;
+                    FECHA_REFERENCIA = fechaRef;
+                }
+
+                Console.WriteLine($"[INFO] TurnosHelper.Reload: {nuevoDict.Count} reglas cargadas desde BD.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARN] TurnosHelper.Reload falló, se mantienen reglas anteriores: {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// Parsear el rol del grupo para extraer regla y número de grupo
@@ -40,18 +107,16 @@ namespace tiempo_libre.Helpers
                 return null;
 
             var parts = rolGrupo.Split('_');
-            
+
             string regla;
-            int numeroGrupo = 1; // Por defecto grupo 1
-            
+            int numeroGrupo = 1;
+
             if (parts.Length == 1)
             {
-                // Solo regla, sin número (ej: "R0144")
                 regla = parts[0];
             }
             else if (parts.Length == 2)
             {
-                // Regla con número (ej: "R0144_04")
                 regla = parts[0];
                 if (!int.TryParse(parts[1], out numeroGrupo))
                 {
@@ -62,7 +127,7 @@ namespace tiempo_libre.Helpers
             {
                 return null;
             }
-            
+
             if (!REGLAS.ContainsKey(regla))
                 return null;
 
@@ -72,9 +137,6 @@ namespace tiempo_libre.Helpers
         /// <summary>
         /// Crear el rol específico para un grupo basado en la regla y número de grupo
         /// </summary>
-        /// <param name="reglaRef">Código de regla (ej: "R0144")</param>
-        /// <param name="gpoRef">Número de grupo (1-based)</param>
-        /// <returns>Array de turnos para el grupo específico</returns>
         public static string[] CrearRol(string reglaRef, int gpoRef)
         {
             if (!REGLAS.ContainsKey(reglaRef))
@@ -96,35 +158,26 @@ namespace tiempo_libre.Helpers
         /// <summary>
         /// Obtener el turno de un empleado para una fecha específica
         /// </summary>
-        /// <param name="rolGrupo">Rol del grupo del empleado</param>
-        /// <param name="fecha">Fecha a consultar</param>
-        /// <returns>Código de turno ("1", "2", "3", "D", etc.)</returns>
         public static string ObtenerTurnoParaFecha(string rolGrupo, DateOnly fecha)
         {
-            // Call new overload with null Semana Santa (no adjustment)
             return ObtenerTurnoParaFecha(rolGrupo, fecha, null);
         }
 
         /// <summary>
         /// Obtener el turno de un empleado para una fecha específica con ajuste de Semana Santa
         /// </summary>
-        /// <param name="rolGrupo">Rol del grupo del empleado (ej: "R0144_01")</param>
-        /// <param name="fecha">Fecha a consultar</param>
-        /// <param name="semanaSantaFechaFinal">Fecha final de Semana Santa (para aplicar -7 días a fechas posteriores)</param>
-        /// <returns>Código de turno ("1", "2", "3", "D", etc.)</returns>
         public static string ObtenerTurnoParaFecha(string rolGrupo, DateOnly fecha, DateOnly? semanaSantaFechaFinal)
         {
             var reglaInfo = ParseRolGrupo(rolGrupo);
             if (reglaInfo == null)
-                return "1"; // Fallback
+                return "1";
 
             var rol = CrearRol(reglaInfo.Value.Regla, reglaInfo.Value.NumeroGrupo);
             if (rol.Length == 0)
-                return "1"; // Fallback
+                return "1";
 
             var fechaDateTime = fecha.ToDateTime(TimeOnly.MinValue);
 
-            // APPLY SEMANA SANTA ADJUSTMENT (subtract 7 days for dates after Semana Santa)
             var fechaAjustada = AjustarFechaPorSemanaSanta(fechaDateTime, semanaSantaFechaFinal);
             var diasDiferencia = (fechaAjustada - FECHA_REFERENCIA).Days;
             var indice = diasDiferencia;
@@ -132,62 +185,46 @@ namespace tiempo_libre.Helpers
             return rol[Math.Abs(indice) % rol.Length];
         }
 
-        /// <summary>
-        /// Verificar si un turno es día de descanso
-        /// </summary>
-        /// <param name="turno">Código de turno</param>
-        /// <returns>True si es descanso</returns>
         public static bool EsDescanso(string turno)
         {
             return turno == "D" || turno == "0";
         }
 
-        /// <summary>
-        /// Obtener todas las reglas disponibles
-        /// </summary>
-        /// <returns>Lista de códigos de reglas</returns>
         public static List<string> ObtenerReglasDisponibles()
         {
             return new List<string>(REGLAS.Keys);
         }
 
         /// <summary>
-        /// Agregar o actualizar una regla de turnos
+        /// Agregar o actualizar una regla en memoria (no persiste a BD).
+        /// Para cambios persistentes usar ReglasTurnoService.
         /// </summary>
-        /// <param name="codigoRegla">Código de la regla</param>
-        /// <param name="patron">Patrón de turnos</param>
         public static void ActualizarRegla(string codigoRegla, string[] patron)
         {
-            REGLAS[codigoRegla] = patron;
+            lock (_lock)
+            {
+                REGLAS[codigoRegla] = patron;
+            }
         }
 
         /// <summary>
         /// Ajustar una fecha para cálculo de turnos considerando Semana Santa
-        /// Si la fecha es después de Semana Santa, se ajusta restando 7 días
-        /// para que la semana después de Semana Santa use el mismo patrón que Semana Santa
         /// </summary>
-        /// <param name="fecha">Fecha a ajustar</param>
-        /// <param name="semanaSantaFechaFinal">Fecha final de Semana Santa (null si no aplica)</param>
-        /// <returns>Fecha ajustada para cálculo de turnos</returns>
         public static DateTime AjustarFechaPorSemanaSanta(DateTime fecha, DateOnly? semanaSantaFechaFinal)
         {
             if (!semanaSantaFechaFinal.HasValue)
             {
-                Console.WriteLine($"[DEBUG] AjustarFechaPorSemanaSanta: semanaSantaFechaFinal is NULL for fecha {fecha:yyyy-MM-dd}");
                 return fecha;
             }
 
             var fechaOnly = DateOnly.FromDateTime(fecha);
             var fechaFinalSS = semanaSantaFechaFinal.Value;
 
-            // Si la fecha es después de Semana Santa, restar 7 días para el cálculo
             if (fechaOnly > fechaFinalSS)
             {
-                Console.WriteLine($"[DEBUG] AjustarFechaPorSemanaSanta: {fecha:yyyy-MM-dd} > {fechaFinalSS:yyyy-MM-dd}, returning {fecha.AddDays(-7):yyyy-MM-dd}");
                 return fecha.AddDays(-7);
             }
 
-            Console.WriteLine($"[DEBUG] AjustarFechaPorSemanaSanta: {fecha:yyyy-MM-dd} <= {fechaFinalSS:yyyy-MM-dd}, no adjustment");
             return fecha;
         }
     }

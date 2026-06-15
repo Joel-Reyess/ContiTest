@@ -78,6 +78,9 @@ public partial class FreeTimeDbContext : DbContext
     // Transferencias de personal entre grupos
     public virtual DbSet<TransferenciaGrupo> TransferenciasGrupo { get; set; }
 
+    // Reglas de turnos editables (reemplaza diccionario hardcodeado de TurnosHelper)
+    public virtual DbSet<ReglasTurno> ReglasTurno { get; set; }
+
     // Sistema de edición de días asignados por empresa
     public virtual DbSet<ConfiguracionEdicionDiasEmpresa> ConfiguracionEdicionDiasEmpresa { get; set; }
     public virtual DbSet<SolicitudEdicionDiaEmpresa> SolicitudesEdicionDiasEmpresa { get; set; }
@@ -1330,6 +1333,22 @@ public partial class FreeTimeDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.SolicitadoPorId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ReglasTurno
+        modelBuilder.Entity<ReglasTurno>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Codigo).IsUnique();
+            entity.Property(e => e.Codigo).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.PatronJson).IsRequired();
+            entity.Property(e => e.FechaReferencia).IsRequired();
+            entity.Property(e => e.Notas).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.HasOne(e => e.UltimoUsuarioRotacion)
+                .WithMany()
+                .HasForeignKey(e => e.UltimoUsuarioRotacionId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         OnModelCreatingPartial(modelBuilder);

@@ -56,6 +56,7 @@ builder.Services.AddScoped<tiempo_libre.Services.ISuplenciaService, tiempo_libre
 builder.Services.AddScoped<tiempo_libre.Services.SolicitudesPermisosService>();
 builder.Services.AddScoped<tiempo_libre.Services.SincronizacionRolesService>();
 builder.Services.AddScoped<tiempo_libre.Services.EdicionDiasEmpresaService>();
+builder.Services.AddScoped<tiempo_libre.Services.ReglasTurnoService>();
 // Email Service con configuración SMTP
 builder.Services.AddSingleton<tiempo_libre.Services.IEmailService, tiempo_libre.Services.EmailService>();
 
@@ -155,6 +156,13 @@ app.UseAuthorization();
 app.UseMiddleware<tiempo_libre.Middlewares.RoleAuthorizationMiddleware>();
 
 app.MapControllers();
+
+// Cargar reglas de turno desde BD al startup (fallback: diccionario hardcoded en TurnosHelper)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<tiempo_libre.Models.FreeTimeDbContext>();
+    tiempo_libre.Helpers.TurnosHelper.Reload(db);
+}
 
 // Database initialization removed - using .bak restore instead of migrations and seeders
 
