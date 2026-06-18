@@ -120,6 +120,30 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
+        /// Diagnóstico para SuperUsuario: muestra por qué un FT no aparece disponible
+        /// para una nómina (no existe upload, no parsea, expirado, ya solicitado).
+        /// </summary>
+        [HttpGet("diagnostico")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario")]
+        public async Task<IActionResult> DiagnosticarFestivosTrabajados([FromQuery] string nomina)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(nomina))
+                    return BadRequest(new ApiResponse<object>(false, null, "Falta el parámetro nomina."));
+
+                var response = await _festivoService.DiagnosticarFestivosTrabajadosAsync(nomina);
+                if (!response.Success) return BadRequest(response);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error en diagnóstico de festivos trabajados");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Validar si un intercambio de festivo es posible antes de solicitarlo
         /// </summary>
         /// <param name="request">Datos para validar el intercambio</param>

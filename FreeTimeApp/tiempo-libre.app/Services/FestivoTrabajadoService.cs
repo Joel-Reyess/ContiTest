@@ -702,6 +702,143 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Diagnostica por qué un festivo trabajado no aparece como disponible
+        /// para una nómina. Devuelve, por cada registro de upload, si parsea,
+        /// si expiró, y si está bloqueado por una solicitud previa.
+        /// </summary>
+        public async Task<ApiResponse<DiagnosticoFestivoTrabajadoResponse>> DiagnosticarFestivosTrabajadosAsync(string nomina)
+        {
+            try
+            {
+                var resp = new DiagnosticoFestivoTrabajadoResponse { NominaConsultada = nomina ?? "" };
+                if (string.IsNullOrWhiteSpace(nomina))
+                {
+                    resp.Notas.Add("Nómina vacía.");
+                    return new ApiResponse<DiagnosticoFestivoTrabajadoResponse>(true, resp, null);
+                }
+
+                var nominaTrim = nomina.Trim();
+                int.TryParse(nominaTrim, out var nominaInt);
+
+                var emp = await _db.Users
+                    .Where(u => (u.Nomina != null && u.Nomina == nominaInt) || u.Username == nominaTrim)
+                    .Select(u => new
+                    {
+                        u.Id,
+                        u.Nomina,
+                        u.Username,
+                        u.FullName,
+                        Area = u.Area != null ? u.Area.NombreGeneral : null,
+                        Grupo = u.Grupo != null ? u.Grupo.Rol : null,
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (emp == null)
+                {
+                    resp.Notas.Add($"No se encontró ningún usuario con Nomina={nominaTrim} ni Username={nominaTrim}. Verifica el alta en Users.");
+                    return new ApiResponse<DiagnosticoFestivoTrabajadoResponse>(true, resp, null);
+                }
+
+                resp.Empleado = new EmpleadoDiagnosticoDto
+                {
+                    Id = emp.Id,
+                    Nomina = emp.Nomina?.ToString(),
+                    Username = emp.Username,
+                    FullName = emp.FullName,
+                    Area = emp.Area,
+                    Grupo = emp.Grupo,
+                };
+
+                // Mismo criterio que ConsultarFestivosTrabajadosAsync:
+                var nominaMatch = emp.Nomina?.ToString() ?? emp.Username;
+                resp.NominaUsadaParaMatch = nominaMatch;
+
+                var uploadRecords = await _db.FestivosEmpleadosTrabajadosUpload
+                    .Where(f => f.Nomina == nominaMatch)
+                    .Select(f => f.FechaTrabajada)
+                    .ToListAsync();
+
+                if (uploadRecords.Count == 0)
+                {
+                    // Buscar registros con LIKE para detectar problemas de padding/espacios
+                    var aproximados = await _db.FestivosEmpleadosTrabajadosUpload
+                        .Where(f => f.Nomina != null && f.Nomina.Contains(nominaTrim))
+                        .Select(f => f.Nomina)
+                        .Distinct()
+                        .Take(5)
+                        .ToListAsync();
+                    if (aproximados.Count > 0)
+                        resp.Notas.Add($"No hay match exacto en FestivosEmpleadosTrabajadosUpload con Nomina='{nominaMatch}'. Sí hay registros parecidos: {string.Join(", ", aproximados.Select(a => "'" + a + "'"))}. Probable problema de formato (espacios, ceros a la izquierda).");
+                    else
+                        resp.Notas.Add($"No hay registros en FestivosEmpleadosTrabajadosUpload para esta nómina. Sarahí necesita subir/insertar el Excel.");
+                }
+
+                // Solicitudes que bloquean
+                var solicitudesBloqueo = await _db.SolicitudesFestivosTrabajados
+                    .Where(s => s.EmpleadoId == emp.Id &&
+                                (s.EstadoSolicitud == "Pendiente" || s.EstadoSolicitud == "Aprobada"))
+                    .Select(s => new SolicitudBloqueoDto
+                    {
+                        Id = s.Id,
+                        FestivoOriginal = s.FestivoOriginal.ToString("yyyy-MM-dd"),
+                        FechaNuevaSolicitada = s.FechaNuevaSolicitada.ToString("yyyy-MM-dd"),
+                        EstadoSolicitud = s.EstadoSolicitud,
+                        FechaSolicitud = s.FechaSolicitud.ToString("yyyy-MM-dd HH:mm"),
+                    })
+                    .ToListAsync();
+                resp.SolicitudesQueBloquean = solicitudesBloqueo;
+
+                var fechasBloqueadas = solicitudesBloqueo
+                    .Select(s => DateOnly.TryParse(s.FestivoOriginal, out var d) ? d : default)
+                    .ToHashSet();
+
+                string[] formatos = { "yyyy-MM-dd", "dd-MM-yyyy", "dd/MM/yyyy" };
+                var hoy = DateOnly.FromDateTime(DateTime.Today);
+
+                foreach (var raw in uploadRecords)
+                {
+                    var rec = new UploadRecordDiagnosticoDto { FechaRaw = raw ?? "" };
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        rec.Motivo = "FechaTrabajada vacía en upload.";
+                        rec.Disponible = false;
+                        resp.UploadRecords.Add(rec);
+                        continue;
+                    }
+                    if (!DateOnly.TryParseExact(raw, formatos, null, System.Globalization.DateTimeStyles.None, out var fecha))
+                    {
+                        rec.ParseoExitoso = false;
+                        rec.Motivo = $"Formato no soportado. Se esperan: {string.Join(", ", formatos)}.";
+                        rec.Disponible = false;
+                        resp.UploadRecords.Add(rec);
+                        continue;
+                    }
+                    rec.ParseoExitoso = true;
+                    rec.FechaParsed = fecha.ToString("yyyy-MM-dd");
+                    var fechaLimite = fecha.AddYears(1);
+                    rec.Expirado = hoy > fechaLimite;
+                    rec.YaSolicitado = fechasBloqueadas.Contains(fecha);
+
+                    if (rec.Expirado) rec.Motivo = $"Expiró el {fechaLimite:yyyy-MM-dd} (límite = trabajado + 1 año).";
+                    else if (rec.YaSolicitado) rec.Motivo = "Ya tiene una solicitud Pendiente o Aprobada para este día.";
+
+                    rec.Disponible = !rec.Expirado && !rec.YaSolicitado;
+                    resp.UploadRecords.Add(rec);
+                }
+
+                resp.TotalDisponibles = resp.UploadRecords.Count(r => r.Disponible);
+                resp.TotalNoDisponibles = resp.UploadRecords.Count(r => !r.Disponible);
+
+                return new ApiResponse<DiagnosticoFestivoTrabajadoResponse>(true, resp, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error en diagnóstico de festivos trabajados para nómina {Nomina}", nomina);
+                return new ApiResponse<DiagnosticoFestivoTrabajadoResponse>(false, null, $"Error inesperado: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Validar si un intercambio de festivo es posible antes de solicitarlo
         /// </summary>
         public async Task<ApiResponse<ValidarFestivoTrabajadoResponse>> ValidarIntercambioFestivoAsync(

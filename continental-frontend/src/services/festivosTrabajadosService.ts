@@ -124,6 +124,42 @@ export interface FestivoTrabajadoDto {
 }
 
 // ============================================================================
+// DIAGNÓSTICO (SuperUsuario)
+// ============================================================================
+
+export interface DiagnosticoFestivoTrabajadoResponse {
+  nominaConsultada: string
+  nominaUsadaParaMatch?: string
+  empleado?: {
+    id: number
+    nomina?: string
+    username: string
+    fullName: string
+    area?: string
+    grupo?: string
+  }
+  uploadRecords: Array<{
+    fechaRaw: string
+    fechaParsed?: string
+    parseoExitoso: boolean
+    expirado: boolean
+    yaSolicitado: boolean
+    disponible: boolean
+    motivo?: string
+  }>
+  solicitudesQueBloquean: Array<{
+    id: number
+    festivoOriginal: string
+    fechaNuevaSolicitada: string
+    estadoSolicitud: string
+    fechaSolicitud: string
+  }>
+  totalDisponibles: number
+  totalNoDisponibles: number
+  notas: string[]
+}
+
+// ============================================================================
 // SERVICE CLASS
 // ============================================================================
 
@@ -340,6 +376,17 @@ class FestivosTrabajadosService {
         const found = all.find(s => s.id === id)
         if (!found) throw new Error(`Solicitud festivo ${id} no encontrada`)
         return found
+    }
+
+    /**
+     * Diagnóstico de SuperUsuario: por qué un FT no aparece disponible para una nómina.
+     */
+    async diagnosticar(nomina: string): Promise<DiagnosticoFestivoTrabajadoResponse> {
+        const url = `${this.baseUrl}/diagnostico?nomina=${encodeURIComponent(nomina)}&_t=${Date.now()}`
+        const response = await httpClient.get<ApiResponse<DiagnosticoFestivoTrabajadoResponse>>(url)
+        const data = (response.data ?? response) as DiagnosticoFestivoTrabajadoResponse
+        if (!data) throw new Error('Respuesta vacía del diagnóstico')
+        return data
     }
 }
 
