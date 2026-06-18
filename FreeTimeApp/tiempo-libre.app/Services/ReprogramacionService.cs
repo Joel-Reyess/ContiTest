@@ -124,10 +124,10 @@ namespace tiempo_libre.Services
                         "Si el día se perdió por una incapacidad, usa la opción 'Reprogramación post-incapacidad'.");
                 }
 
-                if (request.FechaNueva <= hoy)
+                if (request.FechaNueva < hoy)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "La fecha nueva no puede ser en el pasado o el día actual.");
+                        "La fecha nueva no puede ser en el pasado.");
                 }
                 if (request.FechaNueva.Year < 2025)
                 {

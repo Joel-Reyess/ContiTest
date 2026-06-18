@@ -100,7 +100,7 @@ const mapFestivoToRequest = (
         employeeName: festivoData.nombreEmpleado || solicitud.nombreEmpleado,
         employeeArea: fallbackArea,
         employeeGroup: fallbackGroup,
-        employeeNomina: fallbackNomina, // 🆕 Agregado
+        employeeNomina: solicitud.nominaEmpleado || fallbackNomina, // 🆕 Agregado
         requester: festivoData.solicitadoPor || null,
         reviewer: solicitud.aprobadoPor || festivoData.aprobadoPor || null,
     };
@@ -148,7 +148,7 @@ const mapPermisoToRequest = (solicitud: SolicitudPermisoDto): VacationRequest =>
         employeeName: solicitud.nombreEmpleado,
         employeeArea: undefined,
         employeeGroup: undefined,
-        employeeNomina: undefined, // 🆕 Agregado
+        employeeNomina: solicitud.nominaEmpleado ? solicitud.nominaEmpleado.toString() : undefined, // 🆕 Agregado
         requester: solicitud.delegadoNombre,
         reviewer: solicitud.jefeAreaNombre || null
     };

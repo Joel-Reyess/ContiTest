@@ -51,6 +51,10 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
     const [showSolicitarPermisoModal, setShowSolicitarPermisoModal] = useState(false);
     const [showReprogPostIncModal, setShowReprogPostIncModal] = useState(false);
+    // Dialog que aparece cuando se intenta reprogramar una vacación ya consumida.
+    // Da pie a abrir SolicitarPermisoModal preseleccionado con ese día.
+    const [showVacacionConsumidaDialog, setShowVacacionConsumidaDialog] = useState(false);
+    const [diaConsumido, setDiaConsumido] = useState<string | null>(null);
     const navigate = useNavigate();
 
     const isDelegadoSindical = Boolean(
@@ -67,14 +71,16 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const handleEdit = (day: string) => {
         // Bloqueo: no se puede reprogramar una vacación cuyo día ya pasó o
         // es hoy. Para días perdidos por incapacidad existe el flujo
-        // "Reprogramación post-incapacidad".
+        // "Reprogramación post-incapacidad". Para el resto se ofrece
+        // solicitar un permiso/vacación que el jefe revisará.
         const hoy = new Date();
         const y = hoy.getFullYear();
         const m = String(hoy.getMonth() + 1).padStart(2, '0');
         const d = String(hoy.getDate()).padStart(2, '0');
         const hoyStr = `${y}-${m}-${d}`;
         if (day <= hoyStr) {
-            toast.error("No se puede reprogramar una vacación ya consumida. Si se perdió por incapacidad, usa 'Reprogramación post-incapacidad'.");
+            setDiaConsumido(day);
+            setShowVacacionConsumidaDialog(true);
             return;
         }
 
@@ -398,11 +404,47 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
             />
             <SolicitarPermisoModal
                 show={showSolicitarPermisoModal}
-                onClose={() => setShowSolicitarPermisoModal(false)}
+                onClose={() => {
+                    setShowSolicitarPermisoModal(false);
+                    setDiaConsumido(null);
+                }}
                 nomina={parseInt((selectedEmployee?.username || user?.username) || "0")}
                 nombreEmpleado={selectedEmployee?.fullName || user?.fullName || ''}
+                fechaACambiarDefault={diaConsumido ?? undefined}
+                observacionesDefault={
+                    diaConsumido
+                        ? `El empleado solicita recuperar el día ${diaConsumido} (vacación ya consumida).`
+                        : undefined
+                }
+                diasDisponibles={(() => {
+                    const activas = (vacacionesData?.vacaciones ?? []).filter(v => v.estadoVacacion === 'Activa');
+                    const hoy = new Date();
+                    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+                    return {
+                        asignados: activas.length,
+                        consumidos: activas.filter(v => v.fechaVacacion <= hoyStr).length,
+                        disponibles: activas.filter(v => v.fechaVacacion > hoyStr).length,
+                    };
+                })()}
                 onSolicitudCreada={() => {
                     toast.success("Solicitud enviada exitosamente. Pendiente de aprobación por el Jefe de Área.");
+                }}
+            />
+            <VacacionConsumidaDialog
+                show={showVacacionConsumidaDialog}
+                day={diaConsumido}
+                isDelegadoSindical={isDelegadoSindical}
+                onClose={() => {
+                    setShowVacacionConsumidaDialog(false);
+                    setDiaConsumido(null);
+                }}
+                onSolicitarPermiso={() => {
+                    setShowVacacionConsumidaDialog(false);
+                    setShowSolicitarPermisoModal(true);
+                }}
+                onReprogPostIncapacidad={() => {
+                    setShowVacacionConsumidaDialog(false);
+                    setShowReprogPostIncModal(true);
                 }}
             />
             <SolicitarReprogramacionPostIncapacidadModal
@@ -418,6 +460,70 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
 
 
 export default MyVacations
+
+const VacacionConsumidaDialog = ({
+    show,
+    day,
+    isDelegadoSindical,
+    onClose,
+    onSolicitarPermiso,
+    onReprogPostIncapacidad,
+}: {
+    show: boolean;
+    day: string | null;
+    isDelegadoSindical: boolean;
+    onClose: () => void;
+    onSolicitarPermiso: () => void;
+    onReprogPostIncapacidad: () => void;
+}) => {
+    if (!show) return null;
+    const fechaTexto = day
+        ? format(new Date(day + 'T00:00:00'), "d 'de' MMMM 'de' yyyy", { locale: es })
+        : '';
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="fixed inset-0 -z-10" onClick={onClose} />
+            <div className="relative z-50 w-full max-w-md p-4">
+                <div className="bg-white rounded-lg shadow-lg p-6">
+                    <h2 className="text-lg font-semibold mb-2">Vacación ya consumida</h2>
+                    <p className="text-sm text-gray-700 mb-2">
+                        No se puede reprogramar la vacación del <span className="font-medium">{fechaTexto}</span> porque ya pasó.
+                    </p>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Si el empleado trabajó ese día o lo perdió por una causa justificada, puedes solicitar un permiso para que el jefe de área lo revise.
+                        Si fue una incapacidad, usa el flujo de reprogramación post-incapacidad.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                        {isDelegadoSindical && (
+                            <Button
+                                variant="continental"
+                                className="w-full cursor-pointer"
+                                onClick={onSolicitarPermiso}
+                            >
+                                <FileText className="mr-2 h-4 w-4" />
+                                Solicitar permiso
+                            </Button>
+                        )}
+                        {isDelegadoSindical && (
+                            <Button
+                                variant="outline"
+                                className="w-full cursor-pointer border-blue-300 text-blue-700 hover:bg-blue-50"
+                                onClick={onReprogPostIncapacidad}
+                            >
+                                <CalendarPlus2 className="mr-2 h-4 w-4" />
+                                Reprogramación post-incapacidad
+                            </Button>
+                        )}
+                        <Button variant="outline" className="w-full cursor-pointer" onClick={onClose}>
+                            Cerrar
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ConstanciaModal = ({
     show,
     onClose,

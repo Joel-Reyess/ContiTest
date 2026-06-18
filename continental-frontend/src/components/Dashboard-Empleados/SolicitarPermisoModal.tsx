@@ -6,12 +6,25 @@ import { toast } from 'sonner';
 import { solicitudesPermisosService } from '@/services/solicitudesPermisosService';
 import type { TipoPermiso } from '@/services/permisosService';
 
+interface DiasDisponiblesInfo {
+    asignados: number;
+    consumidos: number;
+    disponibles: number;
+}
+
 interface SolicitarPermisoModalProps {
     show: boolean;
     onClose: () => void;
     nomina: number;
     nombreEmpleado: string;
     onSolicitudCreada?: () => void;
+    // PreselecciÃ³n desde otros flujos (ej. reprogramaciÃ³n de vacaciÃ³n consumida)
+    tipoPermisoDefault?: string;
+    fechaInicioDefault?: string;
+    fechaFinDefault?: string;
+    fechaACambiarDefault?: string;
+    observacionesDefault?: string;
+    diasDisponibles?: DiasDisponiblesInfo;
 }
 
 export const SolicitarPermisoModal = ({
@@ -20,6 +33,12 @@ export const SolicitarPermisoModal = ({
     nomina,
     nombreEmpleado,
     onSolicitudCreada,
+    tipoPermisoDefault,
+    fechaInicioDefault,
+    fechaFinDefault,
+    fechaACambiarDefault,
+    observacionesDefault,
+    diasDisponibles,
 }: SolicitarPermisoModalProps) => {
     const [loading, setLoading] = useState(false);
     const [catalogoPermisos, setCatalogoPermisos] = useState<TipoPermiso[]>([]);
@@ -29,6 +48,7 @@ export const SolicitarPermisoModal = ({
         tipoPermiso: '',
         fechaInicio: '',
         fechaFin: '',
+        fechaACambiar: '',
         observaciones: '',
     });
 
@@ -37,7 +57,7 @@ export const SolicitarPermisoModal = ({
             cargarCatalogo();
             resetForm();
         }
-    }, [show]);
+    }, [show, tipoPermisoDefault, fechaInicioDefault, fechaFinDefault, fechaACambiarDefault, observacionesDefault]);
 
     const cargarCatalogo = async () => {
         setLoadingCatalogo(true);
@@ -53,10 +73,11 @@ export const SolicitarPermisoModal = ({
 
     const resetForm = () => {
         setFormData({
-            tipoPermiso: '',
-            fechaInicio: '',
-            fechaFin: '',
-            observaciones: '',
+            tipoPermiso: tipoPermisoDefault ?? '',
+            fechaInicio: fechaInicioDefault ?? '',
+            fechaFin: fechaFinDefault ?? '',
+            fechaACambiar: fechaACambiarDefault ?? '',
+            observaciones: observacionesDefault ?? '',
         });
     };
 
@@ -76,13 +97,20 @@ export const SolicitarPermisoModal = ({
 
         setLoading(true);
 
+        // Si hay "Por el dÃ­a" lo anexamos al inicio de observaciones para que
+        // quede registrado en la solicitud (el backend no tiene campo separado).
+        const observacionesFinal = [
+            formData.fechaACambiar ? `Por el dÃ­a: ${formData.fechaACambiar}` : null,
+            formData.observaciones?.trim() || null,
+        ].filter(Boolean).join(' | ');
+
         try {
             const response = await solicitudesPermisosService.crearSolicitud({
                 Nomina: nomina,
                 ClAbPre: formData.tipoPermiso,
                 FechaInicio: formData.fechaInicio,
                 FechaFin: formData.fechaFin,
-                Observaciones: formData.observaciones || undefined,
+                Observaciones: observacionesFinal || undefined,
             });
 
             if (response.exitoso) {
@@ -92,7 +120,7 @@ export const SolicitarPermisoModal = ({
                         <div>
                             <div className="font-semibold">Solicitud enviada exitosamente</div>
                             <div className="text-sm text-gray-600 mt-1">
-                                La solicitud de permiso para {nombreEmpleado} está pendiente de aprobación del jefe de área.
+                                La solicitud de permiso para {nombreEmpleado} estï¿½ pendiente de aprobaciï¿½n del jefe de ï¿½rea.
                             </div>
                         </div>
                     </div>
@@ -122,11 +150,11 @@ export const SolicitarPermisoModal = ({
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">Solicitar Permiso/Incapacidad</h2>
                         <p className="text-sm text-gray-600 mt-1">
-                            Empleado: <span className="font-semibold">{nombreEmpleado}</span> (Nómina: {nomina})
+                            Empleado: <span className="font-semibold">{nombreEmpleado}</span> (Nï¿½mina: {nomina})
                         </p>
                         <div className="flex items-center gap-2 mt-2 text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded-md">
                             <Clock className="w-4 h-4" />
-                            <span>Esta solicitud requiere aprobación del jefe de área</span>
+                            <span>Esta solicitud requiere aprobaciï¿½n del jefe de ï¿½rea</span>
                         </div>
                     </div>
                     <button
@@ -139,6 +167,26 @@ export const SolicitarPermisoModal = ({
                 </div>
 
                 <div className="p-6 space-y-6">
+                    {diasDisponibles && (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                            <p className="text-xs font-medium text-emerald-900 mb-2">Vacaciones del empleado</p>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                                <div>
+                                    <p className="text-2xl font-bold text-emerald-700">{diasDisponibles.asignados}</p>
+                                    <p className="text-xs text-emerald-700">Asignados</p>
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-amber-700">{diasDisponibles.consumidos}</p>
+                                    <p className="text-xs text-amber-700">Consumidos</p>
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-blue-700">{diasDisponibles.disponibles}</p>
+                                    <p className="text-xs text-blue-700">Disponibles</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">
                             Tipo de Permiso/Incapacidad <span className="text-red-500">*</span>
@@ -165,16 +213,32 @@ export const SolicitarPermisoModal = ({
                                         <p className="font-medium text-blue-900">{tipoPermisoInfo.descripcion}</p>
                                         <div className="flex gap-3 mt-1 text-xs text-blue-700">
                                             <span>
-                                                Código: <span className="font-semibold">{tipoPermisoInfo.claveVisualizacion}</span>
+                                                Cï¿½digo: <span className="font-semibold">{tipoPermisoInfo.claveVisualizacion}</span>
                                             </span>
                                             {tipoPermisoInfo.requiereAprobacion && (
-                                                <span className="text-amber-700">• Requiere aprobación del jefe</span>
+                                                <span className="text-amber-700">ï¿½ Requiere aprobaciï¿½n del jefe</span>
                                             )}
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         )}
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                            <Calendar className="w-4 h-4 inline mr-1" />
+                            Por el dÃ­a (opcional)
+                        </label>
+                        <Input
+                            type="date"
+                            value={formData.fechaACambiar}
+                            onChange={(e) => setFormData({ ...formData, fechaACambiar: e.target.value })}
+                            disabled={loading}
+                        />
+                        <p className="text-xs text-gray-500">
+                            DÃ­a especÃ­fico que se busca recuperar (ej. una vacaciÃ³n ya consumida o un dÃ­a trabajado).
+                        </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -214,7 +278,7 @@ export const SolicitarPermisoModal = ({
                             value={formData.observaciones}
                             onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
-                            placeholder="Información adicional sobre la solicitud..."
+                            placeholder="Informaciï¿½n adicional sobre la solicitud..."
                             disabled={loading}
                             maxLength={500}
                         />
@@ -227,9 +291,9 @@ export const SolicitarPermisoModal = ({
                             <div className="text-sm text-yellow-800">
                                 <p className="font-medium">Importante:</p>
                                 <ul className="list-disc list-inside mt-1 space-y-1">
-                                    <li>Esta solicitud será enviada al jefe de área para su aprobación</li>
-                                    <li>El permiso solo se registrará después de ser aprobado</li>
-                                    <li>Recibirás una notificación cuando tu solicitud sea respondida</li>
+                                    <li>Esta solicitud serï¿½ enviada al jefe de ï¿½rea para su aprobaciï¿½n</li>
+                                    <li>El permiso solo se registrarï¿½ despuï¿½s de ser aprobado</li>
+                                    <li>Recibirï¿½s una notificaciï¿½n cuando tu solicitud sea respondida</li>
                                 </ul>
                             </div>
                         </div>
