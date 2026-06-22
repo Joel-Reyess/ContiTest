@@ -59,6 +59,21 @@ const rotarLocal = (patron: string[], dias: number): string[] => {
     return patron.map((_, i) => patron[(i - shift + n) % n]);
 };
 
+// Equivalente al CrearRol del backend (TurnosHelper.cs): el sub-grupo N lee el
+// mismo patrón base pero con offset (N-1)*7. La salida tiene la misma longitud
+// que el patrón original.
+const crearRolLocal = (patron: string[], gpoRef: number): string[] => {
+    const n = patron.length;
+    if (n === 0) return [];
+    const offset = ((gpoRef - 1) * 7) % n;
+    return patron.map((_, i) => patron[(i + offset) % n]);
+};
+
+// Convención del proyecto: sub-grupo 1 = sin sufijo (R0144), sub-grupo 2 = R0144_02,
+// sub-grupo 3 = R0144_03, etc. Coincide con el seed de Grupos en CreateGruposWithConfig.sql.
+const nombreSubGrupo = (codigoBase: string, gpoRef: number): string =>
+    gpoRef === 1 ? codigoBase : `${codigoBase}_${String(gpoRef).padStart(2, "0")}`;
+
 interface PatronGridProps {
     patron: string[];
     titulo?: string;
@@ -104,6 +119,48 @@ const FragmentRow = ({ sem, patron }: { sem: number; patron: string[] }) => (
         })}
     </>
 );
+
+interface SubGruposDerivadosProps {
+    regla: ReglaTurno;
+}
+const SubGruposDerivados = ({ regla }: SubGruposDerivadosProps) => {
+    const numGrupos = Math.max(1, Math.floor(regla.patron.length / 7));
+    if (numGrupos === 1) {
+        return (
+            <div className="space-y-2">
+                <div className="text-xs font-mono text-continental-gray-1">{regla.codigo}</div>
+                <PatronGrid patron={regla.patron} />
+            </div>
+        );
+    }
+    return (
+        <div className="space-y-4">
+            <p className="text-[11px] text-continental-gray-1 -mt-1">
+                Esta regla tiene {numGrupos} sub-grupos derivados (mismo patrón base con offset (n−1)×7).
+            </p>
+            {Array.from({ length: numGrupos }).map((_, i) => {
+                const gpoRef = i + 1;
+                const subPatron = crearRolLocal(regla.patron, gpoRef);
+                return (
+                    <div key={gpoRef} className="border-l-2 border-continental-yellow/60 pl-3 space-y-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-semibold">
+                                {nombreSubGrupo(regla.codigo, gpoRef)}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] font-mono">
+                                Grupo {gpoRef}
+                            </Badge>
+                            <span className="text-[10px] text-continental-gray-1">
+                                offset {((gpoRef - 1) * 7) % regla.patron.length}
+                            </span>
+                        </div>
+                        <PatronGrid patron={subPatron} />
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 
 interface EditorPatronProps {
     regla: ReglaTurno;
@@ -389,7 +446,7 @@ export const ReglasTurnos = () => {
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <PatronGrid patron={regla.patron} />
+                            <SubGruposDerivados regla={regla} />
                         </CardContent>
                     </Card>
                 ))}
@@ -424,15 +481,43 @@ export const ReglasTurnos = () => {
                                     cálculo de turnos para todos los empleados de las reglas seleccionadas a partir de este momento.
                                 </p>
                                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
-                                    {previewRotacion.map(p => (
-                                        <div key={p.codigo} className="border rounded p-3">
-                                            <div className="font-mono text-sm font-semibold mb-2">{p.codigo}</div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                <PatronGrid patron={p.antes} titulo="Antes" />
-                                                <PatronGrid patron={p.despues} titulo="Después" />
+                                    {previewRotacion.map(p => {
+                                        const numGrupos = Math.max(1, Math.floor(p.antes.length / 7));
+                                        return (
+                                            <div key={p.codigo} className="border rounded p-3">
+                                                <div className="font-mono text-sm font-semibold mb-2">{p.codigo}</div>
+                                                {numGrupos === 1 ? (
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        <PatronGrid patron={p.antes} titulo="Antes" />
+                                                        <PatronGrid patron={p.despues} titulo="Después" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {Array.from({ length: numGrupos }).map((_, i) => {
+                                                            const gpoRef = i + 1;
+                                                            return (
+                                                                <div key={gpoRef} className="border-l-2 border-continental-yellow/60 pl-3">
+                                                                    <div className="text-xs font-mono font-semibold mb-1">
+                                                                        {nombreSubGrupo(p.codigo, gpoRef)}
+                                                                    </div>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                        <PatronGrid
+                                                                            patron={crearRolLocal(p.antes, gpoRef)}
+                                                                            titulo="Antes"
+                                                                        />
+                                                                        <PatronGrid
+                                                                            patron={crearRolLocal(p.despues, gpoRef)}
+                                                                            titulo="Después"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </AlertDialogDescription>
