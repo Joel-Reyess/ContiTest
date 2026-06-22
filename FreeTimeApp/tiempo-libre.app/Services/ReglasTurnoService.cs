@@ -69,6 +69,7 @@ namespace tiempo_libre.Services
         public async Task<List<ReglaTurnoDto>> RotarAsync(RotarReglasTurnoRequest request, int usuarioId)
         {
             var afectadas = new List<ReglasTurno>();
+            var pasosSufijo = request.Dias / 7;
 
             foreach (var codigo in request.Codigos.Distinct())
             {
@@ -87,6 +88,11 @@ namespace tiempo_libre.Services
                 if (!string.IsNullOrWhiteSpace(request.Notas))
                     regla.Notas = request.Notas;
 
+                if (pasosSufijo != 0)
+                {
+                    await RotarSufijosGruposAsync(codigo, pasosSufijo);
+                }
+
                 afectadas.Add(regla);
             }
 
@@ -100,6 +106,57 @@ namespace tiempo_libre.Services
                 .OrderBy(r => r.Codigo)
                 .ToListAsync();
             return actualizadas.Select(ToDto).ToList();
+        }
+
+        /// <summary>
+        /// Rota los sufijos numéricos de Grupos.Rol que pertenecen a una regla base.
+        /// Convención: sub-grupo 1 = sin sufijo (R0144), sub-grupo 2+ = _NN (R0144_02, ...).
+        /// El ciclo se calcula por AreaId con el conjunto de sub-grupos existentes en
+        /// esa área (así no se generan etiquetas huérfanas).
+        /// pasos +1 = R0144 → R0144_02 → R0144_03 → R0144_04 → R0144.
+        /// </summary>
+        private async Task RotarSufijosGruposAsync(string codigoBase, int pasos)
+        {
+            var grupos = await _db.Grupos
+                .Where(g => g.Rol == codigoBase || g.Rol.StartsWith(codigoBase + "_"))
+                .ToListAsync();
+
+            if (grupos.Count <= 1) return;
+
+            int IndiceActual(string rol)
+            {
+                if (rol == codigoBase) return 1;
+                var sufijo = rol.Substring(codigoBase.Length + 1);
+                return int.TryParse(sufijo, out var n) ? n : 1;
+            }
+
+            string FormatearNombre(int idx)
+            {
+                return idx <= 1 ? codigoBase : $"{codigoBase}_{idx:D2}";
+            }
+
+            foreach (var porArea in grupos.GroupBy(g => g.AreaId))
+            {
+                var ordenados = porArea.OrderBy(g => IndiceActual(g.Rol)).ToList();
+                if (ordenados.Count <= 1) continue;
+
+                var indicesExistentes = ordenados.Select(g => IndiceActual(g.Rol)).ToList();
+                var cycleN = ordenados.Count;
+                var shift = ((pasos % cycleN) + cycleN) % cycleN;
+
+                // Calcular el nuevo Rol para cada grupo según su posición en el ciclo.
+                var nuevosRoles = new List<string>(cycleN);
+                for (int i = 0; i < cycleN; i++)
+                {
+                    var nuevoIdx = indicesExistentes[(i + shift) % cycleN];
+                    nuevosRoles.Add(FormatearNombre(nuevoIdx));
+                }
+
+                for (int i = 0; i < cycleN; i++)
+                {
+                    ordenados[i].Rol = nuevosRoles[i];
+                }
+            }
         }
 
         /// <summary>
