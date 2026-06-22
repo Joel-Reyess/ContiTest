@@ -76,7 +76,6 @@ namespace tiempo_libre.Services
 
                     if (!gruposPosibles.Any())
                     {
-                        _logger.LogWarning($"❌ NO existe grupo con Rol={rolSAP.Regla} para Nomina={rolSAP.Nomina}");
                         continue;
                     }
 
@@ -181,10 +180,6 @@ namespace tiempo_libre.Services
                             user.UpdatedAt = DateTime.UtcNow;
                             registrosActualizados++;
                             empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId));
-                        }
-                        else
-                        {
-                            _logger.LogInformation($"✅ Usuario {user.Nomina}: ya está en GrupoId={grupoCorrect.GrupoId} correcto");
                         }
                     }
                     else
