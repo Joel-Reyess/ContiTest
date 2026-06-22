@@ -81,7 +81,7 @@ namespace tiempo_libre.Services
                 .Where(v => v.EmpleadoId == empleadoId &&
                             v.EstadoVacacion == "Activa" &&
                             v.FechaVacacion >= hoy &&
-                            v.TipoVacacion == "Anual")
+                            (v.TipoVacacion == "Anual" || v.TipoVacacion == "Reprogramacion"))
                 .OrderBy(v => v.FechaVacacion)
                 .Select(v => new VacacionDisponibleDto
                 {
@@ -111,7 +111,7 @@ namespace tiempo_libre.Services
             return await _db.VacacionesProgramadas
                 .Where(v => v.EmpleadoId == empleadoId &&
                             v.EstadoVacacion == "Activa" &&
-                            v.TipoVacacion == "Anual" &&
+                            (v.TipoVacacion == "Anual" || v.TipoVacacion == "Reprogramacion") &&
                             v.FechaVacacion >= permiso.Desde &&
                             v.FechaVacacion <= permiso.Hasta &&
                             v.FechaVacacion < hoy)
@@ -177,7 +177,10 @@ namespace tiempo_libre.Services
                 return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
                     "Solo vacaciones activas pueden reprogramarse.");
             // Punto 7: solo aplica a vacaciones seleccionadas por el empleado (no asignadas)
-            if (vacacion.TipoVacacion != "Anual")
+            // Aceptamos también "Reprogramacion" porque una vacación que ya pasó por
+            // un flujo de reprogramación previa también puede caer dentro del rango
+            // de una incapacidad y debe poderse mover.
+            if (vacacion.TipoVacacion != "Anual" && vacacion.TipoVacacion != "Reprogramacion")
                 return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null,
                     "Solo vacaciones seleccionadas por el empleado pueden reprogramarse aquí. " +
                     "Las vacaciones asignadas por la empresa se reprograman desde el módulo de SuperUsuario.");

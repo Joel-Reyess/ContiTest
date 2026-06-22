@@ -103,10 +103,10 @@ namespace tiempo_libre.Services
                         "La vacaciA3n original no pertenece al empleado especificado");
                 }
 
-                if (vacacionOriginal.TipoVacacion != "Anual")
+                if (vacacionOriginal.TipoVacacion != "Anual" && vacacionOriginal.TipoVacacion != "Reprogramacion")
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        $"Solo se pueden reprogramar vacaciones de tipo 'Anual'. Esta vacaciA3n es de tipo '{vacacionOriginal.TipoVacacion}'");
+                        $"Solo se pueden reprogramar vacaciones de tipo 'Anual' o ya reprogramadas. Esta vacaciA3n es de tipo '{vacacionOriginal.TipoVacacion}'");
                 }
 
                 if (vacacionOriginal.EstadoVacacion != "Activa")
