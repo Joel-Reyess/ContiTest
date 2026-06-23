@@ -78,16 +78,20 @@ namespace tiempo_libre.Services
 
                 // El "recorrido" es solo de las etiquetas Grupos.Rol. El PatronJson
                 // es la definición FIJA de qué horario tiene cada sub-grupo
-                // (offset = (gpoRef-1)*7). Al mover la etiqueta de un grupo
-                // (p.ej. R0144 → R0144_02), ese grupo automáticamente lee el offset
-                // del siguiente sub-grupo y los empleados reciben el horario nuevo.
+                // (offset = (gpoRef-1)*7). Al rotar la etiqueta de un grupo
+                // HACIA ATRÁS en el ciclo (p. ej. R0144 → R0144_04 en 4-ciclo),
+                // ese grupo pasa a leer el offset del sub-grupo previo y los
+                // empleados ven el horario del sub-grupo anterior del ciclo.
                 //
-                // Rotar también el patrón se cancelaba con la rotación del sufijo
-                // (cada grupo terminaba leyendo su mismo horario original) → la
-                // etiqueta cambiaba pero los días no se movían.
-                if (pasosSufijo != 0)
+                // El tamaño del ciclo lo define el PATRÓN (PatronJson.Length / 7),
+                // NO cuántos sub-grupos existan en cada área. Áreas con
+                // sub-grupos faltantes simplemente ven a su(s) grupo(s) caminar
+                // por el ciclo en cada rotación.
+                var patron = JsonSerializer.Deserialize<List<string>>(regla.PatronJson) ?? new List<string>();
+                var cantSubgrupos = patron.Count / 7;
+                if (pasosSufijo != 0 && cantSubgrupos > 1)
                 {
-                    await RotarSufijosGruposAsync(codigo, pasosSufijo);
+                    await RotarSufijosGruposAsync(codigo, pasosSufijo, cantSubgrupos);
                 }
 
                 regla.UltimaRotacion = DateTime.UtcNow;
@@ -113,19 +117,26 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Rota los sufijos numéricos de Grupos.Rol que pertenecen a una regla base.
-        /// Convención: sub-grupo 1 = sin sufijo (R0144), sub-grupo 2+ = _NN (R0144_02, ...).
-        /// El ciclo se calcula por AreaId con el conjunto de sub-grupos existentes en
-        /// esa área (así no se generan etiquetas huérfanas).
-        /// pasos +1 = R0144 → R0144_02 → R0144_03 → R0144_04 → R0144.
+        /// Rota los sufijos de Grupos.Rol HACIA ATRÁS dentro del ciclo definido
+        /// por el patrón de la regla (cantSubgruposPatron = PatronJson.Length / 7).
+        /// Convención: sub-grupo 1 = sin sufijo (R0144), sub-grupo 2+ = _NN.
+        /// pasos +1 (Recorrer 7 días) en 4-ciclo:
+        ///   R0144 → R0144_04, R0144_02 → R0144,
+        ///   R0144_03 → R0144_02, R0144_04 → R0144_03.
+        /// Se aplica globalmente (no por AreaId): si un área tiene sub-grupos
+        /// incompletos (p. ej. R0130 con índices [1,3,4]), cada grupo simplemente
+        /// retrocede en el ciclo del patrón; las etiquetas que aparecen son las
+        /// del ciclo completo.
         /// </summary>
-        private async Task RotarSufijosGruposAsync(string codigoBase, int pasos)
+        private async Task RotarSufijosGruposAsync(string codigoBase, int pasos, int cantSubgruposPatron)
         {
+            if (cantSubgruposPatron <= 1) return;
+
             var grupos = await _db.Grupos
                 .Where(g => g.Rol == codigoBase || g.Rol.StartsWith(codigoBase + "_"))
                 .ToListAsync();
 
-            if (grupos.Count <= 1) return;
+            if (grupos.Count == 0) return;
 
             int IndiceActual(string rol)
             {
@@ -139,27 +150,15 @@ namespace tiempo_libre.Services
                 return idx <= 1 ? codigoBase : $"{codigoBase}_{idx:D2}";
             }
 
-            foreach (var porArea in grupos.GroupBy(g => g.AreaId))
+            var N = cantSubgruposPatron;
+            var shift = ((pasos % N) + N) % N;
+            if (shift == 0) return;
+
+            foreach (var g in grupos)
             {
-                var ordenados = porArea.OrderBy(g => IndiceActual(g.Rol)).ToList();
-                if (ordenados.Count <= 1) continue;
-
-                var indicesExistentes = ordenados.Select(g => IndiceActual(g.Rol)).ToList();
-                var cycleN = ordenados.Count;
-                var shift = ((pasos % cycleN) + cycleN) % cycleN;
-
-                // Calcular el nuevo Rol para cada grupo según su posición en el ciclo.
-                var nuevosRoles = new List<string>(cycleN);
-                for (int i = 0; i < cycleN; i++)
-                {
-                    var nuevoIdx = indicesExistentes[(i + shift) % cycleN];
-                    nuevosRoles.Add(FormatearNombre(nuevoIdx));
-                }
-
-                for (int i = 0; i < cycleN; i++)
-                {
-                    ordenados[i].Rol = nuevosRoles[i];
-                }
+                var idxCero = (((IndiceActual(g.Rol) - 1) % N) + N) % N;
+                var nuevoIdxCero = ((idxCero - shift) % N + N) % N;
+                g.Rol = FormatearNombre(nuevoIdxCero + 1);
             }
         }
 

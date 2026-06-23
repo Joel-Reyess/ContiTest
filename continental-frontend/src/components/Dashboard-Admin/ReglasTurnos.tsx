@@ -342,7 +342,7 @@ export const ReglasTurnos = () => {
         if (totalSubgrupos <= 1) return nombreSubGrupo(codigoBase, gpoRef);
         const shift = ((pasos % totalSubgrupos) + totalSubgrupos) % totalSubgrupos;
         const idxActual = gpoRef - 1;
-        const idxSiguiente = ((idxActual + shift) % totalSubgrupos) + 1;
+        const idxSiguiente = ((idxActual - shift) % totalSubgrupos + totalSubgrupos) % totalSubgrupos + 1;
         return nombreSubGrupo(codigoBase, idxSiguiente);
     };
 
@@ -479,9 +479,10 @@ export const ReglasTurnos = () => {
                             <div className="space-y-3">
                                 <p>
                                     Se recorrerán las etiquetas de los grupos{" "}
-                                    <strong>{pasosCiclo} posición(es){pasosCiclo > 0 ? " hacia adelante" : pasosCiclo < 0 ? " hacia atrás" : ""}</strong>.
-                                    El patrón base de cada regla NO cambia: lo que se mueve es qué sub-grupo lee cada Grupo (por área),
-                                    así cada empleado pasa a trabajar el horario del sub-grupo siguiente.
+                                    <strong>{Math.abs(pasosCiclo)} posición(es) hacia atrás</strong> en el ciclo de sub-grupos
+                                    (p. ej. R0144 → R0144_04 → R0144_03 → R0144_02 → R0144).
+                                    El patrón base NO cambia: cada grupo pasa a leer el offset del nuevo sub-grupo
+                                    y los empleados ven el horario del sub-grupo anterior del ciclo.
                                 </p>
                                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
                                     {previewRotacion.map(p => {
