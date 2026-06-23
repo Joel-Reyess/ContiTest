@@ -76,22 +76,26 @@ namespace tiempo_libre.Services
                 var regla = await _db.ReglasTurno.FirstOrDefaultAsync(r => r.Codigo == codigo);
                 if (regla == null) continue;
 
-                var patron = JsonSerializer.Deserialize<List<string>>(regla.PatronJson) ?? new List<string>();
-                if (patron.Count == 0) continue;
+                // El "recorrido" es solo de las etiquetas Grupos.Rol. El PatronJson
+                // es la definición FIJA de qué horario tiene cada sub-grupo
+                // (offset = (gpoRef-1)*7). Al mover la etiqueta de un grupo
+                // (p.ej. R0144 → R0144_02), ese grupo automáticamente lee el offset
+                // del siguiente sub-grupo y los empleados reciben el horario nuevo.
+                //
+                // Rotar también el patrón se cancelaba con la rotación del sufijo
+                // (cada grupo terminaba leyendo su mismo horario original) → la
+                // etiqueta cambiaba pero los días no se movían.
+                if (pasosSufijo != 0)
+                {
+                    await RotarSufijosGruposAsync(codigo, pasosSufijo);
+                }
 
-                var rotado = RotarPatron(patron, request.Dias);
-                regla.PatronJson = JsonSerializer.Serialize(rotado);
                 regla.UltimaRotacion = DateTime.UtcNow;
                 regla.UltimoUsuarioRotacionId = usuarioId;
                 regla.DiasRotadosAcumulado += request.Dias;
                 regla.UpdatedAt = DateTime.UtcNow;
                 if (!string.IsNullOrWhiteSpace(request.Notas))
                     regla.Notas = request.Notas;
-
-                if (pasosSufijo != 0)
-                {
-                    await RotarSufijosGruposAsync(codigo, pasosSufijo);
-                }
 
                 afectadas.Add(regla);
             }

@@ -51,14 +51,6 @@ const formatFecha = (iso?: string | null): string => {
     }
 };
 
-// Rotar localmente para mostrar el preview (misma fórmula que el backend)
-const rotarLocal = (patron: string[], dias: number): string[] => {
-    const n = patron.length;
-    if (n === 0) return [];
-    const shift = ((dias % n) + n) % n;
-    return patron.map((_, i) => patron[(i - shift + n) % n]);
-};
-
 // Equivalente al CrearRol del backend (TurnosHelper.cs): el sub-grupo N lee el
 // mismo patrón base pero con offset (N-1)*7. La salida tiene la misma longitud
 // que el patrón original.
@@ -340,10 +332,19 @@ export const ReglasTurnos = () => {
             .filter(r => confirmRotar.codigos.includes(r.codigo))
             .map(r => ({
                 codigo: r.codigo,
-                antes: r.patron,
-                despues: rotarLocal(r.patron, confirmRotar.dias),
+                patron: r.patron,
             }));
     }, [confirmRotar, reglas]);
+
+    const pasosCiclo = confirmRotar ? Math.trunc(confirmRotar.dias / 7) : 0;
+
+    const etiquetaSiguiente = (codigoBase: string, gpoRef: number, totalSubgrupos: number, pasos: number): string => {
+        if (totalSubgrupos <= 1) return nombreSubGrupo(codigoBase, gpoRef);
+        const shift = ((pasos % totalSubgrupos) + totalSubgrupos) % totalSubgrupos;
+        const idxActual = gpoRef - 1;
+        const idxSiguiente = ((idxActual + shift) % totalSubgrupos) + 1;
+        return nombreSubGrupo(codigoBase, idxSiguiente);
+    };
 
     if (loading) {
         return (
@@ -477,42 +478,59 @@ export const ReglasTurnos = () => {
                         <AlertDialogDescription asChild>
                             <div className="space-y-3">
                                 <p>
-                                    Se recorrerá el patrón <strong>{confirmRotar?.dias} días</strong>. Esto afecta el
-                                    cálculo de turnos para todos los empleados de las reglas seleccionadas a partir de este momento.
+                                    Se recorrerán las etiquetas de los grupos{" "}
+                                    <strong>{pasosCiclo} posición(es){pasosCiclo > 0 ? " hacia adelante" : pasosCiclo < 0 ? " hacia atrás" : ""}</strong>.
+                                    El patrón base de cada regla NO cambia: lo que se mueve es qué sub-grupo lee cada Grupo (por área),
+                                    así cada empleado pasa a trabajar el horario del sub-grupo siguiente.
                                 </p>
                                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
                                     {previewRotacion.map(p => {
-                                        const numGrupos = Math.max(1, Math.floor(p.antes.length / 7));
+                                        const numGrupos = Math.max(1, Math.floor(p.patron.length / 7));
                                         return (
                                             <div key={p.codigo} className="border rounded p-3">
                                                 <div className="font-mono text-sm font-semibold mb-2">{p.codigo}</div>
                                                 {numGrupos === 1 ? (
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                        <PatronGrid patron={p.antes} titulo="Antes" />
-                                                        <PatronGrid patron={p.despues} titulo="Después" />
+                                                    <div className="text-xs text-continental-gray-1">
+                                                        Esta regla solo tiene 1 sub-grupo en BD — no hay etiquetas que rotar.
                                                     </div>
                                                 ) : (
-                                                    <div className="space-y-3">
-                                                        {Array.from({ length: numGrupos }).map((_, i) => {
-                                                            const gpoRef = i + 1;
-                                                            return (
-                                                                <div key={gpoRef} className="border-l-2 border-continental-yellow/60 pl-3">
-                                                                    <div className="text-xs font-mono font-semibold mb-1">
-                                                                        {nombreSubGrupo(p.codigo, gpoRef)}
+                                                    <div className="space-y-2">
+                                                        <div className="text-[11px] text-continental-gray-1">
+                                                            Mapeo de etiquetas para los grupos de cada área:
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs font-mono">
+                                                            {Array.from({ length: numGrupos }).map((_, i) => {
+                                                                const gpoRef = i + 1;
+                                                                const actual = nombreSubGrupo(p.codigo, gpoRef);
+                                                                const siguiente = etiquetaSiguiente(p.codigo, gpoRef, numGrupos, pasosCiclo);
+                                                                const sinCambio = actual === siguiente;
+                                                                return (
+                                                                    <div key={gpoRef} className="flex items-center gap-2">
+                                                                        <span>{actual}</span>
+                                                                        <span className={sinCambio ? "text-continental-gray-1" : "text-continental-yellow"}>→</span>
+                                                                        <span className={sinCambio ? "text-continental-gray-1" : "font-semibold"}>
+                                                                            {siguiente}
+                                                                        </span>
                                                                     </div>
-                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                                        <PatronGrid
-                                                                            patron={crearRolLocal(p.antes, gpoRef)}
-                                                                            titulo="Antes"
-                                                                        />
-                                                                        <PatronGrid
-                                                                            patron={crearRolLocal(p.despues, gpoRef)}
-                                                                            titulo="Después"
-                                                                        />
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        <div className="text-[11px] text-continental-gray-1 mt-2">
+                                                            Horario por sub-grupo (no cambia):
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {Array.from({ length: numGrupos }).map((_, i) => {
+                                                                const gpoRef = i + 1;
+                                                                return (
+                                                                    <div key={gpoRef} className="border-l-2 border-continental-yellow/60 pl-3">
+                                                                        <div className="text-xs font-mono mb-1">
+                                                                            {nombreSubGrupo(p.codigo, gpoRef)}
+                                                                        </div>
+                                                                        <PatronGrid patron={crearRolLocal(p.patron, gpoRef)} />
                                                                     </div>
-                                                                </div>
-                                                            );
-                                                        })}
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
