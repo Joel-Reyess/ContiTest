@@ -84,8 +84,8 @@ const PatronGrid = ({ patron, titulo }: PatronGridProps) => {
         <div className="space-y-1">
             {titulo && <div className="text-xs font-medium text-continental-gray-1">{titulo}</div>}
             <div
-                className="grid gap-1 text-xs font-mono"
-                style={{ gridTemplateColumns: "auto repeat(7, minmax(2rem, 1fr))" }}
+                className="grid gap-1 text-xs font-mono w-full"
+                style={{ gridTemplateColumns: "auto repeat(7, minmax(2.25rem, 1fr))" }}
             >
                 <div />
                 {DIAS_SEMANA.map((d) => (
@@ -468,7 +468,7 @@ export const ReglasTurnos = () => {
                 open={!!confirmRotar}
                 onOpenChange={(open) => !open && !rotating && setConfirmRotar(null)}
             >
-                <AlertDialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <AlertDialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-6xl max-h-[90vh] overflow-y-auto">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <AlertTriangle className="size-5 text-amber-500" />
