@@ -61,31 +61,37 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
-        /// Resuelve los IDs de área que se aplicarán a la consulta:
-        /// - Si SuperUsuario y pidió un area → solo esa.
-        /// - Si SuperUsuario y no pidió → null = todas.
-        /// - Si no es SuperUsuario y pidió un area permitida → solo esa.
-        /// - Si no es SuperUsuario y no pidió → todas las permitidas.
-        /// - Si pidió un area no permitida → lista vacía (no devolverá datos).
+        /// Resuelve los IDs de área que se aplicarán a la consulta. Acepta tanto
+        /// el legacy `areaId` (singular) como `areaIds` (multi). Cuando se
+        /// proveen ambos, gana `areaIds`. Reglas:
+        /// - Si SuperUsuario y no pidió nada → null = todas.
+        /// - Si SuperUsuario y pidió ids → exactamente esos.
+        /// - Si jefe/ingeniero y no pidió nada → todas sus permitidas.
+        /// - Si jefe/ingeniero y pidió ids → intersección con sus permitidas.
+        /// - Si la intersección queda vacía (ningún id pedido es permitido) →
+        ///   lista vacía y el endpoint responde sin datos.
         /// </summary>
-        private async Task<List<int>?> ResolverAreasAsync(int? areaIdRequest)
+        private async Task<List<int>?> ResolverAreasAsync(int? areaIdRequest, int[]? areaIdsRequest = null)
         {
+            // Normalizar el request a una sola lista (o null si nada se pidió).
+            List<int>? idsPedidos = null;
+            if (areaIdsRequest != null && areaIdsRequest.Length > 0)
+                idsPedidos = areaIdsRequest.Distinct().ToList();
+            else if (areaIdRequest.HasValue)
+                idsPedidos = new List<int> { areaIdRequest.Value };
+
             var permitidas = await GetAreasPermitidasAsync();
 
             if (permitidas == null)
             {
                 // SuperUsuario
-                return areaIdRequest.HasValue ? new List<int> { areaIdRequest.Value } : null;
+                return idsPedidos;
             }
 
-            if (areaIdRequest.HasValue)
-            {
-                return permitidas.Contains(areaIdRequest.Value)
-                    ? new List<int> { areaIdRequest.Value }
-                    : new List<int>(); // no permitida → sin datos
-            }
+            if (idsPedidos == null)
+                return permitidas;
 
-            return permitidas;
+            return idsPedidos.Intersect(permitidas).ToList();
         }
 
         // ─── Helpers de cálculo ───────────────────────────────────────────────
@@ -130,10 +136,11 @@ namespace tiempo_libre.Controllers
         [HttpGet("ausencias-anuales")]
         public async Task<IActionResult> GetAusenciasAnuales(
             [FromQuery] int anio = 0,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, EmptyAusenciasAnuales()));
 
@@ -291,12 +298,13 @@ namespace tiempo_libre.Controllers
         public async Task<IActionResult> GetAusenciasSemanales(
             [FromQuery] int anio = 0,
             [FromQuery] int mes = 0,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
             if (mes == 0) mes = DateTime.Today.Month;
 
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
@@ -388,12 +396,13 @@ namespace tiempo_libre.Controllers
         public async Task<IActionResult> GetAusenciasMotivos(
             [FromQuery] string? fecha = null,
             [FromQuery] string? fechaFin = null,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             var dia = fecha != null && DateOnly.TryParse(fecha, out var d) ? d : DateOnly.FromDateTime(DateTime.Today);
             var diaFin = fechaFin != null && DateOnly.TryParse(fechaFin, out var df) ? df : dia;
 
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
@@ -453,12 +462,13 @@ namespace tiempo_libre.Controllers
         public async Task<IActionResult> GetResumenTiempoExtra(
             [FromQuery] int anio = 0,
             [FromQuery] int mes = 0,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
             if (mes == 0) mes = DateTime.Today.Month;
 
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
@@ -479,11 +489,12 @@ namespace tiempo_libre.Controllers
         [HttpGet("resumen-tiempo-extra-anual")]
         public async Task<IActionResult> GetResumenTiempoExtraAnual(
             [FromQuery] int anio = 0,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
 
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
@@ -517,12 +528,13 @@ namespace tiempo_libre.Controllers
             [FromQuery] int anio = 0,
             [FromQuery] int mes = 0,
             [FromQuery] int semana = 0,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
             if (mes == 0) mes = DateTime.Today.Month;
 
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new { error = "Sin áreas resueltas" }));
 
@@ -627,12 +639,13 @@ namespace tiempo_libre.Controllers
         public async Task<IActionResult> GetResumenTiempoExtraSemanalV2(
             [FromQuery] int anio = 0,
             [FromQuery] int mes = 0,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
             if (mes == 0) mes = DateTime.Today.Month;
 
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
@@ -672,11 +685,12 @@ namespace tiempo_libre.Controllers
         [HttpGet("permutas-resumen")]
         public async Task<IActionResult> GetPermutasResumen(
             [FromQuery] int anio = 0,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] int[]? areaIds = null)
         {
             if (anio == 0) anio = DateTime.Today.Year;
 
-            var areasIds = await ResolverAreasAsync(areaId);
+            var areasIds = await ResolverAreasAsync(areaId, areaIds);
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 

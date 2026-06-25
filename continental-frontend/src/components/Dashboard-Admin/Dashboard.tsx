@@ -178,10 +178,19 @@ export const Dashboard: React.FC = () => {
         return Array.from(ids);
     }, [isAdmin, user?.area?.areaId, user?.areas]);
 
-    const [areaSelId, setAreaSelId] = useState<number | 'all'>(() => {
-        if (isAdmin) return 'all';
-        return areasUsuario.length === 1 ? areasUsuario[0] : 'all';
+    // Multi-selección de áreas. Convención: array vacío = "todas las áreas
+    // permitidas" (todas las del sistema si admin, todas las del jefe si no).
+    // Cualquier subconjunto explícito vive como ids en el array.
+    const [areasSel, setAreasSel] = useState<number[]>(() => {
+        if (isAdmin) return [];
+        return areasUsuario.length === 1 ? [...areasUsuario] : [];
     });
+    const [areaPickerOpen, setAreaPickerOpen] = useState(false);
+
+    // Compat para ramas que solo manejan UN área seleccionada: cuando hay
+    // exactamente una, se expone como id; cualquier otro caso (0 o 2+) se
+    // expone como 'all' para que el código existente siga funcionando.
+    const areaSelId: number | 'all' = areasSel.length === 1 ? areasSel[0] : 'all';
 
     const [areas,              setAreas]              = useState<Area[]>([]);
     const [grupos,             setGrupos]             = useState<AusenciasPorGrupo[]>([]);
@@ -214,10 +223,10 @@ export const Dashboard: React.FC = () => {
     }, [isAdmin, areasUsuario]);
 
     useEffect(() => {
-        if (!isAdmin && areasUsuario.length === 1 && areaSelId === 'all') {
-            setAreaSelId(areasUsuario[0]);
+        if (!isAdmin && areasUsuario.length === 1 && areasSel.length === 0) {
+            setAreasSel([areasUsuario[0]]);
         }
-    }, [isAdmin, areasUsuario, areaSelId]);
+    }, [isAdmin, areasUsuario, areasSel.length]);
 
     const fechaEfectiva = useMemo(() => {
         if (diaSel) return diaSel;
@@ -231,9 +240,13 @@ export const Dashboard: React.FC = () => {
         return `${anioSel}-${String(mesSel).padStart(2, '0')}-01`;
     }, [diaSel, semanaSel, anioSel, mesSel]);
 
-    const buildAreaParam = useCallback((prefix = '&') =>
-        areaSelId !== 'all' ? `${prefix}areaId=${areaSelId}` : ''
-    , [areaSelId]);
+    // Cuando hay un subset explícito, mandamos uno o varios `areaIds`. Si el
+    // array está vacío, no mandamos nada — el backend ya filtra por las áreas
+    // permitidas del usuario (admin → todas; jefe → sus áreas).
+    const buildAreaParam = useCallback((prefix = '&') => {
+        if (areasSel.length === 0) return '';
+        return areasSel.map(id => `${prefix}areaIds=${id}`).join('');
+    }, [areasSel]);
 
     // Datos del período (día / semana lunes-domingo / mes).
     // Cuando es semana o mes, agregamos personas únicas (un empleado con
@@ -264,17 +277,28 @@ export const Dashboard: React.FC = () => {
             view = 'monthly';
         }
 
-        ausenciasService.calcularAusenciasParaCalendario({
+        // El endpoint de cálculo solo acepta una areaId por llamada. Cuando el
+        // jefe seleccionó varias, hacemos N llamadas en paralelo y unimos los
+        // días resultantes. Cuando seleccionó 0 áreas y NO es admin, iteramos
+        // sobre sus áreas permitidas para no traer datos ajenos.
+        const areasParaConsultar: (number | undefined)[] = (() => {
+            if (areasSel.length > 0) return areasSel;
+            if (isAdmin) return [undefined];
+            return areasUsuario.length > 0 ? areasUsuario : [undefined];
+        })();
+
+        Promise.all(areasParaConsultar.map(id => ausenciasService.calcularAusenciasParaCalendario({
             fechaInicio,
             fechaFin,
             view,
-            areaId: areaSelId !== 'all' ? areaSelId : undefined,
-        })
-            .then(data => {
+            areaId: id,
+        })))
+            .then(arrays => {
+                const data = arrays.flat();
                 if (view === 'daily') {
                     const iso = fechaInicio.toISOString().split('T')[0];
-                    const diaData = data.find(d => d.fecha === iso);
-                    setGrupos(diaData?.ausenciasPorGrupo ?? []);
+                    const diaDatos = data.filter(d => d.fecha === iso);
+                    setGrupos(diaDatos.flatMap(d => d.ausenciasPorGrupo ?? []));
                     return;
                 }
                 // Agregación: por grupo, union de empleados únicos.
@@ -320,7 +344,7 @@ export const Dashboard: React.FC = () => {
             })
             .catch(console.error)
             .finally(() => setLoadingHoy(false));
-    }, [diaSel, semanaSel, anioSel, mesSel, areaSelId]);
+    }, [diaSel, semanaSel, anioSel, mesSel, areasSel, isAdmin, areasUsuario]);
 
     // Datos históricos
     useEffect(() => {
@@ -579,16 +603,59 @@ export const Dashboard: React.FC = () => {
                     </div>
 
                     {(isAdmin || areasUsuario.length > 1) && (
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1 relative">
                             <label className="text-xs font-medium text-gray-500">Área</label>
-                            <select
-                                value={areaSelId}
-                                onChange={e => { setAreaSelId(e.target.value === 'all' ? 'all' : Number(e.target.value)); setGrupoExpandido(null); }}
-                                className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[160px]"
+                            <button
+                                type="button"
+                                onClick={() => setAreaPickerOpen(o => !o)}
+                                className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[180px] text-left bg-white hover:bg-gray-50 flex items-center justify-between gap-2"
                             >
-                                <option value="all">{isAdmin ? 'Todas las áreas' : 'Todas mis áreas'}</option>
-                                {areas.map(a => <option key={a.areaId} value={a.areaId}>{a.nombreGeneral}</option>)}
-                            </select>
+                                <span className="truncate">
+                                    {areasSel.length === 0
+                                        ? (isAdmin ? 'Todas las áreas' : 'Todas mis áreas')
+                                        : areasSel.length === 1
+                                            ? (areas.find(a => a.areaId === areasSel[0])?.nombreGeneral ?? `Área ${areasSel[0]}`)
+                                            : `${areasSel.length} áreas seleccionadas`}
+                                </span>
+                                <span className="text-gray-400 text-xs">▾</span>
+                            </button>
+                            {areaPickerOpen && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-10"
+                                        onClick={() => setAreaPickerOpen(false)}
+                                    />
+                                    <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-gray-200 rounded shadow-md min-w-[220px] max-h-72 overflow-y-auto py-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setAreasSel([]); setGrupoExpandido(null); }}
+                                            className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 ${areasSel.length === 0 ? 'font-medium text-blue-700' : 'text-gray-700'}`}
+                                        >
+                                            {isAdmin ? 'Todas las áreas' : 'Todas mis áreas'}
+                                        </button>
+                                        <div className="border-t border-gray-100 my-1" />
+                                        {areas.map(a => {
+                                            const checked = areasSel.includes(a.areaId);
+                                            return (
+                                                <label key={a.areaId} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => {
+                                                            setAreasSel(prev => checked
+                                                                ? prev.filter(id => id !== a.areaId)
+                                                                : [...prev, a.areaId]);
+                                                            setGrupoExpandido(null);
+                                                        }}
+                                                        className="rounded"
+                                                    />
+                                                    <span className="truncate">{a.nombreGeneral}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
 
@@ -649,16 +716,21 @@ export const Dashboard: React.FC = () => {
                     )}
 
                     <button
-                        onClick={() => { setAnioSel(hoy.getFullYear()); setMesSel(hoy.getMonth()+1); setSemanaSel('all'); setDiaSel(''); if (isAdmin || areasUsuario.length > 1) setAreaSelId('all'); }}
+                        onClick={() => { setAnioSel(hoy.getFullYear()); setMesSel(hoy.getMonth()+1); setSemanaSel('all'); setDiaSel(''); if (isAdmin || areasUsuario.length > 1) setAreasSel([]); }}
                         className="text-xs text-blue-600 hover:underline pb-1"
                     >Limpiar filtros</button>
                 </div>
 
                 <p className="text-xs text-gray-400">
                     Mostrando datos para: <span className="font-medium text-gray-600">{labelPeriodo}</span>
-                    {areaSelId !== 'all' && (
+                    {areasSel.length === 1 && (
                         <span> · Área: <span className="font-medium text-gray-600">
-                            {areas.find(a => a.areaId === areaSelId)?.nombreGeneral ?? areaSelId}
+                            {areas.find(a => a.areaId === areasSel[0])?.nombreGeneral ?? areasSel[0]}
+                        </span></span>
+                    )}
+                    {areasSel.length > 1 && (
+                        <span> · Áreas: <span className="font-medium text-gray-600">
+                            {areasSel.length} seleccionadas
                         </span></span>
                     )}
                     {vistaMode === 'tiempoExtra' && (
