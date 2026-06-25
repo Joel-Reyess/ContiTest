@@ -117,10 +117,10 @@ namespace tiempo_libre.Services
 
                 // 5. Validar fechas
                 var hoy = DateOnly.FromDateTime(DateTime.Today);
-                if (vacacionOriginal.FechaVacacion <= hoy)
+                if (vacacionOriginal.FechaVacacion < hoy)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "No se pueden reprogramar vacaciones de fechas pasadas o del día actual. " +
+                        "No se pueden reprogramar vacaciones de fechas pasadas. " +
                         "Si el día se perdió por una incapacidad, usa la opción 'Reprogramación post-incapacidad'.");
                 }
 
@@ -157,15 +157,18 @@ namespace tiempo_libre.Services
                         "El empleado ya tiene una vacaciA3n programada para la fecha nueva solicitada");
                 }
 
-                // 8. Verificar que no haya una solicitud pendiente para la misma vacaciA3n
-                var solicitudPendiente = await _db.SolicitudesReprogramacion
-                    .AnyAsync(s => s.VacacionOriginalId == request.VacacionOriginalId &&
-                                   s.EstadoSolicitud == "Pendiente");
+                // 8. Verificar que no haya otra solicitud pendiente o aprobada para
+                //    la misma fecha origen (independiente del VacacionOriginalId).
+                //    Cubre el caso del delegado pidiendo dos veces el mismo día.
+                var solicitudExistente = await _db.SolicitudesReprogramacion
+                    .AnyAsync(s => s.EmpleadoId == request.EmpleadoId &&
+                                   s.FechaOriginalGuardada == vacacionOriginal.FechaVacacion &&
+                                   (s.EstadoSolicitud == "Pendiente" || s.EstadoSolicitud == "Aprobada"));
 
-                if (solicitudPendiente)
+                if (solicitudExistente)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "Ya existe una solicitud de reprogramaciA3n pendiente para esta vacaciA3n");
+                        $"Ya existe una solicitud de reprogramación (pendiente o aprobada) para el día {vacacionOriginal.FechaVacacion:dd/MM/yyyy}");
                 }
 
                 // 9. Calcular porcentaje de ausencia (solo para auditorA-a, la aprobaciA3n siempre es manual)
@@ -780,17 +783,17 @@ namespace tiempo_libre.Services
                 }
 
                 var hoyValidar = DateOnly.FromDateTime(DateTime.Today);
-                if (vacacionOriginal.FechaVacacion <= hoyValidar)
+                if (vacacionOriginal.FechaVacacion < hoyValidar)
                 {
                     response.EsValida = false;
-                    response.MotivoInvalidez = "No se pueden reprogramar vacaciones pasadas o del día actual";
+                    response.MotivoInvalidez = "No se pueden reprogramar vacaciones de fechas pasadas";
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
-                if (request.FechaNueva <= hoyValidar)
+                if (request.FechaNueva < hoyValidar)
                 {
                     response.EsValida = false;
-                    response.MotivoInvalidez = "La fecha nueva no puede ser en el pasado ni el día actual";
+                    response.MotivoInvalidez = "La fecha nueva no puede ser en el pasado";
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
