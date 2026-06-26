@@ -61,6 +61,15 @@ const crearRolLocal = (patron: string[], gpoRef: number): string[] => {
     return patron.map((_, i) => patron[(i + offset) % n]);
 };
 
+// Espejo del helper RotarPatron del backend: dias positivo = cada sub-grupo
+// recibe el slice que antes tenía el sub-grupo previo del ciclo.
+const rotarPatronLocal = (patron: string[], dias: number): string[] => {
+    const n = patron.length;
+    if (n === 0) return [];
+    const shift = ((dias % n) + n) % n;
+    return patron.map((_, i) => patron[(i - shift + n) % n]);
+};
+
 // Convención del proyecto: sub-grupo 1 = sin sufijo (R0144), sub-grupo 2 = R0144_02,
 // sub-grupo 3 = R0144_03, etc. Coincide con el seed de Grupos en CreateGruposWithConfig.sql.
 const nombreSubGrupo = (codigoBase: string, gpoRef: number): string =>
@@ -336,16 +345,6 @@ export const ReglasTurnos = () => {
             }));
     }, [confirmRotar, reglas]);
 
-    const pasosCiclo = confirmRotar ? Math.trunc(confirmRotar.dias / 7) : 0;
-
-    const etiquetaSiguiente = (codigoBase: string, gpoRef: number, totalSubgrupos: number, pasos: number): string => {
-        if (totalSubgrupos <= 1) return nombreSubGrupo(codigoBase, gpoRef);
-        const shift = ((pasos % totalSubgrupos) + totalSubgrupos) % totalSubgrupos;
-        const idxActual = gpoRef - 1;
-        const idxSiguiente = ((idxActual - shift) % totalSubgrupos + totalSubgrupos) % totalSubgrupos + 1;
-        return nombreSubGrupo(codigoBase, idxSiguiente);
-    };
-
     if (loading) {
         return (
             <div className="flex items-center justify-center py-20">
@@ -362,8 +361,9 @@ export const ReglasTurnos = () => {
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight">Reglas de turnos</h1>
                     <p className="text-sm text-continental-gray-1 mt-1">
-                        Rotar el patrón de las reglas cuando se recorren los grupos (Enero, Semana Santa, fin de año).
-                        Una rotación de <strong>7 días positivos</strong> equivale a "el grupo N recibe el patrón que tenía el grupo N-1".
+                        Recorrer el patrón de las reglas cuando rotan los turnos (Enero, Semana Santa, fin de año).
+                        Cada sub-grupo conserva su etiqueta (R0144, R0144_02, …); con <strong>7 días positivos</strong> cada sub-grupo
+                        pasa a ver el horario que antes tenía el sub-grupo previo del ciclo.
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -473,67 +473,39 @@ export const ReglasTurnos = () => {
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
                             <AlertTriangle className="size-5 text-amber-500" />
-                            Confirmar rotación de {confirmRotar?.codigos.length} regla(s)
+                            Confirmar recorrido de {confirmRotar?.codigos.length} regla(s)
                         </AlertDialogTitle>
                         <AlertDialogDescription asChild>
                             <div className="space-y-3">
                                 <p>
-                                    Se recorrerán las etiquetas de los grupos{" "}
-                                    <strong>{Math.abs(pasosCiclo)} posición(es) hacia atrás</strong> en el ciclo de sub-grupos
-                                    (p. ej. R0144 → R0144_04 → R0144_03 → R0144_02 → R0144).
-                                    El patrón base NO cambia: cada grupo pasa a leer el offset del nuevo sub-grupo
-                                    y los empleados ven el horario del sub-grupo anterior del ciclo.
+                                    Cada sub-grupo se queda con su etiqueta actual (R0144, R0144_02, …).
+                                    El patrón se desliza <strong>{confirmRotar?.dias ?? 0} día(s)</strong>: cada sub-grupo pasa a ver el horario
+                                    que antes tenía el sub-grupo previo del ciclo.
                                 </p>
                                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
                                     {previewRotacion.map(p => {
                                         const numGrupos = Math.max(1, Math.floor(p.patron.length / 7));
+                                        const patronRotado = rotarPatronLocal(p.patron, confirmRotar?.dias ?? 0);
                                         return (
                                             <div key={p.codigo} className="border rounded p-3">
                                                 <div className="font-mono text-sm font-semibold mb-2">{p.codigo}</div>
-                                                {numGrupos === 1 ? (
-                                                    <div className="text-xs text-continental-gray-1">
-                                                        Esta regla solo tiene 1 sub-grupo en BD — no hay etiquetas que rotar.
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-2">
-                                                        <div className="text-[11px] text-continental-gray-1">
-                                                            Mapeo de etiquetas para los grupos de cada área:
-                                                        </div>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs font-mono">
-                                                            {Array.from({ length: numGrupos }).map((_, i) => {
-                                                                const gpoRef = i + 1;
-                                                                const actual = nombreSubGrupo(p.codigo, gpoRef);
-                                                                const siguiente = etiquetaSiguiente(p.codigo, gpoRef, numGrupos, pasosCiclo);
-                                                                const sinCambio = actual === siguiente;
-                                                                return (
-                                                                    <div key={gpoRef} className="flex items-center gap-2">
-                                                                        <span>{actual}</span>
-                                                                        <span className={sinCambio ? "text-continental-gray-1" : "text-continental-yellow"}>→</span>
-                                                                        <span className={sinCambio ? "text-continental-gray-1" : "font-semibold"}>
-                                                                            {siguiente}
-                                                                        </span>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                        <div className="text-[11px] text-continental-gray-1 mt-2">
-                                                            Horario por sub-grupo (no cambia):
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            {Array.from({ length: numGrupos }).map((_, i) => {
-                                                                const gpoRef = i + 1;
-                                                                return (
-                                                                    <div key={gpoRef} className="border-l-2 border-continental-yellow/60 pl-3">
-                                                                        <div className="text-xs font-mono mb-1">
-                                                                            {nombreSubGrupo(p.codigo, gpoRef)}
-                                                                        </div>
-                                                                        <PatronGrid patron={crearRolLocal(p.patron, gpoRef)} />
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                <div className="text-[11px] text-continental-gray-1 mb-2">
+                                                    Horario por sub-grupo (antes → después):
+                                                </div>
+                                                <div className="space-y-3">
+                                                    {Array.from({ length: numGrupos }).map((_, i) => {
+                                                        const gpoRef = i + 1;
+                                                        return (
+                                                            <div key={gpoRef} className="border-l-2 border-continental-yellow/60 pl-3 space-y-1">
+                                                                <div className="text-xs font-mono font-semibold">
+                                                                    {nombreSubGrupo(p.codigo, gpoRef)}
+                                                                </div>
+                                                                <PatronGrid patron={crearRolLocal(p.patron, gpoRef)} titulo="Antes" />
+                                                                <PatronGrid patron={crearRolLocal(patronRotado, gpoRef)} titulo="Después" />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         );
                                     })}
