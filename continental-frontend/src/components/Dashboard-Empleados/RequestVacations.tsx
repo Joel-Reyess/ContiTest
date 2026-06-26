@@ -533,29 +533,44 @@ export const Summary = ({
                     </>
                 )}
                 <div className="flex flex-col gap-2">
-                    {selectedDays.map((day) => (
-                        <div
-                            key={day.date}
-                            className={`flex items-center p-2 border border-continental-gray-4 ${period === PeriodOptions.reprogramming ? "justify-between" : "justify-between"}`}
-                        >
-                            <p>
-                                {format(
-                                    day.date.includes('-') ? new Date(day.date + 'T00:00:00') : new Date(day.date),
-                                    "EEE, d 'de' MMMM 'de' yyyy",
-                                    { locale: es }
-                                )}
-                            </p>
-                            {handleRemoveDay && !isViewMode ? (
-                                <Trash
-                                    onClick={() => handleRemoveDay(day.date)}
-                                    color="#FF0000"
-                                    size={20}
-                                />
-                            ) : period === PeriodOptions.reprogramming && isDelegadoSindicato && handleEdit ? (
-                                <CalendarSync onClick={() => handleEdit(day.date)} className="cursor-pointer" color="#004eaf" size={20} />
-                            ) : null}
-                        </div>
-                    ))}
+                    {(() => {
+                        const now = new Date();
+                        const hoyStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                        return selectedDays.map((day) => {
+                            const isoDate = day.date.includes('-') ? day.date : day.date;
+                            const consumida = isDelegadoSindicato && isoDate <= hoyStr;
+                            return (
+                                <div
+                                    key={day.date}
+                                    className={`flex items-center p-2 border border-continental-gray-4 ${period === PeriodOptions.reprogramming ? "justify-between" : "justify-between"}`}
+                                >
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <p>
+                                            {format(
+                                                day.date.includes('-') ? new Date(day.date + 'T00:00:00') : new Date(day.date),
+                                                "EEE, d 'de' MMMM 'de' yyyy",
+                                                { locale: es }
+                                            )}
+                                        </p>
+                                        {consumida && (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 text-xs font-medium">
+                                                Vacación consumida
+                                            </span>
+                                        )}
+                                    </div>
+                                    {handleRemoveDay && !isViewMode ? (
+                                        <Trash
+                                            onClick={() => handleRemoveDay(day.date)}
+                                            color="#FF0000"
+                                            size={20}
+                                        />
+                                    ) : period === PeriodOptions.reprogramming && isDelegadoSindicato && handleEdit ? (
+                                        <CalendarSync onClick={() => handleEdit(day.date)} className="cursor-pointer" color="#004eaf" size={20} />
+                                    ) : null}
+                                </div>
+                            );
+                        });
+                    })()}
                 </div>
                 {workedHoliday && workedHoliday?.length > 0 ? (
                     <div>

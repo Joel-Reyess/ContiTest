@@ -152,8 +152,8 @@ export class ReprogramacionService {
                     throw new Error('La fecha seleccionada tiene conflicto con otra vacación');
                 } else if (errorMsg.includes('permisos')) {
                     throw new Error('No tienes permisos para realizar esta acción');
-                } else if (errorMsg.includes('ya existe') || errorMsg.includes('duplicada')) {
-                    throw new Error('Ya existe una solicitud para esta vacación');
+                } else if (/ya existe|duplicada/i.test(errorMsg)) {
+                    throw new Error('Día ya solicitado');
                 }
 
                 throw new Error(errorMsg);
@@ -180,6 +180,12 @@ export class ReprogramacionService {
                 const details = error?.details;
                 console.error('❌ Error 400 Details:', details);
 
+                const dupRegex = /ya existe|duplicada|día ya|dia ya/i;
+                const detailsErrorMsg = details?.errorMsg || details?.message;
+                if (typeof detailsErrorMsg === 'string' && dupRegex.test(detailsErrorMsg)) {
+                    throw new Error('Día ya solicitado');
+                }
+
                 if (details?.message) {
                     throw new Error(details.message);
                 }
@@ -205,7 +211,7 @@ export class ReprogramacionService {
             }
 
             if (error?.status === 409) {
-                throw new Error('Conflicto: Ya existe una solicitud para esta vacación.');
+                throw new Error('Día ya solicitado');
             }
 
             // Error genérico

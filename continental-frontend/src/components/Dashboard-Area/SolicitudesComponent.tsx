@@ -115,7 +115,7 @@ const SolicitudesComponent: React.FC = () => {
         {value: 'permutas' as TabOption, label: 'Permutas de Turno'},
         {value: 'edicion-dias' as TabOption, label: 'Edición Días Empresa'},
         {value: 'post-incapacidad' as TabOption, label: 'Reprogramación post-incapacidad'},
-        {value: 'dia-empresa' as TabOption, label: 'Reprogramación día empresa (motivo)'},
+        {value: 'dia-empresa' as TabOption, label: 'Reprogramación día empresa (superusuario)'},
     ]
 
     return (

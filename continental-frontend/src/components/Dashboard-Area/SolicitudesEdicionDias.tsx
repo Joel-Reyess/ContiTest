@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
@@ -13,6 +13,7 @@ export function SolicitudesEdicionDias() {
     const [solicitudes, setSolicitudes] = useState<SolicitudEdicionDiaEmpresa[]>([]);
     const [loading, setLoading] = useState(true);
     const [filtro, setFiltro] = useState<Filtro>('Pendiente');
+    const [query, setQuery] = useState('');
     const cargar = async () => {
         setLoading(true);
         try {
@@ -27,9 +28,15 @@ export function SolicitudesEdicionDias() {
 
     useEffect(() => { cargar(); }, []);
 
-    const solicitudesFiltradas = solicitudes.filter(s =>
-        filtro === 'Todas' || s.estadoSolicitud === filtro
-    );
+    const solicitudesFiltradas = solicitudes.filter(s => {
+        if (filtro !== 'Todas' && s.estadoSolicitud !== filtro) return false;
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return (
+            s.nominaEmpleado?.toString().toLowerCase().includes(q) ||
+            s.nombreEmpleado?.toLowerCase().includes(q)
+        );
+    });
 
     const pendientes = solicitudes.filter(s => s.estadoSolicitud === 'Pendiente').length;
 
@@ -58,6 +65,17 @@ export function SolicitudesEdicionDias() {
                 <Button variant="ghost" size="sm" onClick={cargar} className="cursor-pointer gap-1">
                     <RefreshCw size={14} /> Actualizar
                 </Button>
+            </div>
+
+            {/* Buscador */}
+            <div className="relative max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Busca por nombre o nómina..."
+                    className="pl-9 pr-3 py-2 rounded-md border border-gray-300 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-200"
+                />
             </div>
 
             {/* Filtros */}

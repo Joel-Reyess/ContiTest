@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Link, useLocation } from 'react-router-dom'
-import { CheckCircle, XCircle, Clock, Eye } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Eye, Search } from 'lucide-react';
 import { solicitudesPermisosService, type SolicitudPermisoDto } from '@/services/solicitudesPermisosService';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -17,6 +17,7 @@ export const SolicitudesPermisos = () => {
     const [processingId, setProcessingId] = useState<number | null>(null);
     const [showRejectModal, setShowRejectModal] = useState(false)
     const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<SolicitudPermisoDto | null>(null)
+    const [query, setQuery] = useState('');
 
     const cargarSolicitudes = async () => {
         setLoading(true);
@@ -112,6 +113,15 @@ export const SolicitudesPermisos = () => {
         );
     }
 
+    const solicitudesFiltradas = solicitudes.filter(s => {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return (
+            s.nominaEmpleado?.toString().toLowerCase().includes(q) ||
+            s.nombreEmpleado?.toLowerCase().includes(q)
+        );
+    });
+
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -132,7 +142,17 @@ export const SolicitudesPermisos = () => {
                 </div>
             </div>
 
-            {solicitudes.length === 0 ? (
+            <div className="relative max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Busca por nombre o nómina..."
+                    className="pl-9 pr-3 py-2 rounded-md border border-gray-300 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-200"
+                />
+            </div>
+
+            {solicitudesFiltradas.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                     No hay solicitudes {filtroEstado ? `en estado: ${filtroEstado}` : ''}
                 </div>
@@ -151,7 +171,7 @@ export const SolicitudesPermisos = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y">
-                            {solicitudes.map((solicitud) => (
+                            {solicitudesFiltradas.map((solicitud) => (
                                 <tr key={solicitud.id} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 text-sm">{solicitud.nominaEmpleado}</td>
                                     <td className="px-4 py-3 text-sm font-medium">{solicitud.nombreEmpleado}</td>

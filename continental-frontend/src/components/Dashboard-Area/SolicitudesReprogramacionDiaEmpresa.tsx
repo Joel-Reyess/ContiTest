@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
@@ -20,6 +20,7 @@ export function SolicitudesReprogramacionDiaEmpresa() {
     const [loading, setLoading] = useState(true)
     const [procesando, setProcesando] = useState(false)
     const [filtro, setFiltro] = useState<Filtro>('Pendiente')
+    const [query, setQuery] = useState('')
     const [paraAprobar, setParaAprobar] = useState<SolicitudReprogramacionDiaEmpresa | null>(null)
     const [paraRechazar, setParaRechazar] = useState<SolicitudReprogramacionDiaEmpresa | null>(null)
 
@@ -37,7 +38,15 @@ export function SolicitudesReprogramacionDiaEmpresa() {
 
     useEffect(() => { cargar() }, [])
 
-    const filtradas = solicitudes.filter(s => filtro === 'Todas' || s.estadoSolicitud === filtro)
+    const filtradas = solicitudes.filter(s => {
+        if (filtro !== 'Todas' && s.estadoSolicitud !== filtro) return false
+        if (!query) return true
+        const q = query.toLowerCase()
+        return (
+            s.nomina?.toString().toLowerCase().includes(q) ||
+            s.nombreEmpleado?.toLowerCase().includes(q)
+        )
+    })
     const pendientes = solicitudes.filter(s => s.estadoSolicitud === 'Pendiente').length
 
     const handleAprobar = async () => {
@@ -94,7 +103,7 @@ export function SolicitudesReprogramacionDiaEmpresa() {
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <div>
-                    <h3 className="font-semibold text-gray-800">Reprogramación día empresa (con motivo)</h3>
+                    <h3 className="font-semibold text-gray-800">Reprogramación día empresa (superusuario)</h3>
                     {pendientes > 0 && (
                         <p className="text-xs text-yellow-700 mt-0.5">
                             {pendientes} solicitud{pendientes !== 1 ? 'es' : ''} pendiente{pendientes !== 1 ? 's' : ''} de revisión
@@ -104,6 +113,16 @@ export function SolicitudesReprogramacionDiaEmpresa() {
                 <Button variant="ghost" size="sm" onClick={cargar} className="cursor-pointer gap-1">
                     <RefreshCw size={14} /> Actualizar
                 </Button>
+            </div>
+
+            <div className="relative max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Busca por nombre o nómina..."
+                    className="pl-9 pr-3 py-2 rounded-md border border-gray-300 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-200"
+                />
             </div>
 
             <div className="flex gap-2 flex-wrap">
