@@ -61,13 +61,13 @@ const crearRolLocal = (patron: string[], gpoRef: number): string[] => {
     return patron.map((_, i) => patron[(i + offset) % n]);
 };
 
-// Espejo del helper RotarPatron del backend: dias positivo = cada sub-grupo
-// recibe el slice que antes tenía el sub-grupo previo del ciclo.
+// Espejo del helper RotarPatron del backend: dias positivo = la semana se adelanta,
+// cada sub-grupo recibe el slice que antes tenía el sub-grupo SIGUIENTE del ciclo.
 const rotarPatronLocal = (patron: string[], dias: number): string[] => {
     const n = patron.length;
     if (n === 0) return [];
     const shift = ((dias % n) + n) % n;
-    return patron.map((_, i) => patron[(i - shift + n) % n]);
+    return patron.map((_, i) => patron[(i + shift) % n]);
 };
 
 // Convención del proyecto: sub-grupo 1 = sin sufijo (R0144), sub-grupo 2 = R0144_02,
@@ -362,8 +362,8 @@ export const ReglasTurnos = () => {
                     <h1 className="text-2xl font-semibold tracking-tight">Reglas de turnos</h1>
                     <p className="text-sm text-continental-gray-1 mt-1">
                         Recorrer el patrón de las reglas cuando rotan los turnos (Enero, Semana Santa, fin de año).
-                        Cada sub-grupo conserva su etiqueta (R0144, R0144_02, …); con <strong>7 días positivos</strong> cada sub-grupo
-                        pasa a ver el horario que antes tenía el sub-grupo previo del ciclo.
+                        Cada sub-grupo conserva su etiqueta (R0144, R0144_02, …); con <strong>7 días positivos</strong> la semana
+                        se adelanta: cada sub-grupo pasa a ver el horario que antes tenía el sub-grupo siguiente del ciclo.
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -479,8 +479,8 @@ export const ReglasTurnos = () => {
                             <div className="space-y-3">
                                 <p>
                                     Cada sub-grupo se queda con su etiqueta actual (R0144, R0144_02, …).
-                                    El patrón se desliza <strong>{confirmRotar?.dias ?? 0} día(s)</strong>: cada sub-grupo pasa a ver el horario
-                                    que antes tenía el sub-grupo previo del ciclo.
+                                    El patrón se desliza <strong>{confirmRotar?.dias ?? 0} día(s)</strong>: la semana se adelanta,
+                                    cada sub-grupo pasa a ver el horario que antes tenía el sub-grupo siguiente del ciclo.
                                 </p>
                                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
                                     {previewRotacion.map(p => {

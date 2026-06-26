@@ -76,11 +76,12 @@ namespace tiempo_libre.Services
                 if (regla == null) continue;
 
                 // El "recorrido" desliza el PATRÓN sin tocar las etiquetas Grupos.Rol:
-                // cada sub-grupo conserva su nombre (R0144, R0144_02, …) pero pasa a
-                // leer el horario que antes leía el sub-grupo previo del ciclo.
+                // cada sub-grupo conserva su nombre (R0144, R0144_02, …) pero la
+                // semana se adelanta: cada sub-grupo pasa a leer el horario que
+                // antes leía el sub-grupo SIGUIENTE del ciclo.
                 // RotarPatron(patron, dias>0) hace exactamente eso: newPatron[i] =
-                // oldPatron[(i - dias + N) mod N] ⇒ sub-grupo 1 (offset 0) ahora ve
-                // lo que tenía el último sub-grupo, etc.
+                // oldPatron[(i + dias) mod N] ⇒ sub-grupo 1 (offset 0) ahora ve
+                // lo que tenía el sub-grupo 2, etc.
                 var patron = JsonSerializer.Deserialize<List<string>>(regla.PatronJson) ?? new List<string>();
                 if (patron.Count > 0 && request.Dias != 0)
                 {
@@ -111,9 +112,10 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Rotar un patrón "dias" posiciones. Convención: dias positivo = cada grupo
-        /// recibe el patrón del grupo previo (ej. R144_04 ← R144_03 como en Enero).
-        /// Internamente: newPatron[i] = oldPatron[(i - dias + N) mod N].
+        /// Rotar un patrón "dias" posiciones. Convención: dias positivo = la semana
+        /// se adelanta, cada grupo recibe el patrón del grupo SIGUIENTE
+        /// (ej. R0144 ← R0144_02, R0144_02 ← R0144_03, …).
+        /// Internamente: newPatron[i] = oldPatron[(i + dias) mod N].
         /// </summary>
         public static List<string> RotarPatron(List<string> patron, int dias)
         {
@@ -123,7 +125,7 @@ namespace tiempo_libre.Services
             var result = new List<string>(n);
             for (int i = 0; i < n; i++)
             {
-                result.Add(patron[(i - shift + n) % n]);
+                result.Add(patron[(i + shift) % n]);
             }
             return result;
         }
