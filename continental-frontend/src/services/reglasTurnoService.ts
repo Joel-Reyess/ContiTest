@@ -29,7 +29,7 @@ export const reglasTurnoService = {
             const response = await httpClient.get<ApiResponse<ReglaTurno>>(
                 `${BASE}/${encodeURIComponent(codigo)}?_t=${Date.now()}`
             );
-            return (response.data ?? null) as ReglaTurno | null;
+            return (response.data ?? null) as unknown as ReglaTurno | null;
         } catch (error: any) {
             if (error.response?.status === 404) return null;
             console.error("Error en reglasTurnoService.getByCodigo:", error);
@@ -48,7 +48,7 @@ export const reglasTurnoService = {
             );
             const data = response.data ?? response;
             if (!data) throw new Error("Respuesta vacía del servidor");
-            return data as ReglaTurno;
+            return data as unknown as ReglaTurno;
         } catch (error: any) {
             if (error.response?.status === 400) {
                 throw new Error(

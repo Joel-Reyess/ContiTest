@@ -384,7 +384,7 @@ class FestivosTrabajadosService {
     async diagnosticar(nomina: string): Promise<DiagnosticoFestivoTrabajadoResponse> {
         const url = `${this.baseUrl}/diagnostico?nomina=${encodeURIComponent(nomina)}&_t=${Date.now()}`
         const response = await httpClient.get<ApiResponse<DiagnosticoFestivoTrabajadoResponse>>(url)
-        const data = (response.data ?? response) as DiagnosticoFestivoTrabajadoResponse
+        const data = (response.data ?? response) as unknown as DiagnosticoFestivoTrabajadoResponse
         if (!data) throw new Error('Respuesta vacía del diagnóstico')
         return data
     }
