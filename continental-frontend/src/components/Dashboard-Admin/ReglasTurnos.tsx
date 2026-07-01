@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, RotateCcw, Repeat, Pencil, AlertTriangle } from "lucide-react";
+import { Loader2, RotateCcw, Repeat, Pencil, AlertTriangle, Building2 } from "lucide-react";
+import { AsignarReglaAAreaModal } from "./AsignarReglaAAreaModal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -279,8 +280,10 @@ export const ReglasTurnos = () => {
     const [loading, setLoading] = useState(true);
     const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
     const [editando, setEditando] = useState<ReglaTurno | null>(null);
+    const [asignando, setAsignando] = useState<ReglaTurno | null>(null);
     const [confirmRotar, setConfirmRotar] = useState<{ codigos: string[]; dias: number } | null>(null);
     const [rotating, setRotating] = useState(false);
+    const [filtroEstado, setFiltroEstado] = useState<'todas' | 'activas' | 'pendientes'>('todas');
 
     const cargar = async () => {
         setLoading(true);
@@ -354,6 +357,12 @@ export const ReglasTurnos = () => {
     }
 
     const totalSeleccionadas = seleccionadas.size;
+    const pendientesCount = reglas.filter(r => r.estado === 'PendienteConfiguracion').length;
+    const reglasFiltradas = reglas.filter(r => {
+        if (filtroEstado === 'activas') return r.estado !== 'PendienteConfiguracion';
+        if (filtroEstado === 'pendientes') return r.estado === 'PendienteConfiguracion';
+        return true;
+    });
 
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-4">
@@ -380,21 +389,47 @@ export const ReglasTurnos = () => {
                 </div>
             </div>
 
-            <div className="flex items-center gap-2 px-1">
-                <input
-                    type="checkbox"
-                    checked={totalSeleccionadas === reglas.length && reglas.length > 0}
-                    onChange={toggleSelTodas}
-                    className="size-4"
-                    id="sel-todas"
-                />
-                <label htmlFor="sel-todas" className="text-sm cursor-pointer">
-                    Seleccionar todas ({reglas.length})
-                </label>
+            <div className="flex items-center gap-3 px-1 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <input
+                        type="checkbox"
+                        checked={totalSeleccionadas === reglasFiltradas.length && reglasFiltradas.length > 0}
+                        onChange={() => {
+                            if (totalSeleccionadas === reglasFiltradas.length) setSeleccionadas(new Set());
+                            else setSeleccionadas(new Set(reglasFiltradas.map(r => r.codigo)));
+                        }}
+                        className="size-4"
+                        id="sel-todas"
+                    />
+                    <label htmlFor="sel-todas" className="text-sm cursor-pointer">
+                        Seleccionar visibles ({reglasFiltradas.length})
+                    </label>
+                </div>
+                <div className="flex gap-1 ml-auto">
+                    {(['todas', 'activas', 'pendientes'] as const).map(f => (
+                        <button
+                            key={f}
+                            onClick={() => setFiltroEstado(f)}
+                            className={[
+                                'px-3 py-1 rounded-full text-xs font-medium transition-colors capitalize',
+                                filtroEstado === f
+                                    ? 'bg-continental-yellow text-black'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                            ].join(' ')}
+                        >
+                            {f}
+                            {f === 'pendientes' && pendientesCount > 0 && (
+                                <span className="ml-1 bg-amber-500 text-white rounded-full px-1.5 py-0.5 text-[10px]">
+                                    {pendientesCount}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {reglas.map((regla) => (
+                {reglasFiltradas.map((regla) => (
                     <Card key={regla.codigo} className="overflow-hidden">
                         <CardHeader className="pb-3">
                             <div className="flex items-start justify-between gap-2">
@@ -409,6 +444,11 @@ export const ReglasTurnos = () => {
                                     <Badge variant="outline" className="font-mono text-xs">
                                         {regla.patron.length} días / {Math.floor(regla.patron.length / 7)} sem
                                     </Badge>
+                                    {regla.estado === 'PendienteConfiguracion' && (
+                                        <Badge className="bg-amber-500 text-white text-[10px] uppercase tracking-wide">
+                                            Pendiente
+                                        </Badge>
+                                    )}
                                 </div>
                                 <div className="flex gap-1">
                                     <Button
@@ -421,9 +461,19 @@ export const ReglasTurnos = () => {
                                     </Button>
                                     <Button
                                         size="sm"
+                                        variant="outline"
+                                        onClick={() => setAsignando(regla)}
+                                        title="Asignar a un área (crear grupos)"
+                                        className="border-blue-400 text-blue-700 hover:bg-blue-50"
+                                    >
+                                        <Building2 className="size-3.5" />
+                                    </Button>
+                                    <Button
+                                        size="sm"
                                         onClick={() =>
                                             setConfirmRotar({ codigos: [regla.codigo], dias: 7 })
                                         }
+                                        disabled={regla.estado === 'PendienteConfiguracion'}
                                     >
                                         <Repeat className="size-3.5 mr-1" />
                                         Recorrer 7
@@ -462,6 +512,16 @@ export const ReglasTurnos = () => {
                             prev.map(r => r.codigo === updated.codigo ? updated : r)
                         )
                     }
+                />
+            )}
+
+            {asignando && (
+                <AsignarReglaAAreaModal
+                    regla={asignando}
+                    onClose={() => setAsignando(null)}
+                    onAsignada={(updated) => {
+                        setReglas(prev => prev.map(r => r.codigo === updated.codigo ? { ...r, estado: updated.estado } : r));
+                    }}
                 />
             )}
 

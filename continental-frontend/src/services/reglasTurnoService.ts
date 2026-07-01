@@ -4,6 +4,8 @@ import type {
     ReglaTurno,
     ActualizarPatronReglaTurnoRequest,
     RotarReglasTurnoRequest,
+    AsignarReglaAAreaRequest,
+    AsignarReglaAAreaResponse,
 } from "@/interfaces/Api.interface";
 
 const BASE = "/api/reglas-turno";
@@ -62,6 +64,32 @@ export const reglasTurnoService = {
                 throw new Error(`No existe la regla ${codigo}`);
             }
             console.error("Error en reglasTurnoService.actualizarPatron:", error);
+            throw error;
+        }
+    },
+
+    async asignarAArea(
+        codigo: string,
+        request: AsignarReglaAAreaRequest
+    ): Promise<AsignarReglaAAreaResponse> {
+        try {
+            const response = await httpClient.post<ApiResponse<AsignarReglaAAreaResponse>>(
+                `${BASE}/${encodeURIComponent(codigo)}/asignar-a-area`,
+                request
+            );
+            const data = response.data ?? response;
+            if (!data) throw new Error("Respuesta vacía del servidor");
+            return data as unknown as AsignarReglaAAreaResponse;
+        } catch (error: any) {
+            if (error.response?.status === 400) {
+                throw new Error(
+                    error.response?.data?.errorMsg ?? "Datos inválidos al asignar la regla"
+                );
+            }
+            if (error.response?.status === 403) {
+                throw new Error("Solo SuperUsuario puede asignar reglas a áreas");
+            }
+            console.error("Error en reglasTurnoService.asignarAArea:", error);
             throw error;
         }
     },

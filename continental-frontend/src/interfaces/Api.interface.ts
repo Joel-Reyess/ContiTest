@@ -1149,8 +1149,26 @@ export interface ReglaTurno {
     ultimoUsuarioRotacionNombre?: string | null;
     diasRotadosAcumulado: number;
     notas?: string | null;
+    estado: 'Activa' | 'PendienteConfiguracion';
     createdAt: string;
     updatedAt?: string | null;
+}
+
+export interface AsignarReglaAAreaRequest {
+    areaId: number;
+    cantidadSubGrupos: number;
+    identificadorSAP?: string;
+}
+
+export interface GrupoCreado {
+    grupoId: number;
+    rol: string;
+}
+
+export interface AsignarReglaAAreaResponse {
+    codigo: string;
+    areaId: number;
+    gruposCreados: GrupoCreado[];
 }
 
 export interface ActualizarPatronReglaTurnoRequest {
