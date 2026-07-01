@@ -45,6 +45,15 @@ namespace tiempo_libre.Models
         [MaxLength(500)]
         public string? Notas { get; set; }
 
+        /// <summary>
+        /// Estado de la regla:
+        ///   - "Activa": patrón definido y grupos asignables.
+        ///   - "PendienteConfiguracion": auto-descubierta desde RolesEmpleadosSAP;
+        ///     el patrón viene vacío y aún no se ha asignado a ninguna área.
+        /// </summary>
+        [MaxLength(30)]
+        public string Estado { get; set; } = "Activa";
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
     }

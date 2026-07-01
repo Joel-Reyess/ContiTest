@@ -12,11 +12,16 @@ namespace tiempo_libre.Services
     {
         private readonly FreeTimeDbContext _context;
         private readonly ILogger<SincronizacionRolesService> _logger;
+        private readonly ReglasTurnoService _reglasTurnoService;
 
-        public SincronizacionRolesService(FreeTimeDbContext context, ILogger<SincronizacionRolesService> logger)
+        public SincronizacionRolesService(
+            FreeTimeDbContext context,
+            ILogger<SincronizacionRolesService> logger,
+            ReglasTurnoService reglasTurnoService)
         {
             _context = context;
             _logger = logger;
+            _reglasTurnoService = reglasTurnoService;
         }
 
         public async Task<int> SincronizarRolesDesdeRegla()
@@ -26,12 +31,42 @@ namespace tiempo_libre.Services
 
             await ActualizarEncargadoRegistroEnAreas();
 
+            // Auto-descubrir reglas nuevas de SAP y crearlas en ReglasTurno como
+            // PendienteConfiguracion. El SuperUsuario debe capturar patrón y
+            // asignar a un área desde /reglas-turnos antes de que un empleado
+            // caiga en un grupo con esta regla.
+            var reglasNuevas = await _reglasTurnoService.AutoDescubrirDesdeSapAsync();
+            if (reglasNuevas.Count > 0)
+            {
+                _logger.LogWarning(
+                    "🆕 Reglas nuevas auto-descubiertas desde SAP (Estado=PendienteConfiguracion): {Codigos}",
+                    string.Join(", ", reglasNuevas));
+            }
+
+            var reglasPendientes = await _context.ReglasTurno
+                .Where(r => r.Estado == "PendienteConfiguracion")
+                .Select(r => r.Codigo)
+                .ToListAsync();
+            var setPendientes = new HashSet<string>(reglasPendientes, StringComparer.OrdinalIgnoreCase);
+
             var rolesEmpleadosSAP = await _context.RolesEmpleadosSAP
                 .Where(r => !string.IsNullOrEmpty(r.Regla))
                 .ToListAsync();
 
             foreach (var rolSAP in rolesEmpleadosSAP)
             {
+                // Si la regla está PendienteConfiguracion, aún no la propagamos
+                // a Empleados.Rol ni a Users.GrupoId: el empleado se queda con
+                // su regla y grupo previos hasta que el SuperUsuario capture
+                // patrón y asigne la regla a un área.
+                if (!string.IsNullOrEmpty(rolSAP.Regla) && setPendientes.Contains(rolSAP.Regla))
+                {
+                    _logger.LogWarning(
+                        "⏸️  Nómina {Nomina}: regla '{Regla}' está PendienteConfiguracion; no se propaga.",
+                        rolSAP.Nomina, rolSAP.Regla);
+                    continue;
+                }
+
                 // ✅ ACTUALIZAR EMPLEADOS
                 var empleado = await _context.Empleados
                     .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);

@@ -131,6 +131,39 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>
+        /// Asignar la regla a un área creando N sub-grupos (R0144, R0144_02, …).
+        /// Solo SuperUsuario. Marca la regla como Activa si estaba PendienteConfiguracion.
+        /// </summary>
+        [HttpPost("{codigo}/asignar-a-area")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario")]
+        public async Task<IActionResult> AsignarAArea(
+            string codigo, [FromBody] AsignarReglaAAreaRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = string.Join("; ", ModelState
+                        .SelectMany(x => x.Value!.Errors)
+                        .Select(x => x.ErrorMessage));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos inválidos: {errors}"));
+                }
+
+                var resp = await _service.AsignarAAreaAsync(codigo, request);
+                return Ok(new ApiResponse<object>(true, resp, null));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al asignar regla {Codigo} a área", codigo);
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
         private int? GetUsuarioId()
         {
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

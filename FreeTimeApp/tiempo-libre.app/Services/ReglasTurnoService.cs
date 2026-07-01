@@ -155,9 +155,122 @@ namespace tiempo_libre.Services
             UltimoUsuarioRotacionNombre = r.UltimoUsuarioRotacion?.FullName,
             DiasRotadosAcumulado = r.DiasRotadosAcumulado,
             Notas = r.Notas,
+            Estado = r.Estado,
             CreatedAt = r.CreatedAt,
             UpdatedAt = r.UpdatedAt,
         };
 
+        /// <summary>
+        /// Detecta reglas que existen en RolesEmpleadosSAP.Regla pero no en
+        /// ReglasTurno, y las inserta con patrón vacío y Estado =
+        /// "PendienteConfiguracion". Lo llama SincronizacionRolesService antes
+        /// de matchear empleados contra grupos. Retorna los códigos creados.
+        /// </summary>
+        public async Task<List<string>> AutoDescubrirDesdeSapAsync()
+        {
+            var reglasSap = await _db.RolesEmpleadosSAP
+                .Where(r => !string.IsNullOrEmpty(r.Regla))
+                .Select(r => r.Regla!.Trim())
+                .Where(r => r.Length > 0 && r.Length <= 20)
+                .Distinct()
+                .ToListAsync();
+
+            if (reglasSap.Count == 0) return new List<string>();
+
+            var codigosExistentes = await _db.ReglasTurno
+                .Select(r => r.Codigo)
+                .ToListAsync();
+            var setExistentes = new HashSet<string>(codigosExistentes, StringComparer.OrdinalIgnoreCase);
+
+            var nuevas = reglasSap.Where(r => !setExistentes.Contains(r)).ToList();
+            if (nuevas.Count == 0) return new List<string>();
+
+            var fechaRefBase = await _db.ReglasTurno
+                .OrderBy(r => r.FechaReferencia)
+                .Select(r => (DateTime?)r.FechaReferencia)
+                .FirstOrDefaultAsync() ?? new DateTime(2025, 9, 15);
+
+            foreach (var codigo in nuevas)
+            {
+                _db.ReglasTurno.Add(new ReglasTurno
+                {
+                    Codigo = codigo,
+                    PatronJson = "[]",
+                    FechaReferencia = fechaRefBase,
+                    Estado = "PendienteConfiguracion",
+                    Notas = "Auto-descubierta desde RolesEmpleadosSAP",
+                    CreatedAt = DateTime.UtcNow,
+                });
+            }
+
+            await _db.SaveChangesAsync();
+            TurnosHelper.Reload(_db);
+            return nuevas;
+        }
+
+        /// <summary>
+        /// Crea los Grupos correspondientes a una regla dentro de un área y marca
+        /// la regla como "Activa" si tenía patrón definido. Solo SuperUsuario debe
+        /// llamarlo. Regla debe existir y tener patrón no vacío para pasar a Activa.
+        /// </summary>
+        public async Task<AsignarReglaAAreaResponse> AsignarAAreaAsync(
+            string codigo, AsignarReglaAAreaRequest request)
+        {
+            var regla = await _db.ReglasTurno.FirstOrDefaultAsync(r => r.Codigo == codigo)
+                ?? throw new InvalidOperationException($"No existe la regla {codigo}");
+
+            var patron = JsonSerializer.Deserialize<List<string>>(regla.PatronJson) ?? new List<string>();
+            if (patron.Count == 0 || patron.Count % 7 != 0)
+                throw new InvalidOperationException(
+                    "La regla no tiene patrón válido. Configúralo antes de asignarla a un área.");
+
+            var semanasDelPatron = patron.Count / 7;
+            if (request.CantidadSubGrupos > semanasDelPatron)
+                throw new InvalidOperationException(
+                    $"CantidadSubGrupos ({request.CantidadSubGrupos}) excede las semanas del patrón ({semanasDelPatron}).");
+
+            var area = await _db.Areas.FirstOrDefaultAsync(a => a.AreaId == request.AreaId)
+                ?? throw new InvalidOperationException($"No existe el área {request.AreaId}");
+
+            var creados = new List<GrupoCreadoDto>();
+            for (int i = 1; i <= request.CantidadSubGrupos; i++)
+            {
+                var rolGrupo = i == 1 ? codigo : $"{codigo}_{i:D2}";
+                var existente = await _db.Grupos
+                    .FirstOrDefaultAsync(g => g.AreaId == request.AreaId && g.Rol == rolGrupo);
+                if (existente != null)
+                {
+                    creados.Add(new GrupoCreadoDto { GrupoId = existente.GrupoId, Rol = existente.Rol });
+                    continue;
+                }
+
+                var grupo = new Grupo
+                {
+                    AreaId = request.AreaId,
+                    Rol = rolGrupo,
+                    IdentificadorSAP = string.IsNullOrWhiteSpace(request.IdentificadorSAP)
+                        ? $"{area.UnidadOrganizativaSap}-{rolGrupo}"
+                        : request.IdentificadorSAP,
+                };
+                _db.Grupos.Add(grupo);
+                await _db.SaveChangesAsync();
+                creados.Add(new GrupoCreadoDto { GrupoId = grupo.GrupoId, Rol = grupo.Rol });
+            }
+
+            if (regla.Estado == "PendienteConfiguracion")
+            {
+                regla.Estado = "Activa";
+                regla.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                TurnosHelper.Reload(_db);
+            }
+
+            return new AsignarReglaAAreaResponse
+            {
+                Codigo = codigo,
+                AreaId = request.AreaId,
+                GruposCreados = creados,
+            };
+        }
     }
 }

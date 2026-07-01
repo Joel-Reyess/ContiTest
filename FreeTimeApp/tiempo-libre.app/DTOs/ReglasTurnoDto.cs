@@ -16,8 +16,41 @@ namespace tiempo_libre.DTOs
         public string? UltimoUsuarioRotacionNombre { get; set; }
         public int DiasRotadosAcumulado { get; set; }
         public string? Notas { get; set; }
+        public string Estado { get; set; } = "Activa";
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+    }
+
+    /// <summary>Request para crear grupos con una regla en un área.</summary>
+    public class AsignarReglaAAreaRequest
+    {
+        [Required]
+        public int AreaId { get; set; }
+
+        /// <summary>
+        /// Cantidad de sub-grupos a crear: 1 = solo R0144, 2 = R0144 + R0144_02, etc.
+        /// Debe ser ≥ 1 y ≤ que el número de semanas del patrón.
+        /// </summary>
+        [Required]
+        [Range(1, 20)]
+        public int CantidadSubGrupos { get; set; }
+
+        /// <summary>Opcional: identificador SAP para los grupos creados (mismo valor a todos).</summary>
+        [MaxLength(100)]
+        public string? IdentificadorSAP { get; set; }
+    }
+
+    public class AsignarReglaAAreaResponse
+    {
+        public string Codigo { get; set; } = null!;
+        public int AreaId { get; set; }
+        public List<GrupoCreadoDto> GruposCreados { get; set; } = new();
+    }
+
+    public class GrupoCreadoDto
+    {
+        public int GrupoId { get; set; }
+        public string Rol { get; set; } = null!;
     }
 
     public class ActualizarPatronReglaTurnoRequest
