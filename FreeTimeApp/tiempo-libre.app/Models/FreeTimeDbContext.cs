@@ -55,6 +55,7 @@ public partial class FreeTimeDbContext : DbContext
     public virtual DbSet<VacacionesProgramadas> VacacionesProgramadas { get; set; }
     public virtual DbSet<SolicitudesReprogramacion> SolicitudesReprogramacion { get; set; }
     public virtual DbSet<SolicitudesFestivosTrabajados> SolicitudesFestivosTrabajados { get; set; }
+    public virtual DbSet<SolicitudesVacacionLaborada> SolicitudesVacacionLaborada { get; set; } = null!;
     public virtual DbSet<FestivosEmpleadosTrabajadosUpload> FestivosEmpleadosTrabajadosUpload { get; set; }
     public virtual DbSet<SolicitudReprogramacionPostIncapacidad> SolicitudesReprogramacionPostIncapacidad { get; set; } = null!;
     public virtual DbSet<SolicitudReprogramacionDiaEmpresa> SolicitudesReprogramacionDiaEmpresa { get; set; } = null!;
