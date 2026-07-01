@@ -31,6 +31,7 @@ import useAuth from '@/hooks/useAuth';
 import { RegistrarPermisoModal } from "@/components/Empleado/RegistrarPermisoModal";
 import { ExtenderIncapacidadModal } from "@/components/Empleado/ExtenderIncapacidadModal";
 import { SolicitarReprogramacionDiaEmpresaModal } from "@/components/Dashboard-Empleados/SolicitarReprogramacionDiaEmpresaModal";
+import { SolicitarVacacionLaboradaModal } from "@/components/Dashboard-Empleados/SolicitarVacacionLaboradaModal";
 export const DetallesEmpleado = ({
 }: {
   currentPeriod: Period;
@@ -91,6 +92,7 @@ export const DetallesEmpleado = ({
   const [showPermisoModal, setShowPermisoModal] = useState(false);
   const [showExtenderModal, setShowExtenderModal] = useState(false);
   const [showReprogDiaEmpresaModal, setShowReprogDiaEmpresaModal] = useState(false);
+  const [showVacacionLaboradaModal, setShowVacacionLaboradaModal] = useState(false);
   // Se incrementa después de operaciones que afectan el calendario (extender,
   // reprogramar, solicitar) para forzar al CalendarComponent a refetchear.
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
@@ -98,6 +100,7 @@ export const DetallesEmpleado = ({
   const { hasRole } = useAuth();
   const isLeader = hasRole(UserRole.LEADER);
   const isSuperUsuario = hasRole(UserRole.SUPER_ADMIN);
+  const isDelegado = hasRole(UserRole.UNION_REPRESENTATIVE);
   const puedeExtenderIncapacidad =
       hasRole(UserRole.SUPER_ADMIN) ||
       hasRole(UserRole.AREA_ADMIN) ||
@@ -105,6 +108,7 @@ export const DetallesEmpleado = ({
   // Jefe de Área e Ingeniero Industrial no deben registrar permisos/incapacidades
   const puedeRegistrarPermiso =
       !hasRole(UserRole.AREA_ADMIN) && !hasRole(UserRole.INDUSTRIAL);
+  const puedeSolicitarVacacionLaborada = isDelegado || isSuperUsuario;
 
   const getEmployeeDetails = useCallback(async (id: string) => {
     if (!id) return;
@@ -874,6 +878,16 @@ const handleRemoveDay = async (fecha: string) => {
                 Reprogramar día empresa
               </Button>
             )}
+            {puedeSolicitarVacacionLaborada && (
+              <Button
+                variant="outline"
+                onClick={() => setShowVacacionLaboradaModal(true)}
+                className="flex items-center gap-2 w-[225px] h-[45px] border-blue-400 text-blue-700 rounded-lg hover:bg-blue-50"
+              >
+                <CalendarPlus2 size={16} />
+                Vacación laborada
+              </Button>
+            )}
                       {isLeader && (
                           <OvertimeCalendar
                               excepciones={excepcionesTiempoExtra}
@@ -1080,6 +1094,18 @@ const handleRemoveDay = async (fecha: string) => {
               <SolicitarReprogramacionDiaEmpresaModal
                   show={showReprogDiaEmpresaModal}
                   onClose={() => setShowReprogDiaEmpresaModal(false)}
+                  empleadoId={parseInt(id)}
+                  empleadoNombre={sindicalizado.nombre}
+                  onSolicitudCreada={() => {
+                      if (id) getEmployeeDetails(id);
+                      refreshCalendar();
+                  }}
+              />
+          )}
+          {showVacacionLaboradaModal && sindicalizado && id && (
+              <SolicitarVacacionLaboradaModal
+                  show={showVacacionLaboradaModal}
+                  onClose={() => setShowVacacionLaboradaModal(false)}
                   empleadoId={parseInt(id)}
                   empleadoNombre={sindicalizado.nombre}
                   onSolicitudCreada={() => {
