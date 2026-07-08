@@ -1,3 +1,9 @@
+export interface AreaJefeBasic {
+    id: number;
+    fullName: string;
+    username: string;
+  }
+
 export interface Area {
     areaId: number;
     unidadOrganizativaSap: string;
@@ -8,6 +14,8 @@ export interface Area {
     jefe: BossUser;
     jefeSuplenteId: number | null;
     jefeSuplente: BossUser | null;
+    /** Multi-jefes: lista completa de jefes de área (incluye JefeId y JefeSuplenteId). */
+    jefes?: AreaJefeBasic[];
   }
   
   export interface Grupo {
@@ -47,9 +55,12 @@ export interface Area {
     nombreGeneral: string;
   }
 
-  // Interfaces for assign boss
+  // Interfaces for assign boss (multi-jefes: la lista JefeIds reemplaza a
+  // AreaJefes por completo; JefeId/JefeSuplenteId se sincronizan del primero/segundo).
   export interface AssignBossRequest {
-    JefeId: number;
+    JefeId?: number | null;
+    JefeSuplenteId?: number | null;
+    JefeIds?: number[];
   }
 
   export interface BossUser {

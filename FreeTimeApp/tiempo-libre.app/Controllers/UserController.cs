@@ -924,7 +924,7 @@ namespace tiempo_libre.app.Controllers
             }
 
             var areasComoJefe = await _dbContext.Areas
-                .Where(a => a.JefeId == currentUser.Id)
+                .Where(a => a.Jefes.Any(aj => aj.UserId == currentUser.Id))
                 .Select(a => a.AreaId)
                 .ToListAsync();
 
@@ -1004,15 +1004,20 @@ namespace tiempo_libre.app.Controllers
 
             try
             {
-                // 1. Limpiar referencias como Jefe en Áreas
+                // 1. Limpiar referencias como Jefe en Áreas (JefeId, JefeSuplenteId y AreaJefes)
                 var areasComoJefe = await _dbContext.Areas
-                    .Where(a => a.JefeId == id)
+                    .Where(a => a.JefeId == id || a.JefeSuplenteId == id)
                     .ToListAsync();
                 foreach (var area in areasComoJefe)
                 {
-                    area.JefeId = null;
-                    area.JefeSuplenteId = null;
+                    if (area.JefeId == id) area.JefeId = null;
+                    if (area.JefeSuplenteId == id) area.JefeSuplenteId = null;
                 }
+                var areaJefesRefs = await _dbContext.AreaJefes
+                    .Where(aj => aj.UserId == id)
+                    .ToListAsync();
+                if (areaJefesRefs.Any())
+                    _dbContext.AreaJefes.RemoveRange(areaJefesRefs);
 
                 // 2. Limpiar referencias como Líder en Grupos
                 var gruposComoLider = await _dbContext.Grupos
@@ -1176,7 +1181,7 @@ namespace tiempo_libre.app.Controllers
 
             // 1. Áreas donde es jefe - incluir todos los grupos del área
             var areasAsJefe = await _dbContext.Areas
-                .Where(a => a.JefeId == userId)
+                .Where(a => a.Jefes.Any(aj => aj.UserId == userId))
                 .Select(a => new
                 {
                     a.AreaId,

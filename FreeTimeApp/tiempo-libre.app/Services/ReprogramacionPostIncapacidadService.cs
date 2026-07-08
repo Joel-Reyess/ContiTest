@@ -340,7 +340,7 @@ namespace tiempo_libre.Services
         {
             // Áreas a cargo del jefe
             var areasJefe = await _db.Areas
-                .Where(a => a.JefeId == jefeId || a.JefeSuplenteId == jefeId)
+                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId))
                 .Select(a => a.AreaId)
                 .ToListAsync();
 

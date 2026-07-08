@@ -82,6 +82,7 @@ public partial class FreeTimeDbContext : DbContext
     // Reglas de turnos editables (reemplaza diccionario hardcodeado de TurnosHelper)
     public virtual DbSet<ReglasTurno> ReglasTurno { get; set; }
     public virtual DbSet<RotacionesReglaProgramadas> RotacionesReglaProgramadas { get; set; } = null!;
+    public virtual DbSet<AreaJefe> AreaJefes { get; set; } = null!;
 
     // Sistema de edición de días asignados por empresa
     public virtual DbSet<ConfiguracionEdicionDiasEmpresa> ConfiguracionEdicionDiasEmpresa { get; set; }
@@ -544,6 +545,11 @@ public partial class FreeTimeDbContext : DbContext
                 .HasForeignKey(a => a.JefeSuplenteId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("FK_Area_JefeSuplente");
+
+            entity.HasMany(a => a.Jefes)
+                .WithOne(aj => aj.Area)
+                .HasForeignKey(aj => aj.AreaId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Configure many-to-many relationship with Users (Ingenieros)
             entity.HasMany(a => a.Ingenieros)
@@ -1351,6 +1357,19 @@ public partial class FreeTimeDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.UltimoUsuarioRotacionId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // AreaJefes (many-to-many Area ↔ User)
+        modelBuilder.Entity<AreaJefe>(entity =>
+        {
+            entity.ToTable("AreaJefes");
+            entity.HasKey(e => new { e.AreaId, e.UserId });
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.HasIndex(e => e.UserId);
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // RotacionesReglaProgramadas

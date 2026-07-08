@@ -297,7 +297,7 @@ namespace tiempo_libre.Services
 
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerSolicitudesPendientesJefeAsync(int jefeId)
         {
-            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.JefeId == jefeId);
+            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.Jefes.Any(aj => aj.UserId == jefeId));
             if (areaDelJefe == null) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa
@@ -316,7 +316,7 @@ namespace tiempo_libre.Services
 
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerTodasSolicitudesJefeAsync(int jefeId)
         {
-            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.JefeId == jefeId);
+            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.Jefes.Any(aj => aj.UserId == jefeId));
             if (areaDelJefe == null) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa

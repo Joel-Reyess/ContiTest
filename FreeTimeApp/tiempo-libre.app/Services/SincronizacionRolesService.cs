@@ -103,6 +103,8 @@ namespace tiempo_libre.Services
                     var todosGrupos = await _context.Grupos
                         .Include(g => g.Area)
                             .ThenInclude(a => a.Jefe)
+                        .Include(g => g.Area)
+                            .ThenInclude(a => a.Jefes)
                         .ToListAsync();
 
                     var gruposPosibles = todosGrupos
@@ -155,7 +157,9 @@ namespace tiempo_libre.Services
                             if (jefeIdBuscado.HasValue)
                             {
                                 var gruposConJefeCorrecto = gruposMismaUnidad
-                                    .Where(g => g.Area.JefeId == jefeIdBuscado.Value)
+                                    .Where(g => g.Area.JefeId == jefeIdBuscado.Value
+                                                || g.Area.JefeSuplenteId == jefeIdBuscado.Value
+                                                || (g.Area.Jefes != null && g.Area.Jefes.Any(aj => aj.UserId == jefeIdBuscado.Value)))
                                     .ToList();
 
                                 if (gruposConJefeCorrecto.Count == 1)

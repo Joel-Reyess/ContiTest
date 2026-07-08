@@ -210,7 +210,7 @@ namespace tiempo_libre.Services
             int jefeId, string? estado = null)
         {
             var areasJefe = await _db.Areas
-                .Where(a => a.JefeId == jefeId || a.JefeSuplenteId == jefeId)
+                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId))
                 .Select(a => a.AreaId)
                 .ToListAsync();
             if (!areasJefe.Any()) return new List<SolicitudReprogramacionDiaEmpresaDto>();

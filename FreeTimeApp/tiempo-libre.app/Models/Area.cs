@@ -29,6 +29,14 @@ public partial class Area
     [JsonIgnore]
     public virtual ICollection<User> Ingenieros { get; set; }
 
+    /// <summary>
+    /// Todos los jefes de área (incluye los que hoy viven en JefeId/JefeSuplenteId
+    /// más los agregados por multi-jefes). Cualquiera de ellos puede aprobar
+    /// solicitudes del área.
+    /// </summary>
+    [JsonIgnore]
+    public virtual ICollection<AreaJefe> Jefes { get; set; }
+
     public Area()
     {
         Grupos = new HashSet<Grupo>();
@@ -36,5 +44,6 @@ public partial class Area
         ManningPorDia = new HashSet<ManningPorDia>();
         AreaIngenieros = new HashSet<AreaIngeniero>();
         Ingenieros = new HashSet<User>();
+        Jefes = new HashSet<AreaJefe>();
     }
 }

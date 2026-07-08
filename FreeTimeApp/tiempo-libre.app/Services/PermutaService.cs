@@ -148,7 +148,7 @@ namespace tiempo_libre.Services
                 // (un jefe puede liderar múltiples áreas; el código anterior solo tomaba la primera).
                 var areasComoJefe = esJefeArea
                     ? await _db.Areas
-                        .Where(a => a.JefeId == usuarioId)
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioId))
                         .Select(a => a.AreaId)
                         .ToListAsync()
                     : new List<int>();

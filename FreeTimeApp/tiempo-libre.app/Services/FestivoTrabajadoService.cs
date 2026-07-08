@@ -391,7 +391,7 @@ namespace tiempo_libre.Services
                 // no para SuperUsuario que ve todo).
                 var areasJefeIds = (esJefeArea && !esSuperUsuario)
                     ? await _db.Areas
-                        .Where(a => a.JefeId == usuarioConsultaId)
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId))
                         .Select(a => a.AreaId)
                         .ToListAsync()
                     : new List<int>();

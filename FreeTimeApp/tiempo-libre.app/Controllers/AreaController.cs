@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Authorization;
 using tiempo_libre.Models;
 using tiempo_libre.DTOs;
 using Microsoft.EntityFrameworkCore;
+using System;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Collections.Generic;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -38,12 +40,24 @@ public class AreaController : ControllerBase
         var area = await _db.Areas
             .Include(a => a.Jefe)
             .Include(a => a.JefeSuplente)
+            .Include(a => a.Jefes).ThenInclude(aj => aj.User)
             .FirstOrDefaultAsync(a => a.AreaId == id);
-            
+
         if (area == null)
         {
             return NotFound(new ApiResponse<Area>(false, null, "Área no encontrada"));
         }
+
+        var jefesLista = area.Jefes
+            .Where(aj => aj.User != null)
+            .Select(aj => new UserBasicDto
+            {
+                Id = aj.User!.Id,
+                FullName = aj.User.FullName,
+                Username = aj.User.Username
+            })
+            .OrderBy(u => u.FullName)
+            .ToList();
 
         var areaDetail = new AreaDetailDto
         {
@@ -64,7 +78,8 @@ public class AreaController : ControllerBase
                 Id = area.JefeSuplente.Id,
                 FullName = area.JefeSuplente.FullName,
                 Username = area.JefeSuplente.Username
-            } : null
+            } : null,
+            Jefes = jefesLista
         };
 
         return Ok(new ApiResponse<AreaDetailDto>(true, areaDetail));
@@ -267,40 +282,65 @@ public class AreaController : ControllerBase
     [Authorize(Roles = "SuperUsuario")]
     public async Task<IActionResult> AssignJefes(int id, [FromBody] tiempo_libre.DTOs.AreaAssignJefeRequest request)
     {
-        var area = await _db.Areas.FindAsync(id);
+        var area = await _db.Areas
+            .Include(a => a.Jefes)
+            .FirstOrDefaultAsync(a => a.AreaId == id);
         if (area == null)
         {
             return NotFound(new ApiResponse<Area>(false, null, "Área no encontrada"));
         }
-        // Validar jefe
-        if (request.JefeId.HasValue)
+
+        // Recolectar TODOS los ids que deben quedar en AreaJefes.
+        // - Si viene JefeIds (multi-jefes), esa es la lista fuente de verdad.
+        // - Si no viene JefeIds, se toma la unión de JefeId + JefeSuplenteId
+        //   para no romper el flujo antiguo.
+        var ids = new HashSet<int>();
+        if (request.JefeIds != null && request.JefeIds.Count > 0)
         {
-            var jefe = await _db.Users.Include(u => u.Roles).FirstOrDefaultAsync(u => u.Id == request.JefeId.Value);
-            if (jefe == null)
-            {
-                return BadRequest(new ApiResponse<Area>(false, null, "El jefe especificado no existe"));
-            }
-            if (!jefe.Roles.Any(r => r.Name == "Jefe De Area"))
-            {
-                return BadRequest(new ApiResponse<Area>(false, null, "El usuario asignado como jefe no tiene el rol 'Jefe de Area'"));
-            }
+            foreach (var jid in request.JefeIds) if (jid > 0) ids.Add(jid);
         }
-        // Validar jefe suplente
-        if (request.JefeSuplenteId.HasValue)
+        if (request.JefeId.HasValue && request.JefeId.Value > 0) ids.Add(request.JefeId.Value);
+        if (request.JefeSuplenteId.HasValue && request.JefeSuplenteId.Value > 0) ids.Add(request.JefeSuplenteId.Value);
+
+        // Validar que todos existan y tengan rol "Jefe De Area".
+        if (ids.Count > 0)
         {
-            var suplente = await _db.Users.Include(u => u.Roles).FirstOrDefaultAsync(u => u.Id == request.JefeSuplenteId.Value);
-            if (suplente == null)
-            {
-                return BadRequest(new ApiResponse<Area>(false, null, "El jefe suplente especificado no existe"));
-            }
-            if (!suplente.Roles.Any(r => r.Name == "Jefe De Area"))
-            {
-                return BadRequest(new ApiResponse<Area>(false, null, "El usuario asignado como jefe suplente no tiene el rol 'Jefe de Area'"));
-            }
+            var users = await _db.Users
+                .Include(u => u.Roles)
+                .Where(u => ids.Contains(u.Id))
+                .ToListAsync();
+            if (users.Count != ids.Count)
+                return BadRequest(new ApiResponse<Area>(false, null, "Alguno(s) de los jefes indicados no existe(n)."));
+            var invalid = users.Where(u => !u.Roles.Any(r => r.Name == "Jefe De Area")).Select(u => u.FullName).ToList();
+            if (invalid.Any())
+                return BadRequest(new ApiResponse<Area>(false, null, $"No tiene(n) rol 'Jefe de Area': {string.Join(", ", invalid)}"));
         }
-        // Asignar o desasignar jefe
-        area.JefeId = request.JefeId;
-        area.JefeSuplenteId = request.JefeSuplenteId;
+
+        // Mantener JefeId/JefeSuplenteId por compatibilidad:
+        //   - JefeId  = primer id de JefeIds (o request.JefeId si aplica)
+        //   - JefeSuplenteId = segundo id (o request.JefeSuplenteId)
+        var listaFinal = (request.JefeIds != null && request.JefeIds.Count > 0)
+            ? request.JefeIds.Where(v => v > 0).Distinct().ToList()
+            : new List<int>();
+
+        if (listaFinal.Count > 0)
+        {
+            area.JefeId = listaFinal[0];
+            area.JefeSuplenteId = listaFinal.Count > 1 ? listaFinal[1] : (int?)null;
+        }
+        else
+        {
+            area.JefeId = request.JefeId;
+            area.JefeSuplenteId = request.JefeSuplenteId;
+        }
+
+        // Reemplazar AreaJefes con la unión completa.
+        _db.AreaJefes.RemoveRange(area.Jefes);
+        foreach (var uid in ids)
+        {
+            area.Jefes.Add(new AreaJefe { AreaId = area.AreaId, UserId = uid, CreatedAt = DateTime.UtcNow });
+        }
+
         await _db.SaveChangesAsync();
         return Ok(new ApiResponse<Area>(true, area));
     }
@@ -561,6 +601,7 @@ public class AreaController : ControllerBase
         public UserBasicDto? Jefe { get; set; }
         public int? JefeSuplenteId { get; set; }
         public UserBasicDto? JefeSuplente { get; set; }
+        public List<UserBasicDto> Jefes { get; set; } = new();
         public List<GrupoBasicDto> Grupos { get; set; } = new();
     }
 

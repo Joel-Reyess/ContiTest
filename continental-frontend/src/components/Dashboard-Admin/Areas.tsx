@@ -54,6 +54,9 @@ export const Areas = () => {
         correoJefe: "",
         default_manning: 0,
     });
+    // Multi-jefes: lista de IDs de jefes asignados al área actual
+    const [jefesActuales, setJefesActuales] = useState<number[]>([]);
+    const [jefeToAdd, setJefeToAdd] = useState<string>("");
     const [isUpdating, setIsUpdating] = useState(false);
     const [usersByRole, setUsersByRole] = useState<User[]>([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
@@ -86,6 +89,16 @@ export const Areas = () => {
                     default_manning: areaDetails?.manning || 0,
                 });
 
+                // Multi-jefes: cargar desde areaDetails.jefes si viene, si no fallback a JefeId + JefeSuplenteId
+                const jefesIds: number[] = (areaDetails as any)?.jefes?.length
+                    ? ((areaDetails as any).jefes as { id: number }[]).map(j => j.id)
+                    : Array.from(new Set([
+                        areaDetails?.jefeId,
+                        areaDetails?.jefeSuplenteId
+                    ].filter((v): v is number => typeof v === "number" && v > 0)));
+                setJefesActuales(jefesIds);
+                setJefeToAdd("");
+
                 if (areaDetails.grupos && areaDetails.grupos.length > 0) {
                     console.log("areaDetails.grupos", areaDetails.grupos)
                     const sortedApiGroups = sortApiGroups([...areaDetails.grupos]);
@@ -115,6 +128,8 @@ export const Areas = () => {
                 correoJefe: "",
                 default_manning: 0,
             });
+            setJefesActuales([]);
+            setJefeToAdd("");
             setGroups([]);
         }
     }, [selectedArea, getAreaById]);
@@ -377,28 +392,23 @@ export const Areas = () => {
                 hasErrors = true;
             }
 
-            // 2. Asignar jefe (como operación separada)
-            if (formData.nombreJefe && formData.nombreJefe.trim() && formData.nombreJefe !== "0") {
-                try {
-                    const jefeId = parseInt(formData.nombreJefe);
-                    console.log('=== Assigning Boss ===');
-                    console.log('Area ID:', areaId);
-                    console.log('Jefe ID:', jefeId);
-
-                    await areasService.assignBoss(areaId, jefeId);
-                    console.log('Boss assigned successfully');
-                    toast.success("Jefe de área asignado exitosamente");
-                } catch (error) {
-                    console.error('Error assigning boss:', error);
-
-                    let errorMessage = 'Error desconocido';
-                    if (error && typeof error === 'object' && 'message' in error) {
-                        errorMessage = String(error.message);
-                    }
-
-                    toast.error(`Error al asignar jefe: ${errorMessage}`);
-                    hasErrors = true;
+            // 2. Asignar jefes (multi-jefes)
+            try {
+                const jefeIds = Array.from(new Set(jefesActuales.filter(id => id > 0)));
+                await areasService.assignBosses(areaId, jefeIds);
+                if (jefeIds.length === 0) {
+                    toast.success("Jefes de área desasignados");
+                } else {
+                    toast.success(`${jefeIds.length} jefe(s) de área asignado(s)`);
                 }
+            } catch (error) {
+                console.error('Error assigning bosses:', error);
+                let errorMessage = 'Error desconocido';
+                if (error && typeof error === 'object' && 'message' in error) {
+                    errorMessage = String(error.message);
+                }
+                toast.error(`Error al asignar jefes: ${errorMessage}`);
+                hasErrors = true;
             }
 
             // 3. Actualizar asignaciones de ingenieros
@@ -524,42 +534,67 @@ export const Areas = () => {
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="nombreJefe" className="text-sm font-medium text-continental-gray-1">
-                                    Jefe de área
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="text-sm font-medium text-continental-gray-1">
+                                    Jefes de área <span className="text-xs text-continental-gray-1 font-normal">(múltiples permitidos — todos ven y aprueban las solicitudes del área)</span>
                                 </Label>
-                                <Select
-                                    value={formData.nombreJefe}
-                                    onValueChange={(value) => handleFormChange('nombreJefe', value)}
-                                    disabled={loadingUsers}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder={loadingUsers ? "Cargando jefes..." : "Selecciona un jefe de área"} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="0">Sin asignar</SelectItem>
-                                        {usersByRole.map((user) => (
-                                            <SelectItem key={user.id} value={user.id.toString()}>
-                                                {user.fullName}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="correoJefe" className="text-sm font-medium text-continental-gray-1">
-                                    Correo de jefe de área
-                                </Label>
-                                <Input
-                                    id="correoJefe"
-                                    type="email"
-                                    value={formData.correoJefe}
-                                    onChange={(e) => handleFormChange('correoJefe', e.target.value)}
-                                    placeholder="jefe@continental.com"
-                                    className="w-full"
-                                    disabled
-                                />
+                                {/* Chips con los jefes actuales */}
+                                <div className="flex flex-wrap gap-2 min-h-[38px] p-2 border border-continental-gray-3 rounded bg-white">
+                                    {jefesActuales.length === 0 && (
+                                        <span className="text-xs text-continental-gray-1 self-center">
+                                            Sin jefes asignados. Agrega uno abajo.
+                                        </span>
+                                    )}
+                                    {jefesActuales.map(jefeId => {
+                                        const u = usersByRole.find(x => x.id === jefeId);
+                                        const label = u?.fullName ?? `#${jefeId}`;
+                                        return (
+                                            <span
+                                                key={jefeId}
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-continental-yellow/20 border border-continental-yellow text-xs"
+                                            >
+                                                {label}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setJefesActuales(prev => prev.filter(id => id !== jefeId))}
+                                                    className="text-continental-black hover:text-red-600"
+                                                    title="Quitar"
+                                                >
+                                                    <X className="size-3" />
+                                                </button>
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Select para agregar */}
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={jefeToAdd}
+                                        onValueChange={(value) => {
+                                            const id = parseInt(value);
+                                            if (!isNaN(id) && id > 0 && !jefesActuales.includes(id)) {
+                                                setJefesActuales(prev => [...prev, id]);
+                                            }
+                                            setJefeToAdd("");
+                                        }}
+                                        disabled={loadingUsers}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder={loadingUsers ? "Cargando jefes..." : "Agregar jefe de área"} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {usersByRole
+                                                .filter(u => !jefesActuales.includes(u.id))
+                                                .map(user => (
+                                                    <SelectItem key={user.id} value={user.id.toString()}>
+                                                        {user.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
 

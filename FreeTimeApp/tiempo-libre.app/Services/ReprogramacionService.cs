@@ -334,12 +334,13 @@ namespace tiempo_libre.Services
                                              areaEmpleado.HasValue &&
                                              usuarioAprobador.AreaId.Value == areaEmpleado.Value;
 
-                    // 3) Si es jefe registrado en el catálogo de áreas (Area.JefeId)
+                    // 3) Si es jefe registrado en el catálogo de áreas (AreaJefes)
                     var jefeDeAreaMatch = false;
                     if (areaEmpleado.HasValue)
                     {
                         jefeDeAreaMatch = await _db.Areas
-                            .AnyAsync(a => a.AreaId == areaEmpleado.Value && a.JefeId == usuarioAprobadorId);
+                            .AnyAsync(a => a.AreaId == areaEmpleado.Value
+                                           && a.Jefes.Any(aj => aj.UserId == usuarioAprobadorId));
                     }
 
                     if (!esJefeArea || (!aprobadorEsJefeAsignado && !aprobadorMismaArea && !jefeDeAreaMatch))
@@ -538,7 +539,18 @@ namespace tiempo_libre.Services
 
                 if (request.JefeAreaId.HasValue)
                 {
-                    query = query.Where(s => s.JefeAreaId == request.JefeAreaId.Value);
+                    // Con co-jefes (AreaJefes): cualquier jefe del área del empleado
+                    // puede ver la solicitud, además del JefeAreaId "clavado" al
+                    // momento de crearla (compat).
+                    var jefeIdConsulta = request.JefeAreaId.Value;
+                    var areasDelJefe = await _db.Areas
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == jefeIdConsulta))
+                        .Select(a => a.AreaId)
+                        .ToListAsync();
+
+                    query = query.Where(s =>
+                        s.JefeAreaId == jefeIdConsulta ||
+                        (s.Empleado.AreaId.HasValue && areasDelJefe.Contains(s.Empleado.AreaId.Value)));
                 }
 
                 if (request.FechaDesde.HasValue)

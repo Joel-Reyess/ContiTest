@@ -167,8 +167,16 @@ export const areasService = {
    * @returns Promise<AssignBossResponse> Área con jefe asignado
    */
   async assignBoss(areaId: number, jefeId: number): Promise<AssignBossResponse> {
+    return this.assignBosses(areaId, [jefeId]);
+  },
+
+  /**
+   * Multi-jefes: reemplaza AreaJefes por completo con la lista dada.
+   * JefeId/JefeSuplenteId se sincronizan del primero/segundo elemento.
+   */
+  async assignBosses(areaId: number, jefeIds: number[]): Promise<AssignBossResponse> {
     try {
-      const requestData: AssignBossRequest = { JefeId: jefeId };
+      const requestData: AssignBossRequest = { JefeIds: jefeIds };
       logger.apiRequest('PATCH', `/api/Area/${areaId}/asignar-jefes`, requestData);
 
       const response: ApiResponse<AssignBossResponse> = await httpClient.patch<AssignBossResponse>(
@@ -177,13 +185,13 @@ export const areasService = {
       );
 
       if (!response.success || !response.data) {
-        throw new Error(response.errorMsg || 'Error al asignar jefe al área');
+        throw new Error(response.errorMsg || 'Error al asignar jefes al área');
       }
 
-      logger.apiResponse('PUT', `/api/Area/${areaId}/asignar-jefes`, 200, response.data);
+      logger.apiResponse('PATCH', `/api/Area/${areaId}/asignar-jefes`, 200, response.data);
       return response.data;
     } catch (error) {
-      logger.error('Error assigning boss to area', error, 'AREAS_SERVICE');
+      logger.error('Error assigning bosses to area', error, 'AREAS_SERVICE');
       throw error;
     }
   },
