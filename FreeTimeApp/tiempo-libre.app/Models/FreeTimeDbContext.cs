@@ -81,6 +81,7 @@ public partial class FreeTimeDbContext : DbContext
 
     // Reglas de turnos editables (reemplaza diccionario hardcodeado de TurnosHelper)
     public virtual DbSet<ReglasTurno> ReglasTurno { get; set; }
+    public virtual DbSet<RotacionesReglaProgramadas> RotacionesReglaProgramadas { get; set; } = null!;
 
     // Sistema de edición de días asignados por empresa
     public virtual DbSet<ConfiguracionEdicionDiasEmpresa> ConfiguracionEdicionDiasEmpresa { get; set; }
@@ -1350,6 +1351,29 @@ public partial class FreeTimeDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.UltimoUsuarioRotacionId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // RotacionesReglaProgramadas
+        modelBuilder.Entity<RotacionesReglaProgramadas>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CodigoRegla).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.FechaEjecucion).HasColumnType("date").IsRequired();
+            entity.Property(e => e.DiasRotacion).IsRequired();
+            entity.Property(e => e.Estado).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.MensajeError).HasMaxLength(500);
+            entity.Property(e => e.Notas).HasMaxLength(500);
+            entity.HasIndex(e => new { e.Estado, e.FechaEjecucion });
+            entity.HasIndex(e => new { e.CodigoRegla, e.FechaEjecucion });
+            entity.HasOne(e => e.Regla)
+                .WithMany()
+                .HasForeignKey(e => e.CodigoRegla)
+                .HasPrincipalKey(r => r.Codigo)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         OnModelCreatingPartial(modelBuilder);

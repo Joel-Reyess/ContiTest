@@ -58,6 +58,7 @@ builder.Services.AddScoped<tiempo_libre.Services.SolicitudesPermisosService>();
 builder.Services.AddScoped<tiempo_libre.Services.SincronizacionRolesService>();
 builder.Services.AddScoped<tiempo_libre.Services.EdicionDiasEmpresaService>();
 builder.Services.AddScoped<tiempo_libre.Services.ReglasTurnoService>();
+builder.Services.AddScoped<tiempo_libre.Services.RotacionesProgramadasService>();
 // Email Service con configuración SMTP
 builder.Services.AddSingleton<tiempo_libre.Services.IEmailService, tiempo_libre.Services.EmailService>();
 
@@ -71,6 +72,9 @@ builder.Services.AddHostedService<tiempo_libre.Services.ActualizacionEstadosBack
 builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionRolesBackgroundService>();
 // Background service para sincronizar permisos desde tabla de staging
 builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionPermisosBackgroundService>();
+
+// Background service para ejecutar rotaciones de reglas agendadas a fecha futura
+builder.Services.AddHostedService<tiempo_libre.Services.EjecucionRotacionesProgramadasBackgroundService>();
 
 // Configuración CORS para permitir peticiones desde el frontend
 var allowedOrigins = new[] {

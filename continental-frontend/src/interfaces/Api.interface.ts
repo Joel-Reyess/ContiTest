@@ -1183,3 +1183,31 @@ export interface RotarReglasTurnoRequest {
     notas?: string;
 }
 
+export type EstadoRotacionProgramada = 'Pendiente' | 'Ejecutada' | 'Cancelada' | 'Fallida';
+
+export interface RotacionProgramada {
+    id: number;
+    codigoRegla: string;
+    fechaEjecucion: string; // ISO date
+    diasRotacion: number;
+    estado: EstadoRotacionProgramada;
+    createdByUserId: number;
+    createdByUserNombre?: string | null;
+    createdAt: string;
+    fechaEjecutadaReal?: string | null;
+    mensajeError?: string | null;
+    notas?: string | null;
+}
+
+export interface CrearRotacionesProgramadasRequest {
+    codigoRegla: string;
+    fechas: string[]; // yyyy-MM-dd
+    diasRotacion: number;
+    notas?: string;
+}
+
+export interface CrearRotacionesProgramadasResponse {
+    creadas: RotacionProgramada[];
+    omitidas: string[];
+}
+

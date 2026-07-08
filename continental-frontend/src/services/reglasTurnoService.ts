@@ -6,6 +6,9 @@ import type {
     RotarReglasTurnoRequest,
     AsignarReglaAAreaRequest,
     AsignarReglaAAreaResponse,
+    RotacionProgramada,
+    CrearRotacionesProgramadasRequest,
+    CrearRotacionesProgramadasResponse,
 } from "@/interfaces/Api.interface";
 
 const BASE = "/api/reglas-turno";
@@ -90,6 +93,66 @@ export const reglasTurnoService = {
                 throw new Error("Solo SuperUsuario puede asignar reglas a áreas");
             }
             console.error("Error en reglasTurnoService.asignarAArea:", error);
+            throw error;
+        }
+    },
+
+    async listarRotacionesProgramadas(desde?: string, hasta?: string): Promise<RotacionProgramada[]> {
+        try {
+            const qs: string[] = [`_t=${Date.now()}`];
+            if (desde) qs.push(`desde=${encodeURIComponent(desde)}`);
+            if (hasta) qs.push(`hasta=${encodeURIComponent(hasta)}`);
+            const url = `${BASE}/rotaciones-programadas?${qs.join("&")}`;
+            const response = await httpClient.get<ApiResponse<RotacionProgramada[]>>(url);
+            const data = response.data ?? response;
+            return Array.isArray(data) ? (data as RotacionProgramada[]) : [];
+        } catch (error: any) {
+            if (error.response?.status === 403) return [];
+            console.error("Error en reglasTurnoService.listarRotacionesProgramadas:", error);
+            throw error;
+        }
+    },
+
+    async agendarRotaciones(
+        request: CrearRotacionesProgramadasRequest
+    ): Promise<CrearRotacionesProgramadasResponse> {
+        try {
+            const response = await httpClient.post<ApiResponse<CrearRotacionesProgramadasResponse>>(
+                `${BASE}/rotaciones-programadas`,
+                request
+            );
+            const data = response.data ?? response;
+            if (!data) throw new Error("Respuesta vacía del servidor");
+            return data as unknown as CrearRotacionesProgramadasResponse;
+        } catch (error: any) {
+            if (error.response?.status === 400) {
+                throw new Error(
+                    error.response?.data?.errorMsg ?? "Datos inválidos al agendar la rotación"
+                );
+            }
+            if (error.response?.status === 403) {
+                throw new Error("Solo SuperUsuario puede agendar rotaciones");
+            }
+            console.error("Error en reglasTurnoService.agendarRotaciones:", error);
+            throw error;
+        }
+    },
+
+    async cancelarRotacionProgramada(id: number): Promise<void> {
+        try {
+            await httpClient.delete<ApiResponse<unknown>>(
+                `${BASE}/rotaciones-programadas/${id}`
+            );
+        } catch (error: any) {
+            if (error.response?.status === 400) {
+                throw new Error(
+                    error.response?.data?.errorMsg ?? "No se pudo cancelar la rotación"
+                );
+            }
+            if (error.response?.status === 403) {
+                throw new Error("Solo SuperUsuario puede cancelar rotaciones");
+            }
+            console.error("Error en reglasTurnoService.cancelarRotacionProgramada:", error);
             throw error;
         }
     },

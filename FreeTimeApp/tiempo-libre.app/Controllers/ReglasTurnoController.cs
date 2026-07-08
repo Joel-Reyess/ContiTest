@@ -17,11 +17,16 @@ namespace tiempo_libre.Controllers
     public class ReglasTurnoController : ControllerBase
     {
         private readonly ReglasTurnoService _service;
+        private readonly RotacionesProgramadasService _rotProgService;
         private readonly ILogger<ReglasTurnoController> _logger;
 
-        public ReglasTurnoController(ReglasTurnoService service, ILogger<ReglasTurnoController> logger)
+        public ReglasTurnoController(
+            ReglasTurnoService service,
+            RotacionesProgramadasService rotProgService,
+            ILogger<ReglasTurnoController> logger)
         {
             _service = service;
+            _rotProgService = rotProgService;
             _logger = logger;
         }
 
@@ -160,6 +165,83 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al asignar regla {Codigo} a área", codigo);
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Rotaciones programadas (Vacaciones → Calendario)
+        // ------------------------------------------------------------------
+
+        /// <summary>Listar rotaciones agendadas en un rango (default = año en curso).</summary>
+        [HttpGet("rotaciones-programadas")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        public async Task<IActionResult> ListarRotacionesProgramadas(
+            [FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
+        {
+            try
+            {
+                var rows = await _rotProgService.ListarAsync(desde, hasta);
+                return Ok(new ApiResponse<object>(true, rows, null));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al listar rotaciones programadas");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        /// <summary>Agendar una rotación en una o varias fechas futuras.</summary>
+        [HttpPost("rotaciones-programadas")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario")]
+        public async Task<IActionResult> CrearRotacionesProgramadas(
+            [FromBody] CrearRotacionesProgramadasRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = string.Join("; ", ModelState
+                        .SelectMany(x => x.Value!.Errors)
+                        .Select(x => x.ErrorMessage));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos inválidos: {errors}"));
+                }
+
+                var usuarioId = GetUsuarioId();
+                if (usuarioId == null)
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+
+                var resp = await _rotProgService.CrearAsync(request, usuarioId.Value);
+                return Ok(new ApiResponse<object>(true, resp, null));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al agendar rotación programada");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        /// <summary>Cancelar una rotación agendada (solo si está Pendiente).</summary>
+        [HttpDelete("rotaciones-programadas/{id:int}")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario")]
+        public async Task<IActionResult> CancelarRotacionProgramada(int id)
+        {
+            try
+            {
+                await _rotProgService.CancelarAsync(id);
+                return Ok(new ApiResponse<object>(true, new { id }, null));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al cancelar rotación programada {Id}", id);
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }
