@@ -42,6 +42,56 @@ namespace tiempo_libre.Services
             return regla == null ? null : ToDto(regla);
         }
 
+        /// <summary>
+        /// Alta manual desde SuperUsuario: crea una regla que existe en el Excel
+        /// pero no llegó (o no se descubrió) por SAP. Si el patrón viene completo,
+        /// queda Estado = Activa; si viene vacío, queda PendienteConfiguracion.
+        /// </summary>
+        public async Task<ReglaTurnoDto> CrearAsync(CrearReglaTurnoRequest request, int usuarioId)
+        {
+            if (string.IsNullOrWhiteSpace(request.Codigo))
+                throw new InvalidOperationException("El código de la regla es obligatorio.");
+
+            var codigo = request.Codigo.Trim();
+            if (codigo.Length > 20)
+                throw new InvalidOperationException("El código no puede tener más de 20 caracteres.");
+
+            var yaExiste = await _db.ReglasTurno.AnyAsync(r => r.Codigo == codigo);
+            if (yaExiste)
+                throw new InvalidOperationException($"Ya existe una regla con el código '{codigo}'.");
+
+            var patron = request.Patron ?? new List<string>();
+            var tienePatron = patron.Count > 0;
+            if (tienePatron)
+                ValidarPatron(patron);
+
+            var fechaRef = request.FechaReferencia
+                ?? await _db.ReglasTurno.OrderBy(r => r.FechaReferencia)
+                    .Select(r => (DateTime?)r.FechaReferencia).FirstOrDefaultAsync()
+                ?? new DateTime(2025, 9, 15);
+
+            var nueva = new ReglasTurno
+            {
+                Codigo = codigo,
+                PatronJson = tienePatron ? JsonSerializer.Serialize(patron) : "[]",
+                FechaReferencia = fechaRef,
+                Estado = tienePatron ? "Activa" : "PendienteConfiguracion",
+                Notas = string.IsNullOrWhiteSpace(request.Notas)
+                    ? "Alta manual desde SuperUsuario"
+                    : request.Notas,
+                CreatedAt = DateTime.UtcNow,
+                UltimoUsuarioRotacionId = usuarioId,
+                UltimaRotacion = DateTime.UtcNow,
+            };
+
+            _db.ReglasTurno.Add(nueva);
+            await _db.SaveChangesAsync();
+            TurnosHelper.Reload(_db);
+
+            return ToDto(await _db.ReglasTurno.Include(r => r.UltimoUsuarioRotacion)
+                .FirstAsync(r => r.Id == nueva.Id));
+        }
+
         public async Task<ReglaTurnoDto> ActualizarPatronAsync(
             string codigo, ActualizarPatronReglaTurnoRequest request, int usuarioId)
         {

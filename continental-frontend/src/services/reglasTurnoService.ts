@@ -3,6 +3,7 @@ import type {
     ApiResponse,
     ReglaTurno,
     ActualizarPatronReglaTurnoRequest,
+    CrearReglaTurnoRequest,
     RotarReglasTurnoRequest,
     AsignarReglaAAreaRequest,
     AsignarReglaAAreaResponse,
@@ -38,6 +39,29 @@ export const reglasTurnoService = {
         } catch (error: any) {
             if (error.response?.status === 404) return null;
             console.error("Error en reglasTurnoService.getByCodigo:", error);
+            throw error;
+        }
+    },
+
+    async crear(request: CrearReglaTurnoRequest): Promise<ReglaTurno> {
+        try {
+            const response = await httpClient.post<ApiResponse<ReglaTurno>>(
+                `${BASE}`,
+                request
+            );
+            const data = response.data ?? response;
+            if (!data) throw new Error("Respuesta vacía del servidor");
+            return data as unknown as ReglaTurno;
+        } catch (error: any) {
+            if (error.response?.status === 400) {
+                throw new Error(
+                    error.response?.data?.errorMsg ?? "Datos inválidos al crear la regla"
+                );
+            }
+            if (error.response?.status === 403) {
+                throw new Error("Solo SuperUsuario puede crear reglas");
+            }
+            console.error("Error en reglasTurnoService.crear:", error);
             throw error;
         }
     },

@@ -67,6 +67,26 @@ namespace tiempo_libre.DTOs
         public string? Notas { get; set; }
     }
 
+    /// <summary>
+    /// Alta manual desde SuperUsuario (task #85 extended): crear regla que NO
+    /// llegó por SAP. El código no debe existir todavía; el patrón puede ir
+    /// vacío (queda PendienteConfiguracion) o completo (queda Activa).
+    /// </summary>
+    public class CrearReglaTurnoRequest
+    {
+        [Required]
+        [MaxLength(20)]
+        public string Codigo { get; set; } = "";
+
+        /// <summary>Patrón inicial. Vacío = queda Pendiente; lleno = queda Activa.</summary>
+        public List<string> Patron { get; set; } = new();
+
+        public DateTime? FechaReferencia { get; set; }
+
+        [MaxLength(500)]
+        public string? Notas { get; set; }
+    }
+
     public class RotarReglasTurnoRequest
     {
         /// <summary>Códigos de las reglas a rotar (ej. ["R0144","R0229"]).</summary>

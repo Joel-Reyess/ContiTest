@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, RotateCcw, Repeat, Pencil, AlertTriangle, Building2 } from "lucide-react";
+import { Loader2, RotateCcw, Repeat, Pencil, AlertTriangle, Building2, Plus } from "lucide-react";
 import { AsignarReglaAAreaModal } from "./AsignarReglaAAreaModal";
+import { CrearReglaModal } from "./CrearReglaModal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -284,6 +285,7 @@ export const ReglasTurnos = () => {
     const [confirmRotar, setConfirmRotar] = useState<{ codigos: string[]; dias: number } | null>(null);
     const [rotating, setRotating] = useState(false);
     const [filtroEstado, setFiltroEstado] = useState<'todas' | 'activas' | 'pendientes'>('todas');
+    const [creandoNueva, setCreandoNueva] = useState(false);
 
     const cargar = async () => {
         setLoading(true);
@@ -389,6 +391,14 @@ export const ReglasTurnos = () => {
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={cargar}>
                         <RotateCcw className="size-4 mr-1" /> Refrescar
+                    </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => setCreandoNueva(true)}
+                        title="Alta manual: crear regla que no llegó por SAP"
+                        className="border-continental-yellow text-continental-black hover:bg-continental-yellow/10"
+                    >
+                        <Plus className="size-4 mr-1" /> Nueva regla
                     </Button>
                     <Button
                         onClick={() => setConfirmRotar({ codigos: Array.from(seleccionadas), dias: 7 })}
@@ -533,6 +543,13 @@ export const ReglasTurnos = () => {
                     onAsignada={(updated) => {
                         setReglas(prev => prev.map(r => r.codigo === updated.codigo ? { ...r, estado: updated.estado } : r));
                     }}
+                />
+            )}
+
+            {creandoNueva && (
+                <CrearReglaModal
+                    onClose={() => setCreandoNueva(false)}
+                    onCreada={() => cargar()}
                 />
             )}
 

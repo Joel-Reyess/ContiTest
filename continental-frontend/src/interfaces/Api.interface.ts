@@ -1177,6 +1177,15 @@ export interface ActualizarPatronReglaTurnoRequest {
     notas?: string;
 }
 
+/** Alta manual de una regla desde SuperUsuario cuando no llegó por SAP. */
+export interface CrearReglaTurnoRequest {
+    codigo: string;
+    /** Vacío = queda PendienteConfiguracion; lleno = queda Activa. */
+    patron: string[];
+    fechaReferencia?: string;
+    notas?: string;
+}
+
 export interface RotarReglasTurnoRequest {
     codigos: string[];
     dias: number;

@@ -66,6 +66,39 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>Alta manual de una regla que no llegó por SAP (solo SuperUsuario).</summary>
+        [HttpPost]
+        [Authorize(Roles = "Super Usuario,SuperUsuario")]
+        public async Task<IActionResult> Crear([FromBody] CrearReglaTurnoRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = string.Join("; ", ModelState
+                        .SelectMany(x => x.Value!.Errors)
+                        .Select(x => x.ErrorMessage));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos inválidos: {errors}"));
+                }
+
+                var usuarioId = GetUsuarioId();
+                if (usuarioId == null)
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+
+                var nueva = await _service.CrearAsync(request, usuarioId.Value);
+                return Ok(new ApiResponse<object>(true, nueva, null));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al crear regla de turno");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
         /// <summary>Actualizar el patrón completo de una regla.</summary>
         [HttpPut("{codigo}")]
         [Authorize(Roles = "Super Usuario,SuperUsuario")]
