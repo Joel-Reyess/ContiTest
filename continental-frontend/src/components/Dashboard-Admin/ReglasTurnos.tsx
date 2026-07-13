@@ -366,6 +366,17 @@ export const ReglasTurnos = () => {
 
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-4">
+            {pendientesCount > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2">
+                    <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+                    <div>
+                        <strong>{pendientesCount}</strong> regla{pendientesCount === 1 ? "" : "s"} llegó del Excel de SAP
+                        y aún no tiene patrón capturado. Filtra por <em>Pendientes</em> abajo, pulsa el ícono
+                        <Pencil className="inline size-3 mx-0.5" />
+                        para capturar el patrón y quedará dada de alta automáticamente (estado <strong>Activa</strong>).
+                    </div>
+                </div>
+            )}
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight">Reglas de turnos</h1>

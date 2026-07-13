@@ -59,6 +59,15 @@ namespace tiempo_libre.Services
             regla.UltimoUsuarioRotacionId = usuarioId;
             regla.UltimaRotacion = DateTime.UtcNow;
 
+            // Auto-alta: si la regla venía Pendiente (auto-descubierta desde
+            // RolesEmpleadosSAP) y el SuperUsuario acaba de capturar un patrón
+            // válido, pasa a Activa. Antes había que ir a "Asignar a área"
+            // para activarla, lo cual era confuso.
+            if (regla.Estado == "PendienteConfiguracion" && request.Patron.Count > 0)
+            {
+                regla.Estado = "Activa";
+            }
+
             await _db.SaveChangesAsync();
             TurnosHelper.Reload(_db);
 

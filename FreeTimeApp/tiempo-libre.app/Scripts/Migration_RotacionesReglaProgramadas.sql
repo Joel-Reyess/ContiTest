@@ -37,3 +37,19 @@ ELSE
 BEGIN
     PRINT 'La tabla RotacionesReglaProgramadas ya existe.';
 END
+
+-- Columna nueva: PatronBaseline (task #84). Si != NULL, el modo es "Fecha de
+-- ejecución arranque" y se fija el patrón; si NULL se aplica rotación legacy.
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+     WHERE Name = 'PatronBaseline' AND Object_ID = Object_ID('RotacionesReglaProgramadas')
+)
+BEGIN
+    ALTER TABLE [dbo].[RotacionesReglaProgramadas]
+    ADD [PatronBaseline] NVARCHAR(MAX) NULL;
+    PRINT 'Columna PatronBaseline agregada.';
+END
+ELSE
+BEGIN
+    PRINT 'Columna PatronBaseline ya existe.';
+END

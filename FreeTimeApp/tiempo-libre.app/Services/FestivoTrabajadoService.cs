@@ -639,11 +639,33 @@ namespace tiempo_libre.Services
 
                     if (emp != null)
                     {
+                        // Task #73: normalizar match de nómina.
+                        // El Excel puede traer "0012345", " 12345 " o "12345",
+                        // mientras User.Nomina siempre es un int sin padding.
+                        // Traemos filas candidatas por LIKE amplio y filtramos
+                        // en memoria por igualdad numérica cuando ambos parsean.
                         var nominaStr = emp.Nomina?.ToString() ?? emp.Username;
-                        var fechasUpload = await _db.FestivosEmpleadosTrabajadosUpload
-                            .Where(f => f.Nomina == nominaStr)
-                            .Select(f => f.FechaTrabajada)
+                        var nominaInt = emp.Nomina;
+
+                        var uploadsRaw = await _db.FestivosEmpleadosTrabajadosUpload
+                            .Where(f => f.Nomina != null &&
+                                        (f.Nomina == nominaStr || f.Nomina.Contains(nominaStr)))
+                            .Select(f => new { f.Nomina, f.FechaTrabajada })
                             .ToListAsync();
+
+                        var fechasUpload = uploadsRaw
+                            .Where(x =>
+                            {
+                                var t = (x.Nomina ?? "").Trim();
+                                if (string.Equals(t, nominaStr, StringComparison.OrdinalIgnoreCase))
+                                    return true;
+                                if (nominaInt.HasValue && int.TryParse(t, out var parsed)
+                                    && parsed == nominaInt.Value)
+                                    return true;
+                                return false;
+                            })
+                            .Select(x => x.FechaTrabajada)
+                            .ToList();
 
                         // Cargar solicitudes ya existentes
                         var solicitudesExistentes = await _db.SolicitudesFestivosTrabajados

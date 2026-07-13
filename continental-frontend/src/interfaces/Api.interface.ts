@@ -1190,6 +1190,8 @@ export interface RotacionProgramada {
     codigoRegla: string;
     fechaEjecucion: string; // ISO date
     diasRotacion: number;
+    /** Modo "Fecha de ejecución arranque": si != null se fija el patrón. */
+    patronBaseline?: string[] | null;
     estado: EstadoRotacionProgramada;
     createdByUserId: number;
     createdByUserNombre?: string | null;
@@ -1202,7 +1204,12 @@ export interface RotacionProgramada {
 export interface CrearRotacionesProgramadasRequest {
     codigoRegla: string;
     fechas: string[]; // yyyy-MM-dd
-    diasRotacion: number;
+    /**
+     * Si se envía, el modo es "Fecha de ejecución arranque": ese día se fija el
+     * patrón. Longitud múltiplo de 7. Si va vacío, se usa diasRotacion legacy.
+     */
+    patronBaseline?: string[];
+    diasRotacion?: number;
     notas?: string;
 }
 

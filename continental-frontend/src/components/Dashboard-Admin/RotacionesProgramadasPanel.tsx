@@ -64,7 +64,7 @@ export function RotacionesProgramadasPanel() {
                 <div className="flex items-center gap-2">
                     <CalendarClock className="size-5 text-continental-yellow" />
                     <h3 className="font-semibold text-continental-black">
-                        Rotaciones programadas de reglas
+                        Fechas de ejecución arranque
                     </h3>
                     <span className="text-xs text-continental-gray-1">
                         (independiente de <em>Reglas de turnos</em>)
@@ -75,14 +75,15 @@ export function RotacionesProgramadasPanel() {
                     className="inline-flex items-center gap-1 bg-continental-yellow hover:bg-continental-yellow/90 text-black text-sm font-semibold px-3 py-1.5 rounded"
                 >
                     <Plus className="size-4" />
-                    Agendar rotación
+                    Fecha de ejecución arranque
                 </button>
             </div>
 
             <div className="p-4">
                 <p className="text-xs text-continental-gray-1 mb-3">
-                    Cada rotación programada desliza el patrón de la regla en la fecha indicada
-                    (7, 14 o 21 días). No mueve empleados de grupo ni cambia SAP.
+                    Programa el orden de las reglas para el año: al llegar la fecha (enero, abril, etc.)
+                    se fija el patrón capturado como baseline y se queda así el resto del ciclo.
+                    No mueve empleados de grupo ni cambia SAP.
                 </p>
 
                 {loading ? (
@@ -100,7 +101,7 @@ export function RotacionesProgramadasPanel() {
                                 <tr className="text-left text-xs text-continental-gray-1 border-b border-continental-gray-3">
                                     <th className="py-2 pr-3">Fecha</th>
                                     <th className="py-2 pr-3">Regla</th>
-                                    <th className="py-2 pr-3">Días</th>
+                                    <th className="py-2 pr-3">Tipo</th>
                                     <th className="py-2 pr-3">Estado</th>
                                     <th className="py-2 pr-3">Creada por</th>
                                     <th className="py-2 pr-3">Notas</th>
@@ -112,7 +113,19 @@ export function RotacionesProgramadasPanel() {
                                     <tr key={r.id} className="border-b border-continental-gray-3 last:border-0">
                                         <td className="py-2 pr-3 whitespace-nowrap">{formatDate(r.fechaEjecucion)}</td>
                                         <td className="py-2 pr-3 font-mono">{r.codigoRegla}</td>
-                                        <td className="py-2 pr-3">{r.diasRotacion}</td>
+                                        <td className="py-2 pr-3 text-xs">
+                                            {r.patronBaseline && r.patronBaseline.length > 0 ? (
+                                                <span className="inline-block px-2 py-0.5 rounded border bg-continental-yellow/20 border-continental-yellow text-continental-black font-medium"
+                                                      title={`Arranque · patrón de ${r.patronBaseline.length / 7} sem`}>
+                                                    Arranque ({r.patronBaseline.length / 7} sem)
+                                                </span>
+                                            ) : (
+                                                <span className="inline-block px-2 py-0.5 rounded border bg-continental-gray-4 border-continental-gray-3 text-continental-gray-1"
+                                                      title="Rotación legacy N días">
+                                                    Rotación {r.diasRotacion}d
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="py-2 pr-3">
                                             <span className={`inline-block text-[11px] px-2 py-0.5 rounded border ${badgeClasses[r.estado]}`}>
                                                 {r.estado}

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -52,15 +53,27 @@ namespace tiempo_libre.Services
             if (string.IsNullOrWhiteSpace(request.CodigoRegla))
                 throw new InvalidOperationException("Debes indicar el código de la regla.");
 
-            if (!DiasPermitidos.Contains(request.DiasRotacion))
+            var esArranque = request.PatronBaseline != null && request.PatronBaseline.Count > 0;
+            if (!esArranque && !DiasPermitidos.Contains(request.DiasRotacion))
                 throw new InvalidOperationException(
                     $"Los días a rotar sólo admiten valores {string.Join(", ", DiasPermitidos)}.");
+
+            if (esArranque)
+            {
+                if (request.PatronBaseline!.Count % 7 != 0)
+                    throw new InvalidOperationException(
+                        $"El patrón de arranque debe tener longitud múltiplo de 7 (actual: {request.PatronBaseline.Count}).");
+                if (request.PatronBaseline.Any(string.IsNullOrWhiteSpace))
+                    throw new InvalidOperationException(
+                        "Todos los turnos del patrón de arranque deben tener un valor.");
+            }
 
             var regla = await _db.ReglasTurno.FirstOrDefaultAsync(r => r.Codigo == request.CodigoRegla);
             if (regla == null)
                 throw new InvalidOperationException($"No existe la regla '{request.CodigoRegla}'.");
 
-            if (regla.Estado != "Activa")
+            // En modo Arranque permitimos reglas Pendientes (así se activan al llegar la fecha).
+            if (!esArranque && regla.Estado != "Activa")
                 throw new InvalidOperationException(
                     $"La regla '{request.CodigoRegla}' está en estado '{regla.Estado}'. Sólo se pueden agendar rotaciones sobre reglas Activas.");
 
@@ -98,6 +111,9 @@ namespace tiempo_libre.Services
                     CodigoRegla = request.CodigoRegla,
                     FechaEjecucion = fecha,
                     DiasRotacion = request.DiasRotacion,
+                    PatronBaseline = esArranque
+                        ? JsonSerializer.Serialize(request.PatronBaseline)
+                        : null,
                     Estado = "Pendiente",
                     CreatedByUserId = usuarioId,
                     CreatedAt = DateTime.UtcNow,
@@ -159,22 +175,41 @@ namespace tiempo_libre.Services
             {
                 try
                 {
-                    var req = new RotarReglasTurnoRequest
+                    if (!string.IsNullOrEmpty(row.PatronBaseline))
                     {
-                        Codigos = new List<string> { row.CodigoRegla },
-                        Dias = row.DiasRotacion,
-                        Notas = row.Notas
-                    };
-                    await _reglasTurnoService.RotarAsync(req, row.CreatedByUserId);
+                        var patron = JsonSerializer.Deserialize<List<string>>(row.PatronBaseline)
+                                     ?? new List<string>();
+                        var req = new ActualizarPatronReglaTurnoRequest
+                        {
+                            Patron = patron,
+                            Notas = row.Notas
+                        };
+                        await _reglasTurnoService.ActualizarPatronAsync(
+                            row.CodigoRegla, req, row.CreatedByUserId);
+
+                        _logger.LogInformation(
+                            "✅ Arranque programado #{Id} ejecutado: regla {Codigo}, patrón fijado ({N} días).",
+                            row.Id, row.CodigoRegla, patron.Count);
+                    }
+                    else
+                    {
+                        var req = new RotarReglasTurnoRequest
+                        {
+                            Codigos = new List<string> { row.CodigoRegla },
+                            Dias = row.DiasRotacion,
+                            Notas = row.Notas
+                        };
+                        await _reglasTurnoService.RotarAsync(req, row.CreatedByUserId);
+
+                        _logger.LogInformation(
+                            "✅ Rotación programada #{Id} ejecutada: regla {Codigo}, {Dias} días.",
+                            row.Id, row.CodigoRegla, row.DiasRotacion);
+                    }
 
                     row.Estado = "Ejecutada";
                     row.FechaEjecutadaReal = DateTime.UtcNow;
                     row.MensajeError = null;
                     ejecutadas++;
-
-                    _logger.LogInformation(
-                        "✅ Rotación programada #{Id} ejecutada: regla {Codigo}, {Dias} días.",
-                        row.Id, row.CodigoRegla, row.DiasRotacion);
                 }
                 catch (Exception ex)
                 {
@@ -196,6 +231,9 @@ namespace tiempo_libre.Services
             CodigoRegla = r.CodigoRegla,
             FechaEjecucion = r.FechaEjecucion,
             DiasRotacion = r.DiasRotacion,
+            PatronBaseline = string.IsNullOrEmpty(r.PatronBaseline)
+                ? null
+                : JsonSerializer.Deserialize<List<string>>(r.PatronBaseline),
             Estado = r.Estado,
             CreatedByUserId = r.CreatedByUserId,
             CreatedByUserNombre = r.CreatedByUser?.FullName,

@@ -10,6 +10,11 @@ namespace tiempo_libre.DTOs
         public string CodigoRegla { get; set; } = "";
         public DateTime FechaEjecucion { get; set; }
         public int DiasRotacion { get; set; }
+        /// <summary>
+        /// Patrón que se fijará como baseline al llegar FechaEjecucion.
+        /// Si null → la programación es una rotación legacy (DiasRotacion).
+        /// </summary>
+        public List<string>? PatronBaseline { get; set; }
         public string Estado { get; set; } = "";
         public int CreatedByUserId { get; set; }
         public string? CreatedByUserNombre { get; set; }
@@ -28,7 +33,13 @@ namespace tiempo_libre.DTOs
         [MinLength(1, ErrorMessage = "Debe indicar al menos una fecha")]
         public List<DateTime> Fechas { get; set; } = new();
 
-        [Required]
+        /// <summary>
+        /// Modo "Fecha de ejecución arranque": patrón editado por el SuperUsuario
+        /// (list of turnos, longitud múltiplo de 7). Si viene con datos, se ignora
+        /// DiasRotacion y se fija el patrón al ejecutar.
+        /// </summary>
+        public List<string>? PatronBaseline { get; set; }
+
         [Range(1, 365, ErrorMessage = "DiasRotacion debe estar entre 1 y 365")]
         public int DiasRotacion { get; set; } = 7;
 

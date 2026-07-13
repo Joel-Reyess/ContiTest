@@ -5,10 +5,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace tiempo_libre.Models
 {
     /// <summary>
-    /// Rotación de patrón de una regla agendada a una fecha futura. Se ejecuta
-    /// automáticamente por EjecucionRotacionesProgramadasBackgroundService.
-    /// Semántica idéntica a "Recorrer 7" en Reglas de turnos (rota PatronJson,
-    /// no toca Grupos.Rol ni Users.GrupoId).
+    /// Programación de patrón de una regla a una fecha futura ("Fecha de ejecución
+    /// arranque"). Ejecutada por EjecucionRotacionesProgramadasBackgroundService.
+    /// Dos modos:
+    ///   * Arranque (default nuevo): PatronBaseline != null. Ese día se FIJA el
+    ///     patrón como baseline llamando a ReglasTurnoService.ActualizarPatronAsync.
+    ///   * Rotación (legacy): PatronBaseline == null → se aplica RotarAsync N días.
     /// </summary>
     public class RotacionesReglaProgramadas
     {
@@ -28,6 +30,12 @@ namespace tiempo_libre.Models
 
         [Required]
         public int DiasRotacion { get; set; } = 7;
+
+        /// <summary>
+        /// Patrón (JSON de List&lt;string&gt;) que se fijará como baseline al llegar
+        /// FechaEjecucion. Si null → se ejecuta rotación legacy con DiasRotacion.
+        /// </summary>
+        public string? PatronBaseline { get; set; }
 
         [Required]
         [MaxLength(20)]
