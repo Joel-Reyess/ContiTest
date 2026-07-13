@@ -22,9 +22,11 @@ class RolesService {
      * Obtiene los roles/turnos semanales de un grupo (lunes a domingo)
      */
     async getWeeklyRoles(grupoId: number, fechaInicio: string): Promise<WeeklyRolesResponse> {
+        // Cache-buster (task #87): tras un arranque programado el patrÃ³n cambia
+        // y sin este parÃ¡metro el browser puede servir la semana vieja tras F5.
         const response = await httpClient.get<ApiResponse<WeeklyRolesResponse>>(
             `/api/roles/grupo/${grupoId}/semana`,
-            { fechaInicio }
+            { fechaInicio, _t: Date.now() }
         );
 
         // MEJORA: Manejo flexible de la respuesta del API (soporta data y Data)
@@ -35,9 +37,9 @@ class RolesService {
             throw new Error(errorMsg || 'No se pudo obtener roles semanales');
         }
 
-        // MEJORA: Función de normalización para manejar inconsistencias del backend
+        // MEJORA: Funciï¿½n de normalizaciï¿½n para manejar inconsistencias del backend
         const normalizeEntry = (entry: any): WeeklyRoleEntry => {
-            // Extraer código de turno con múltiples fallbacks
+            // Extraer cï¿½digo de turno con mï¿½ltiples fallbacks
             const rawTurno =
                 entry?.codigoTurno ??
                 entry?.CodigoTurno ??
@@ -74,7 +76,7 @@ class RolesService {
             };
         };
 
-        // MEJORA: Aplicar normalización a todos los entries
+        // MEJORA: Aplicar normalizaciï¿½n a todos los entries
         return {
             grupoId: payload.grupoId ?? payload.GrupoId ?? grupoId,
             grupoNombre: payload.grupoNombre ?? payload.GrupoNombre ?? undefined,

@@ -43,6 +43,18 @@ export const reglasTurnoService = {
         }
     },
 
+    async recargarCache(): Promise<void> {
+        try {
+            await httpClient.post<ApiResponse<unknown>>(`${BASE}/reload-cache`, {});
+        } catch (error: any) {
+            if (error.response?.status === 403) {
+                throw new Error("No tienes permisos para recargar cache");
+            }
+            console.error("Error en reglasTurnoService.recargarCache:", error);
+            throw error;
+        }
+    },
+
     async crear(request: CrearReglaTurnoRequest): Promise<ReglaTurno> {
         try {
             const response = await httpClient.post<ApiResponse<ReglaTurno>>(

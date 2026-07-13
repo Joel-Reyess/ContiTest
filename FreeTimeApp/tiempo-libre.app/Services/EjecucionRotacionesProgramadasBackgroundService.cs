@@ -15,7 +15,9 @@ namespace tiempo_libre.Services
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<EjecucionRotacionesProgramadasBackgroundService> _logger;
-        private readonly TimeSpan _intervalo = TimeSpan.FromHours(1);
+        // Task #87: bajamos a 10 min para reducir latencia entre "fecha llegó"
+        // y "patrón visible en calendario/RolesSemana".
+        private readonly TimeSpan _intervalo = TimeSpan.FromMinutes(10);
 
         public EjecucionRotacionesProgramadasBackgroundService(
             IServiceProvider serviceProvider,
@@ -27,7 +29,7 @@ namespace tiempo_libre.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Ejecución de rotaciones programadas iniciada (cada {H}h)", _intervalo.TotalHours);
+            _logger.LogInformation("Ejecución de rotaciones programadas iniciada (cada {M} min)", _intervalo.TotalMinutes);
 
             // Espera corta al arranque para no colisionar con otras migraciones.
             try { await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken); }

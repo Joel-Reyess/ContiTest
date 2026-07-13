@@ -465,12 +465,19 @@ namespace tiempo_libre.app.Controllers
             // Construir consulta base
             var query = _dbContext.Users
                 .Include(u => u.Roles)
+                .Include(u => u.Grupo)
                 .Where(u => u.Roles.Any(r => r.Id == rolId));
 
             // Aplicar filtros opcionales
+            // Task #88: aceptar tanto Users.AreaId como Grupo.AreaId como fuente
+            // de verdad. Users.AreaId puede quedar null/desactualizado en
+            // sindicalizados que entran por SAP; la fuente confiable es Grupo.AreaId.
             if (request.AreaId.HasValue)
             {
-                query = query.Where(u => u.AreaId == request.AreaId.Value);
+                var areaIdVal = request.AreaId.Value;
+                query = query.Where(u =>
+                    u.AreaId == areaIdVal ||
+                    (u.GrupoId != null && u.Grupo!.AreaId == areaIdVal));
             }
 
             if (request.GrupoId.HasValue)

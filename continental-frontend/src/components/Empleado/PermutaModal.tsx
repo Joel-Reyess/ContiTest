@@ -54,9 +54,11 @@ export const PermutaModal = ({
             if (!showSearch || !empleadoOrigen.area?.areaId) return;
 
             try {
+                // Task #88: subir PageSize para no truncar áreas grandes
+                // (Bladder, Building tienen +200 sindicalizados).
                 const resp = await empleadosService.getEmpleadosSindicalizados({
                     AreaId: empleadoOrigen.area?.areaId,
-                    PageSize: 100,
+                    PageSize: 1000,
                 });
 
                 const filtered = resp.usuarios.filter(
@@ -324,21 +326,41 @@ export const PermutaModal = ({
                                                     </p>
                                                 ) : (
                                                     <div className="space-y-1">
-                                                        {empleadosFiltrados.map((emp) => (
-                                                            <button
-                                                                key={emp.id}
-                                                                onClick={() => {
-                                                                    setEmpleadoDestino(emp);
-                                                                    setShowSearch(false);
-                                                                }}
-                                                                className="w-full text-left p-2 hover:bg-gray-100 rounded text-sm"
-                                                            >
-                                                                <p className="font-medium">{emp.fullName}</p>
-                                                                <p className="text-xs text-gray-600">
-                                                                    Nómina: {emp.nomina}
-                                                                </p>
-                                                            </button>
-                                                        ))}
+                                                        {empleadosFiltrados.map((emp) => {
+                                                            const grupoRol = emp.grupo?.rol;
+                                                            const mismoGrupo =
+                                                                emp.grupo?.grupoId ===
+                                                                empleadoOrigen.grupo?.grupoId;
+                                                            return (
+                                                                <button
+                                                                    key={emp.id}
+                                                                    onClick={() => {
+                                                                        setEmpleadoDestino(emp);
+                                                                        setShowSearch(false);
+                                                                    }}
+                                                                    className="w-full text-left p-2 hover:bg-gray-100 rounded text-sm flex items-start justify-between gap-2"
+                                                                >
+                                                                    <div className="min-w-0">
+                                                                        <p className="font-medium truncate">{emp.fullName}</p>
+                                                                        <p className="text-xs text-gray-600">
+                                                                            Nómina: {emp.nomina}
+                                                                        </p>
+                                                                    </div>
+                                                                    {grupoRol && (
+                                                                        <span
+                                                                            className={`shrink-0 text-[10px] font-mono px-2 py-0.5 rounded border ${
+                                                                                mismoGrupo
+                                                                                    ? "bg-blue-100 text-blue-700 border-blue-200"
+                                                                                    : "bg-amber-100 text-amber-800 border-amber-300"
+                                                                            }`}
+                                                                            title={mismoGrupo ? "Mismo grupo" : "Grupo distinto"}
+                                                                        >
+                                                                            {grupoRol}
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
@@ -352,6 +374,20 @@ export const PermutaModal = ({
                                             </p>
                                             <p className="text-xs text-green-700">
                                                 Nómina: {empleadoDestino.nomina}
+                                                {empleadoDestino.grupo?.rol && (
+                                                    <>
+                                                        {" • Grupo: "}
+                                                        <span className="font-mono font-semibold">
+                                                            {empleadoDestino.grupo.rol}
+                                                        </span>
+                                                        {empleadoDestino.grupo.grupoId !==
+                                                            empleadoOrigen.grupo?.grupoId && (
+                                                            <span className="ml-1 text-amber-700">
+                                                                (distinto al origen)
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                )}
                                             </p>
                                         </div>
                                         <Button

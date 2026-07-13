@@ -66,6 +66,27 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>
+        /// Fuerza al servidor a recargar el cache de reglas desde la BD.
+        /// Útil cuando se ejecutó un arranque programado y los usuarios no
+        /// ven aún el patrón nuevo (p.ej. IIS con múltiples workers).
+        /// </summary>
+        [HttpPost("reload-cache")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        public IActionResult ReloadCache()
+        {
+            try
+            {
+                _service.ForzarRecargaCache();
+                return Ok(new ApiResponse<object>(true, new { reloaded = true }, null));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al recargar cache de reglas");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
         /// <summary>Alta manual de una regla que no llegó por SAP (solo SuperUsuario).</summary>
         [HttpPost]
         [Authorize(Roles = "Super Usuario,SuperUsuario")]

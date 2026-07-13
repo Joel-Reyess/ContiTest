@@ -394,6 +394,21 @@ export const ReglasTurnos = () => {
                     </Button>
                     <Button
                         variant="outline"
+                        onClick={async () => {
+                            try {
+                                await reglasTurnoService.recargarCache();
+                                toast.success("Cache de reglas recargada — el calendario ya refleja el patrón vigente");
+                                await cargar();
+                            } catch (e: any) {
+                                toast.error(e?.message ?? "Error al recargar cache");
+                            }
+                        }}
+                        title="Fuerza al servidor a releer el patrón desde BD (útil tras un arranque programado)"
+                    >
+                        Recargar cache
+                    </Button>
+                    <Button
+                        variant="outline"
                         onClick={() => setCreandoNueva(true)}
                         title="Alta manual: crear regla que no llegó por SAP"
                         className="border-continental-yellow text-continental-black hover:bg-continental-yellow/10"

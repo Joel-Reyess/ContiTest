@@ -24,6 +24,17 @@ namespace tiempo_libre.Services
             _db = db;
         }
 
+        /// <summary>
+        /// Fuerza recarga del cache in-memory de TurnosHelper. Útil cuando
+        /// IIS tiene múltiples workers: el arranque ejecutado en un worker
+        /// solo refresca su propia cache; llamando este endpoint desde el
+        /// SuperUsuario propagamos al worker que atiende esta petición.
+        /// </summary>
+        public void ForzarRecargaCache()
+        {
+            TurnosHelper.Reload(_db);
+        }
+
         public async Task<List<ReglaTurnoDto>> GetAllAsync()
         {
             var reglas = await _db.ReglasTurno
