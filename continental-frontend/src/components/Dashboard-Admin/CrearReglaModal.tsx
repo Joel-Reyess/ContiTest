@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, RotateCcw } from "lucide-react";
+import { Building2, Loader2, Plus, RotateCcw } from "lucide-react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
+import { areasService } from "@/services/areasService";
+import type { ReglaTurno } from "@/interfaces/Api.interface";
+import type { Area, Grupo } from "@/interfaces/Areas.interface";
 
 interface Props {
     onClose: () => void;
@@ -32,9 +35,20 @@ const turnoColor = (turno: string): string => {
 };
 
 /**
- * Alta manual de una regla desde SuperUsuario (task #85 extended).
- * Útil cuando la regla existe en el Excel de RolesEmpleadosSAP pero no se ha
- * reflejado en la app (no llegó por sync o el auto-descubrimiento no la halló).
+ * Extrae la "base" de un código: R0267_04 → R0267, R0267 → R0267.
+ * Toda regla con la misma base pertenece a la misma familia.
+ */
+const extraerBase = (code: string): string => {
+    const c = code.trim().toUpperCase();
+    const m = c.match(/^([A-Z0-9-]+?)(?:_\d+)?$/);
+    return m ? m[1] : c;
+};
+
+/**
+ * Alta manual de una regla desde SuperUsuario (task #85 / #89).
+ * Muestra vista previa de reglas hermanas de la misma familia (por prefijo del
+ * código) con sus patrones y áreas donde ya están asignadas. Permite además
+ * asignar la nueva regla a un área en el mismo paso (crear + asignar).
  */
 export function CrearReglaModal({ onClose, onCreada }: Props) {
     const [codigo, setCodigo] = useState("");
@@ -42,6 +56,34 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
     const [patron, setPatron] = useState<string[]>(() => Array.from({ length: 4 * 7 }, () => "D"));
     const [notas, setNotas] = useState("");
     const [saving, setSaving] = useState(false);
+
+    const [reglasTodas, setReglasTodas] = useState<ReglaTurno[]>([]);
+    const [gruposTodos, setGruposTodos] = useState<Grupo[]>([]);
+    const [areasTodas, setAreasTodas] = useState<Area[]>([]);
+    const [loadingContexto, setLoadingContexto] = useState(true);
+
+    const [asignarAhora, setAsignarAhora] = useState(false);
+    const [areaIdAsig, setAreaIdAsig] = useState<number | "">("");
+    const [cantSubGrupos, setCantSubGrupos] = useState<number>(1);
+
+    // Carga en paralelo: reglas + grupos + áreas para poder mostrar la familia.
+    useEffect(() => {
+        let cancel = false;
+        setLoadingContexto(true);
+        Promise.all([
+            reglasTurnoService.getAll().catch(() => [] as ReglaTurno[]),
+            areasService.getGroups().catch(() => [] as Grupo[]),
+            areasService.getAreas().catch(() => [] as Area[]),
+        ])
+            .then(([rs, gs, as]) => {
+                if (cancel) return;
+                setReglasTodas(rs || []);
+                setGruposTodos(gs || []);
+                setAreasTodas(as || []);
+            })
+            .finally(() => { if (!cancel) setLoadingContexto(false); });
+        return () => { cancel = true; };
+    }, []);
 
     const setCelda = (idx: number, v: string) => {
         const val = (v || "").trim().toUpperCase().slice(0, 2);
@@ -75,6 +117,69 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
         return patron.every(c => c && c.trim().length > 0);
     }, [patron]);
 
+    const areasById = useMemo(
+        () => new Map(areasTodas.map(a => [a.areaId, a])),
+        [areasTodas]
+    );
+
+    const baseCodigo = useMemo(() => extraerBase(codigo), [codigo]);
+    const codigoUp = useMemo(() => codigo.trim().toUpperCase(), [codigo]);
+
+    /**
+     * Reglas de la misma familia: comparten base. Excluye la que se está
+     * capturando ahora. Para cada hermana busca en Grupos las áreas donde ya
+     * está asignada (uno o varias, ya que puede existir el mismo código en
+     * distintas áreas si históricamente se replicó).
+     */
+    const familia = useMemo(() => {
+        if (!baseCodigo || baseCodigo.length < 2) return [];
+        return reglasTodas
+            .filter(r =>
+                (r.codigo === baseCodigo || r.codigo.startsWith(baseCodigo + "_"))
+                && r.codigo !== codigoUp
+            )
+            .map(r => {
+                const gs = gruposTodos.filter(g =>
+                    g.rol === r.codigo || g.rol.startsWith(r.codigo + "_")
+                );
+                const areas = Array.from(new Set(
+                    gs.map(g => areasById.get(g.areaId)?.nombreGeneral)
+                      .filter((n): n is string => !!n)
+                ));
+                return { regla: r, areas };
+            })
+            .sort((a, b) => a.regla.codigo.localeCompare(b.regla.codigo));
+    }, [baseCodigo, codigoUp, reglasTodas, gruposTodos, areasById]);
+
+    /**
+     * Sugerencia de área basada en las hermanas: si todas las que ya existen
+     * apuntan a una sola área, la sugerimos como default para "asignar ahora".
+     */
+    useEffect(() => {
+        if (asignarAhora && areaIdAsig === "" && familia.length > 0) {
+            const areasUnicas = Array.from(new Set(
+                familia.flatMap(f => f.areas)
+            ));
+            if (areasUnicas.length === 1) {
+                const areaMatch = areasTodas.find(a => a.nombreGeneral === areasUnicas[0]);
+                if (areaMatch) setAreaIdAsig(areaMatch.areaId);
+            }
+        }
+    }, [asignarAhora, familia, areasTodas, areaIdAsig]);
+
+    // Al cambiar semanas mantenemos cantSubGrupos en rango válido.
+    useEffect(() => {
+        if (cantSubGrupos > semanas) setCantSubGrupos(semanas);
+    }, [semanas, cantSubGrupos]);
+
+    const nombresSubGrupos = useMemo(() => {
+        const arr: string[] = [];
+        for (let i = 1; i <= cantSubGrupos; i++) {
+            arr.push(i === 1 ? codigoUp : `${codigoUp}_${String(i).padStart(2, "0")}`);
+        }
+        return arr;
+    }, [cantSubGrupos, codigoUp]);
+
     const handleSubmit = async () => {
         if (!codigoValido) {
             toast.error("El código debe ser alfanumérico (letras, dígitos, guion/guion bajo), máx. 20 caracteres.");
@@ -84,14 +189,32 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
             toast.error("El patrón debe estar completo (múltiplo de 7 y sin celdas vacías).");
             return;
         }
+        if (asignarAhora && !areaIdAsig) {
+            toast.error("Selecciona el área destino o desactiva la asignación en línea.");
+            return;
+        }
+        if (asignarAhora && (cantSubGrupos < 1 || cantSubGrupos > semanas)) {
+            toast.error(`La cantidad de sub-grupos debe estar entre 1 y ${semanas}.`);
+            return;
+        }
         setSaving(true);
         try {
             const nueva = await reglasTurnoService.crear({
-                codigo: codigo.trim().toUpperCase(),
+                codigo: codigoUp,
                 patron: patron.map(c => c.trim().toUpperCase()),
                 notas: notas.trim() || undefined,
             });
-            toast.success(`Regla ${nueva.codigo} creada (${nueva.estado})`);
+
+            if (asignarAhora && areaIdAsig) {
+                await reglasTurnoService.asignarAArea(nueva.codigo, {
+                    areaId: Number(areaIdAsig),
+                    cantidadSubGrupos: cantSubGrupos,
+                });
+                const areaNombre = areasById.get(Number(areaIdAsig))?.nombreGeneral ?? `Área ${areaIdAsig}`;
+                toast.success(`Regla ${nueva.codigo} creada y asignada a ${areaNombre} (${cantSubGrupos} sub-grupo${cantSubGrupos === 1 ? "" : "s"})`);
+            } else {
+                toast.success(`Regla ${nueva.codigo} creada (${nueva.estado})`);
+            }
             onCreada?.();
             onClose();
         } catch (e: any) {
@@ -103,7 +226,7 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
 
     return (
         <AlertDialog open onOpenChange={(open) => !open && !saving && onClose()}>
-            <AlertDialogContent className="max-w-4xl">
+            <AlertDialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <AlertDialogHeader>
                     <AlertDialogTitle className="flex items-center gap-2">
                         <Plus className="size-5 text-continental-yellow" />
@@ -114,7 +237,7 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                             <p>
                                 Alta manual cuando la regla existe en el <em>Excel de SAP</em> pero
                                 no aparece en la app. Captura código y patrón — al guardar quedará
-                                <strong> Activa</strong> y podrás asignarla a un área.
+                                <strong> Activa</strong>. Puedes asignarla al área en el mismo paso.
                             </p>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -125,12 +248,17 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                                         value={codigo}
                                         onChange={(e) => setCodigo(e.target.value)}
                                         maxLength={20}
-                                        placeholder="Ej. R0144"
+                                        placeholder="Ej. R0144 o R0267_04"
                                         className="w-full border rounded px-2 py-2 text-sm font-mono uppercase"
                                     />
                                     {!codigoValido && codigo.length > 0 && (
                                         <div className="mt-1 text-[11px] text-red-600">
                                             Solo letras, dígitos, guion o guion bajo. Máx. 20.
+                                        </div>
+                                    )}
+                                    {baseCodigo && baseCodigo !== codigoUp && (
+                                        <div className="mt-1 text-[11px] text-continental-gray-1">
+                                            Familia detectada: <span className="font-mono">{baseCodigo}</span>
                                         </div>
                                     )}
                                 </div>
@@ -147,6 +275,79 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                                     />
                                 </div>
                             </div>
+
+                            {/* --- Vista previa de familia (task #89) --- */}
+                            {codigo.length >= 2 && (
+                                <div className="rounded-lg border border-continental-gray-3 bg-continental-gray-4/20 p-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-xs font-semibold">
+                                            Reglas relacionadas (familia <span className="font-mono">{baseCodigo || "?"}</span>)
+                                        </div>
+                                        {loadingContexto && <Loader2 className="size-3 animate-spin text-continental-gray-1" />}
+                                    </div>
+                                    {loadingContexto ? (
+                                        <div className="text-[11px] text-continental-gray-1">Cargando contexto…</div>
+                                    ) : familia.length === 0 ? (
+                                        <div className="text-[11px] text-continental-gray-1">
+                                            No hay otras reglas registradas con esta base. Estás creando la primera de la familia.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {familia.map(({ regla, areas }) => {
+                                                const semanasR = Math.floor(regla.patron.length / 7);
+                                                return (
+                                                    <div key={regla.codigo} className="bg-white rounded border border-continental-gray-3 p-2">
+                                                        <div className="flex items-center justify-between gap-2 mb-1 text-[11px]">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-mono font-semibold">{regla.codigo}</span>
+                                                                <span className="text-continental-gray-1">
+                                                                    {semanasR} sem · {regla.estado}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-continental-gray-1">
+                                                                {areas.length === 0
+                                                                    ? "sin área asignada"
+                                                                    : <>Área: <span className="font-medium text-continental-black">{areas.join(", ")}</span></>}
+                                                            </div>
+                                                        </div>
+                                                        {regla.patron.length > 0 && (
+                                                            <div className="overflow-x-auto">
+                                                                <table className="text-[10px] font-mono">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th className="text-left pr-2 pb-0.5">S</th>
+                                                                            {HEADERS_DIA.map(h => (
+                                                                                <th key={h} className="px-1 pb-0.5 text-center">{h}</th>
+                                                                            ))}
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {Array.from({ length: semanasR }).map((_, sg) => (
+                                                                            <tr key={sg}>
+                                                                                <td className="pr-2 py-0 text-continental-gray-1">S{sg + 1}</td>
+                                                                                {HEADERS_DIA.map((_, d) => {
+                                                                                    const v = regla.patron[sg * 7 + d] ?? "";
+                                                                                    return (
+                                                                                        <td key={d}
+                                                                                            className={`px-1 py-0.5 text-center border ${turnoColor(v)}`}
+                                                                                        >
+                                                                                            {v}
+                                                                                        </td>
+                                                                                    );
+                                                                                })}
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div>
                                 <div className="flex items-center justify-between mb-1">
@@ -190,7 +391,7 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                                             {Array.from({ length: semanas }).map((_, sg) => (
                                                 <tr key={sg} className="border-t">
                                                     <td className="px-2 py-0.5 whitespace-nowrap text-continental-gray-1">
-                                                        {sg === 0 ? (codigo.toUpperCase() || "—") : `${codigo.toUpperCase() || "—"}_${String(sg + 1).padStart(2, "0")}`}
+                                                        {sg === 0 ? (codigoUp || "—") : `${codigoUp || "—"}_${String(sg + 1).padStart(2, "0")}`}
                                                     </td>
                                                     {HEADERS_DIA.map((_, d) => {
                                                         const idx = sg * 7 + d;
@@ -217,6 +418,61 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                                     {!patronValido && <span className="text-red-600 ml-2">Completa todas las celdas.</span>}
                                 </div>
                             </div>
+
+                            {/* --- Asignar a área en línea (task #89) --- */}
+                            <div className="rounded-lg border border-continental-gray-3 p-3">
+                                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={asignarAhora}
+                                        onChange={(e) => setAsignarAhora(e.target.checked)}
+                                        className="size-4"
+                                    />
+                                    <Building2 className="size-4 text-continental-yellow" />
+                                    <span className="font-medium">Asignar a un área ahora</span>
+                                    <span className="text-[11px] text-continental-gray-1">
+                                        (crea los sub-grupos en el área en el mismo paso)
+                                    </span>
+                                </label>
+
+                                {asignarAhora && (
+                                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <Label className="text-xs">Área destino</Label>
+                                            <select
+                                                value={areaIdAsig === "" ? "" : String(areaIdAsig)}
+                                                onChange={(e) => setAreaIdAsig(e.target.value ? Number(e.target.value) : "")}
+                                                className="w-full border rounded px-2 py-2 text-sm"
+                                                disabled={loadingContexto}
+                                            >
+                                                <option value="">— Selecciona un área —</option>
+                                                {areasTodas.map(a => (
+                                                    <option key={a.areaId} value={a.areaId}>
+                                                        {a.nombreGeneral} ({a.unidadOrganizativaSap})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <Label className="text-xs">
+                                                Cantidad de sub-grupos <span className="text-continental-gray-1">(máx. {semanas})</span>
+                                            </Label>
+                                            <input
+                                                type="number"
+                                                value={cantSubGrupos}
+                                                min={1}
+                                                max={semanas}
+                                                onChange={(e) => setCantSubGrupos(Math.max(1, Math.min(semanas, Number(e.target.value) || 1)))}
+                                                className="w-full border rounded px-2 py-2 text-sm"
+                                            />
+                                            <div className="mt-1 text-[11px] text-continental-gray-1">
+                                                Se crearán: <span className="font-mono">{nombresSubGrupos.join(", ") || "—"}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -224,10 +480,12 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                     <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={(e) => { e.preventDefault(); handleSubmit(); }}
-                        disabled={saving || !codigoValido || !patronValido}
+                        disabled={saving || !codigoValido || !patronValido || (asignarAhora && !areaIdAsig)}
                     >
                         {saving ? (
-                            <><Loader2 className="size-4 animate-spin mr-1" /> Creando…</>
+                            <><Loader2 className="size-4 animate-spin mr-1" /> Guardando…</>
+                        ) : asignarAhora ? (
+                            <>Crear y asignar</>
                         ) : (
                             <>Crear regla</>
                         )}
