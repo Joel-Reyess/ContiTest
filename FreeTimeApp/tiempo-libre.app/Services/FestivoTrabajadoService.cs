@@ -31,6 +31,29 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Match tolerante entre la nómina del empleado y el valor tal como
+        /// vino del Excel (con espacios, ceros a la izquierda, ".00", comas…).
+        /// </summary>
+        private static bool NominaCoincide(string? uploadNomina, int? empNomina, string empNominaStr)
+        {
+            if (string.IsNullOrWhiteSpace(uploadNomina)) return false;
+            var t = uploadNomina.Trim();
+            if (string.Equals(t, empNominaStr, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!empNomina.HasValue) return false;
+            if (int.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
+                && i == empNomina.Value)
+                return true;
+            if (decimal.TryParse(t, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)
+                && d == empNomina.Value)
+                return true;
+            // Último recurso: comparar sólo dígitos (elimina puntos, comas, guiones).
+            var digitos = new string(t.Where(char.IsDigit).ToArray()).TrimStart('0');
+            var target = empNomina.Value.ToString(CultureInfo.InvariantCulture);
+            return digitos.Length > 0 && digitos == target;
+        }
+
+        /// <summary>
         /// Solicitar el intercambio de un festivo trabajado por un día de vacaciones
         /// Similar a reprogramación: auto-aprueba si no excede porcentaje, sino crea solicitud pendiente
         /// </summary>
@@ -53,13 +76,24 @@ namespace tiempo_libre.Services
                     return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null, "Empleado no encontrado o inactivo");
 
                 var nominaStr = empleado.Nomina?.ToString() ?? empleado.Username;
+                var nominaInt = empleado.Nomina;
                 var fechaStr1 = fechaFestivo.ToString("yyyy-MM-dd");
                 var fechaStr2 = fechaFestivo.ToString("dd-MM-yyyy");
                 var fechaStr3 = fechaFestivo.ToString("dd/MM/yyyy");
 
-                var registroUpload = await _db.FestivosEmpleadosTrabajadosUpload
-                    .FirstOrDefaultAsync(f => f.Nomina == nominaStr &&
-                                              (f.FechaTrabajada == fechaStr1 || f.FechaTrabajada == fechaStr2 || f.FechaTrabajada == fechaStr3));
+                // Match tolerante: el Excel puede traer ".00", ceros a la izquierda,
+                // espacios o comas. Filtramos por fecha en SQL y por nómina en memoria.
+                var candidatos = await _db.FestivosEmpleadosTrabajadosUpload
+                    .Where(f => f.Nomina != null &&
+                                (f.FechaTrabajada == fechaStr1 ||
+                                 f.FechaTrabajada == fechaStr2 ||
+                                 f.FechaTrabajada == fechaStr3) &&
+                                (f.Nomina == nominaStr || f.Nomina.Contains(nominaStr)))
+                    .Select(f => new { f.Nomina, f.FechaTrabajada })
+                    .ToListAsync();
+
+                var registroUpload = candidatos
+                    .FirstOrDefault(c => NominaCoincide(c.Nomina, nominaInt, nominaStr));
 
                 if (registroUpload == null)
                     return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
@@ -654,18 +688,17 @@ namespace tiempo_libre.Services
                             .ToListAsync();
 
                         var fechasUpload = uploadsRaw
-                            .Where(x =>
-                            {
-                                var t = (x.Nomina ?? "").Trim();
-                                if (string.Equals(t, nominaStr, StringComparison.OrdinalIgnoreCase))
-                                    return true;
-                                if (nominaInt.HasValue && int.TryParse(t, out var parsed)
-                                    && parsed == nominaInt.Value)
-                                    return true;
-                                return false;
-                            })
+                            .Where(x => NominaCoincide(x.Nomina, nominaInt, nominaStr))
                             .Select(x => x.FechaTrabajada)
                             .ToList();
+
+                        if (fechasUpload.Count == 0 && uploadsRaw.Count > 0)
+                        {
+                            _logger.LogWarning(
+                                "Festivos: {N} filas candidatas pero ninguna coincidió para empleadoId={Id} nomina={Nomina}. Muestras: {Muestras}",
+                                uploadsRaw.Count, request.EmpleadoId, nominaStr,
+                                string.Join(", ", uploadsRaw.Take(5).Select(u => $"'{u.Nomina}'")));
+                        }
 
                         // Cargar solicitudes ya existentes
                         var solicitudesExistentes = await _db.SolicitudesFestivosTrabajados
@@ -771,28 +804,32 @@ namespace tiempo_libre.Services
                     Grupo = emp.Grupo,
                 };
 
-                // Mismo criterio que ConsultarFestivosTrabajadosAsync:
+                // Mismo criterio que ConsultarFestivosTrabajadosAsync (match tolerante):
                 var nominaMatch = emp.Nomina?.ToString() ?? emp.Username;
                 resp.NominaUsadaParaMatch = nominaMatch;
 
-                var uploadRecords = await _db.FestivosEmpleadosTrabajadosUpload
-                    .Where(f => f.Nomina == nominaMatch)
-                    .Select(f => f.FechaTrabajada)
+                var candidatosRaw = await _db.FestivosEmpleadosTrabajadosUpload
+                    .Where(f => f.Nomina != null &&
+                                (f.Nomina == nominaMatch || f.Nomina.Contains(nominaMatch)))
+                    .Select(f => new { f.Nomina, f.FechaTrabajada })
                     .ToListAsync();
+
+                var uploadRecords = candidatosRaw
+                    .Where(c => NominaCoincide(c.Nomina, emp.Nomina, nominaMatch))
+                    .Select(c => c.FechaTrabajada)
+                    .ToList();
 
                 if (uploadRecords.Count == 0)
                 {
-                    // Buscar registros con LIKE para detectar problemas de padding/espacios
-                    var aproximados = await _db.FestivosEmpleadosTrabajadosUpload
-                        .Where(f => f.Nomina != null && f.Nomina.Contains(nominaTrim))
-                        .Select(f => f.Nomina)
-                        .Distinct()
-                        .Take(5)
-                        .ToListAsync();
-                    if (aproximados.Count > 0)
-                        resp.Notas.Add($"No hay match exacto en FestivosEmpleadosTrabajadosUpload con Nomina='{nominaMatch}'. Sí hay registros parecidos: {string.Join(", ", aproximados.Select(a => "'" + a + "'"))}. Probable problema de formato (espacios, ceros a la izquierda).");
+                    if (candidatosRaw.Count > 0)
+                    {
+                        var muestras = candidatosRaw.Take(5).Select(c => "'" + c.Nomina + "'");
+                        resp.Notas.Add($"Se encontraron {candidatosRaw.Count} filas con nómina parecida pero ninguna coincidió con '{nominaMatch}' tras normalizar. Muestras: {string.Join(", ", muestras)}. Revisar formato en el Excel.");
+                    }
                     else
+                    {
                         resp.Notas.Add($"No hay registros en FestivosEmpleadosTrabajadosUpload para esta nómina. Sarahí necesita subir/insertar el Excel.");
+                    }
                 }
 
                 // Solicitudes que bloquean
