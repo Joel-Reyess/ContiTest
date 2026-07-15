@@ -63,7 +63,8 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
     const [loadingContexto, setLoadingContexto] = useState(true);
 
     const [asignarAhora, setAsignarAhora] = useState(false);
-    const [areaIdAsig, setAreaIdAsig] = useState<number | "">("");
+    const [areaIdsAsig, setAreaIdsAsig] = useState<number[]>([]);
+    const [filtroArea, setFiltroArea] = useState("");
     const [cantSubGrupos, setCantSubGrupos] = useState<number>(1);
 
     // Carga en paralelo: reglas + grupos + áreas para poder mostrar la familia.
@@ -152,20 +153,33 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
     }, [baseCodigo, codigoUp, reglasTodas, gruposTodos, areasById]);
 
     /**
-     * Sugerencia de área basada en las hermanas: si todas las que ya existen
-     * apuntan a una sola área, la sugerimos como default para "asignar ahora".
+     * Sugerencia inicial: si activaste "asignar ahora" y aún no eliges áreas,
+     * preseleccionamos las que ya usan reglas hermanas de la misma familia.
      */
     useEffect(() => {
-        if (asignarAhora && areaIdAsig === "" && familia.length > 0) {
-            const areasUnicas = Array.from(new Set(
-                familia.flatMap(f => f.areas)
-            ));
-            if (areasUnicas.length === 1) {
-                const areaMatch = areasTodas.find(a => a.nombreGeneral === areasUnicas[0]);
-                if (areaMatch) setAreaIdAsig(areaMatch.areaId);
-            }
+        if (asignarAhora && areaIdsAsig.length === 0 && familia.length > 0) {
+            const nombresSugeridos = Array.from(new Set(familia.flatMap(f => f.areas)));
+            const ids = areasTodas
+                .filter(a => nombresSugeridos.includes(a.nombreGeneral))
+                .map(a => a.areaId);
+            if (ids.length > 0) setAreaIdsAsig(ids);
         }
-    }, [asignarAhora, familia, areasTodas, areaIdAsig]);
+    }, [asignarAhora, familia, areasTodas, areaIdsAsig.length]);
+
+    const toggleArea = (areaId: number) => {
+        setAreaIdsAsig(prev =>
+            prev.includes(areaId) ? prev.filter(id => id !== areaId) : [...prev, areaId]
+        );
+    };
+
+    const areasFiltradas = useMemo(() => {
+        const q = filtroArea.trim().toLowerCase();
+        if (!q) return areasTodas;
+        return areasTodas.filter(a =>
+            (a.nombreGeneral || "").toLowerCase().includes(q) ||
+            (a.unidadOrganizativaSap || "").toLowerCase().includes(q)
+        );
+    }, [areasTodas, filtroArea]);
 
     // Al cambiar semanas mantenemos cantSubGrupos en rango válido.
     useEffect(() => {
@@ -189,8 +203,8 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
             toast.error("El patrón debe estar completo (múltiplo de 7 y sin celdas vacías).");
             return;
         }
-        if (asignarAhora && !areaIdAsig) {
-            toast.error("Selecciona el área destino o desactiva la asignación en línea.");
+        if (asignarAhora && areaIdsAsig.length === 0) {
+            toast.error("Selecciona al menos un área destino o desactiva la asignación en línea.");
             return;
         }
         if (asignarAhora && (cantSubGrupos < 1 || cantSubGrupos > semanas)) {
@@ -205,13 +219,31 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                 notas: notas.trim() || undefined,
             });
 
-            if (asignarAhora && areaIdAsig) {
-                await reglasTurnoService.asignarAArea(nueva.codigo, {
-                    areaId: Number(areaIdAsig),
-                    cantidadSubGrupos: cantSubGrupos,
-                });
-                const areaNombre = areasById.get(Number(areaIdAsig))?.nombreGeneral ?? `Área ${areaIdAsig}`;
-                toast.success(`Regla ${nueva.codigo} creada y asignada a ${areaNombre} (${cantSubGrupos} sub-grupo${cantSubGrupos === 1 ? "" : "s"})`);
+            if (asignarAhora && areaIdsAsig.length > 0) {
+                const ok: string[] = [];
+                const fail: { area: string; msg: string }[] = [];
+                for (const areaId of areaIdsAsig) {
+                    const nombre = areasById.get(areaId)?.nombreGeneral ?? `Área ${areaId}`;
+                    try {
+                        await reglasTurnoService.asignarAArea(nueva.codigo, {
+                            areaId,
+                            cantidadSubGrupos: cantSubGrupos,
+                        });
+                        ok.push(nombre);
+                    } catch (e: any) {
+                        fail.push({ area: nombre, msg: e?.message ?? "Error desconocido" });
+                    }
+                }
+                if (ok.length > 0) {
+                    toast.success(
+                        `Regla ${nueva.codigo} creada y asignada a ${ok.length} área${ok.length === 1 ? "" : "s"} (${cantSubGrupos} sub-grupo${cantSubGrupos === 1 ? "" : "s"} c/u): ${ok.join(", ")}`
+                    );
+                }
+                if (fail.length > 0) {
+                    toast.error(
+                        `No se pudo asignar en ${fail.length}: ${fail.map(f => `${f.area} (${f.msg})`).join(" · ")}`
+                    );
+                }
             } else {
                 toast.success(`Regla ${nueva.codigo} creada (${nueva.estado})`);
             }
@@ -436,27 +468,75 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                                 </label>
 
                                 {asignarAhora && (
-                                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="mt-3 space-y-3">
                                         <div>
-                                            <Label className="text-xs">Área destino</Label>
-                                            <select
-                                                value={areaIdAsig === "" ? "" : String(areaIdAsig)}
-                                                onChange={(e) => setAreaIdAsig(e.target.value ? Number(e.target.value) : "")}
-                                                className="w-full border rounded px-2 py-2 text-sm"
+                                            <div className="flex items-center justify-between mb-1">
+                                                <Label className="text-xs">
+                                                    Áreas destino{" "}
+                                                    <span className="text-continental-gray-1">
+                                                        ({areaIdsAsig.length} seleccionada{areaIdsAsig.length === 1 ? "" : "s"})
+                                                    </span>
+                                                </Label>
+                                                <div className="flex items-center gap-2 text-[11px]">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAreaIdsAsig(areasFiltradas.map(a => a.areaId))}
+                                                        className="px-2 py-0.5 border rounded hover:bg-continental-gray-4"
+                                                        disabled={loadingContexto || areasFiltradas.length === 0}
+                                                    >
+                                                        Seleccionar todas
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAreaIdsAsig([])}
+                                                        className="px-2 py-0.5 border rounded hover:bg-continental-gray-4"
+                                                        disabled={areaIdsAsig.length === 0}
+                                                    >
+                                                        Limpiar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={filtroArea}
+                                                onChange={(e) => setFiltroArea(e.target.value)}
+                                                placeholder="Filtrar por nombre o unidad SAP…"
+                                                className="w-full border rounded px-2 py-1.5 text-sm mb-1"
                                                 disabled={loadingContexto}
-                                            >
-                                                <option value="">— Selecciona un área —</option>
-                                                {areasTodas.map(a => (
-                                                    <option key={a.areaId} value={a.areaId}>
-                                                        {a.nombreGeneral} ({a.unidadOrganizativaSap})
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            />
+                                            <div className="max-h-48 overflow-y-auto border rounded bg-white divide-y">
+                                                {loadingContexto ? (
+                                                    <div className="px-2 py-3 text-[11px] text-continental-gray-1">Cargando áreas…</div>
+                                                ) : areasFiltradas.length === 0 ? (
+                                                    <div className="px-2 py-3 text-[11px] text-continental-gray-1">Sin resultados.</div>
+                                                ) : (
+                                                    areasFiltradas.map(a => {
+                                                        const checked = areaIdsAsig.includes(a.areaId);
+                                                        return (
+                                                            <label
+                                                                key={a.areaId}
+                                                                className={`flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-continental-gray-4/40 ${checked ? "bg-continental-yellow/10" : ""}`}
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={checked}
+                                                                    onChange={() => toggleArea(a.areaId)}
+                                                                    className="size-4"
+                                                                />
+                                                                <span className="flex-1">{a.nombreGeneral}</span>
+                                                                <span className="text-[11px] text-continental-gray-1 font-mono">
+                                                                    {a.unidadOrganizativaSap}
+                                                                </span>
+                                                            </label>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div>
                                             <Label className="text-xs">
-                                                Cantidad de sub-grupos <span className="text-continental-gray-1">(máx. {semanas})</span>
+                                                Cantidad de sub-grupos por área <span className="text-continental-gray-1">(máx. {semanas})</span>
                                             </Label>
                                             <input
                                                 type="number"
@@ -467,7 +547,7 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                                                 className="w-full border rounded px-2 py-2 text-sm"
                                             />
                                             <div className="mt-1 text-[11px] text-continental-gray-1">
-                                                Se crearán: <span className="font-mono">{nombresSubGrupos.join(", ") || "—"}</span>
+                                                Se crearán por cada área: <span className="font-mono">{nombresSubGrupos.join(", ") || "—"}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -480,7 +560,7 @@ export function CrearReglaModal({ onClose, onCreada }: Props) {
                     <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={(e) => { e.preventDefault(); handleSubmit(); }}
-                        disabled={saving || !codigoValido || !patronValido || (asignarAhora && !areaIdAsig)}
+                        disabled={saving || !codigoValido || !patronValido || (asignarAhora && areaIdsAsig.length === 0)}
                     >
                         {saving ? (
                             <><Loader2 className="size-4 animate-spin mr-1" /> Guardando…</>
