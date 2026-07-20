@@ -24,6 +24,8 @@ export const getUserRole = (user: any): string | null => {
         const priorityOrder = [
             UserRole.SUPER_ADMIN,
             UserRole.ADMIN,
+            UserRole.GERENTE_BT,
+            UserRole.RH,
             UserRole.AREA_ADMIN,
             UserRole.LEADER,
             UserRole.INDUSTRIAL,
@@ -77,6 +79,8 @@ export const getNavigationItems = (userRole: string): NavItem[] => {
         case UserRole.AREA_ADMIN:
         case UserRole.LEADER:
         case UserRole.INDUSTRIAL:
+        case UserRole.GERENTE_BT:
+        case UserRole.RH:
             return [
                 { to: "/area/calendario", label: "Calendario", icon: React.createElement(Calendar) },
                 { to: "/area/solicitudes", label: "Solicitudes", icon: React.createElement(File) },
@@ -106,6 +110,8 @@ export const getBasePath = (userRole: string): string => {
         case UserRole.AREA_ADMIN:
         case UserRole.LEADER:
         case UserRole.INDUSTRIAL:
+        case UserRole.GERENTE_BT:
+        case UserRole.RH:
             return "/area";
         
         case UserRole.UNION_REPRESENTATIVE:

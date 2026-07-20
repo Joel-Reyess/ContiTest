@@ -68,18 +68,20 @@ const AreaDashboard = (): JSX.Element => {
     const { hasRole } = useAuth();
     const isLeader = hasRole(UserRole.LEADER);
     const isIndustrial = hasRole(UserRole.INDUSTRIAL);
+    const isGerenteBT = hasRole(UserRole.GERENTE_BT);
+    const isRH = hasRole(UserRole.RH);
 
     const navItems = [
         { to: "/area/calendario", label: "Calendario", icon: <Calendar /> },
         { to: "/area/roles-semanales", label: "Roles semanales", icon: <CalendarClock /> },
-        // Dashboard de gráficos restringido a sus áreas asignadas (filtrado en backend
-        // por DashboardController.GetAreasPermitidasAsync). Jefe de Área e Ingeniero
-        // Industrial pueden verlo; el líder de turno no.
+        // Dashboard de gráficos: LEADER no puede verlo. Gerente BT / RH sí (planta completa).
         ...(!isLeader ? [{ to: "/area/dashboard", label: "Dashboard", icon: <BarChart3 /> }] : []),
-        // Solo mostrar Solicitudes si NO es LEADER ni INDUSTRIAL
-        ...(!isLeader && !isIndustrial ? [{ to: "/area/solicitudes", label: "Solicitudes", icon: <File /> }] : []),
+        // Solicitudes: LEADER e INDUSTRIAL no las ven. Gerente BT tampoco. RH sí, pero en modo lectura.
+        ...(!isLeader && !isIndustrial && !isGerenteBT
+            ? [{ to: "/area/solicitudes", label: "Solicitudes", icon: <File /> }]
+            : []),
         { to: "/area/plantilla", label: "Plantilla", icon: <Users /> },
-        // Solo mostrar Reportes si NO es LEADER
+        // Reportes: LEADER no lo ve. Gerente BT y RH sí.
         ...(!isLeader ? [{ to: "/area/reportes", label: "Reportes", icon: <FileChartColumn /> }] : []),
         //// Transferencia de personal solo para INDUSTRIAL
         //...(isIndustrial ? [{ to: "/area/transferencia-personal", label: "Transferencia", icon: <ArrowLeftRight /> }] : []),
@@ -121,8 +123,8 @@ const AreaDashboard = (): JSX.Element => {
                     <Route path="calendario" element={<CalendarComponent />} />
                     <Route path="roles-semanales" element={<WeeklyRoles />} />
 
-                    {/* Solo LEADER e INDUSTRIAL no pueden ver */}
-                    {!isLeader && !isIndustrial && (
+                    {/* Solicitudes: LEADER, INDUSTRIAL y Gerente BT no las ven. RH sí (solo lectura). */}
+                    {!isLeader && !isIndustrial && !isGerenteBT && (
                         <>
                             <Route path="solicitudes" element={<SolicitudesComponent />} />
                             <Route path="solicitudes/:id" element={<SolicitudDetallePage />} />

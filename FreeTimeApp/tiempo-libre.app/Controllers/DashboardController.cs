@@ -10,7 +10,7 @@ namespace tiempo_libre.Controllers
 {
     [ApiController]
     [Route("api/dashboard")]
-    [Authorize(Roles = "SuperUsuario,Super Usuario,Jefe De Area,JefeArea,JefeDeArea,Ingeniero Industrial,IngenieroIndustrial")]
+    [Authorize(Roles = "SuperUsuario,Super Usuario,Jefe De Area,JefeArea,JefeDeArea,Ingeniero Industrial,IngenieroIndustrial,Gerente BT,GerenteBT,RH")]
     public class DashboardController : ControllerBase
     {
         private readonly FreeTimeDbContext _db;
@@ -36,13 +36,23 @@ namespace tiempo_libre.Controllers
             User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario");
 
         /// <summary>
+        /// Roles con visibilidad a toda la planta (equivalente a SuperUsuario
+        /// para efecto de filtrado por área): Gerente BT y RH ven todas las
+        /// áreas sin necesidad de estar en AreaJefes.
+        /// </summary>
+        private bool EsRolPlanta() =>
+            EsSuperUsuario()
+            || User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT")
+            || User.IsInRole("RH");
+
+        /// <summary>
         /// Devuelve los IDs de áreas que el usuario puede ver.
-        /// SuperUsuario → null (todas).
+        /// SuperUsuario / Gerente BT / RH → null (todas).
         /// Jefe de Área (Area.JefeId == userId) o Ingeniero Industrial (M:N AreaIngeniero) → áreas asignadas.
         /// </summary>
         private async Task<List<int>?> GetAreasPermitidasAsync()
         {
-            if (EsSuperUsuario()) return null;
+            if (EsRolPlanta()) return null;
 
             var userId = GetUserId();
             if (userId == null) return new List<int>();
@@ -84,7 +94,7 @@ namespace tiempo_libre.Controllers
 
             if (permitidas == null)
             {
-                // SuperUsuario
+                // SuperUsuario / Gerente BT / RH — visibilidad a toda la planta.
                 return idsPedidos;
             }
 

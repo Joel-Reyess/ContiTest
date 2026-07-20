@@ -38,6 +38,7 @@ import { Button } from '../ui/button'
 import CalendarWidget from './CalendarWidget'
 import { solicitudesService } from '../../services/solicitudesService'
 import { useAuth } from '@/hooks/useAuth'
+import { UserRole } from '@/interfaces/User.interface'
 import { areasService } from '@/services/areasService'
 import type { Solicitud } from '../../interfaces/Solicitudes.interface'
 import { toast } from 'sonner'
@@ -51,7 +52,8 @@ type AreaOption = { id: string; name: string; grupos?: any[]; jefeFullName?: str
 export default function SolicitudDetallePage() {
     const { id } = useParams()                // id que llega en la URL
     const navigate = useNavigate()
-    const { user } = useAuth()
+    const { user, hasRole } = useAuth()
+    const isReadOnly = hasRole(UserRole.RH)
     const [solicitud, setSolicitud] = useState<Solicitud | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -311,8 +313,8 @@ export default function SolicitudDetallePage() {
 
                 {/* Información de la solicitud */}
                 <div className="bg-white rounded-lg shadow-sm border p-6">
-                    {/* Botones de acción */}
-                    {solicitud.estadoSolicitud === 'Pendiente' && (
+                    {/* Botones de acción — RH solo puede consultar, no aprobar/rechazar */}
+                    {solicitud.estadoSolicitud === 'Pendiente' && !isReadOnly && (
                         <div className="mt-6 pt-6 border-t flex gap-4">
                             <Button
                                 onClick={() => {
@@ -337,6 +339,13 @@ export default function SolicitudDetallePage() {
                                 <XCircle className="w-4 h-4 mr-2" />
                                 Rechazar Solicitud
                             </Button>
+                        </div>
+                    )}
+                    {solicitud.estadoSolicitud === 'Pendiente' && isReadOnly && (
+                        <div className="mt-6 pt-6 border-t">
+                            <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                                Modo lectura: RH solo puede consultar la solicitud.
+                            </div>
                         </div>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

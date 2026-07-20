@@ -30,7 +30,9 @@ export const UserRole = {
     LEADER: 'Lider De Grupo',
     INDUSTRIAL: 'Ingeniero Industrial',
     UNION_REPRESENTATIVE: 'Delegado Sindical',
-    UNIONIZED: 'Empleado Sindicalizado'
+    UNIONIZED: 'Empleado Sindicalizado',
+    GERENTE_BT: 'Gerente BT',
+    RH: 'RH'
 } as const;
 
 export type UserRole = typeof UserRole[keyof typeof UserRole];

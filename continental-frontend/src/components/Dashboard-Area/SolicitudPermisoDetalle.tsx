@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { Button } from '../ui/button'
 import { solicitudesPermisosService, type SolicitudPermisoDto } from '@/services/solicitudesPermisosService'
+import { useAuth } from '@/hooks/useAuth'
+import { UserRole } from '@/interfaces/User.interface'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -16,6 +18,8 @@ export default function SolicitudPermisoDetalle() {
     const goBack = () => navigate('/area/solicitudes', {
         state: { filters: savedFilters, refetch: true, activeTab: returnTab }
     })
+    const { hasRole } = useAuth()
+    const isReadOnly = hasRole(UserRole.RH)
     const [solicitud, setSolicitud] = useState<SolicitudPermisoDto | null>(null)
     const [loading, setLoading] = useState(true)
     const [processingAction, setProcessingAction] = useState(false)
@@ -219,7 +223,7 @@ export default function SolicitudPermisoDetalle() {
                         </div>
                     </div>
 
-                    {solicitud.estado === 'Pendiente' && (
+                    {solicitud.estado === 'Pendiente' && !isReadOnly && (
                         <div className="mt-6 pt-6 border-t flex gap-4">
                             <Button
                                 onClick={handleAprobar}
@@ -238,6 +242,13 @@ export default function SolicitudPermisoDetalle() {
                                 <XCircle className="w-4 h-4 mr-2" />
                                 {processingAction ? 'Rechazando...' : 'Rechazar Solicitud'}
                             </Button>
+                        </div>
+                    )}
+                    {solicitud.estado === 'Pendiente' && isReadOnly && (
+                        <div className="mt-6 pt-6 border-t">
+                            <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                                Modo lectura: RH solo puede consultar la solicitud.
+                            </div>
                         </div>
                     )}
                 </div>

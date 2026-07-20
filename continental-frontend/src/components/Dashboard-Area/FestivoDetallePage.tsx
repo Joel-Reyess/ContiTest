@@ -5,6 +5,7 @@ import { Button } from '../ui/button'
 import CalendarWidget from './CalendarWidget'
 import { festivosTrabajadosService, type SolicitudFestivoTrabajado } from '../../services/festivosTrabajadosService'
 import { useAuth } from '@/hooks/useAuth'
+import { UserRole } from '@/interfaces/User.interface'
 import { areasService } from '@/services/areasService'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -17,7 +18,8 @@ type AreaOption = { id: string; name: string; grupos?: any[]; jefeFullName?: str
 export default function FestivoDetallePage() {
     const { id } = useParams()
     const navigate = useNavigate()
-    const { user } = useAuth()
+    const { user, hasRole } = useAuth()
+    const isReadOnly = hasRole(UserRole.RH)
     const [solicitud, setSolicitud] = useState<SolicitudFestivoTrabajado | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -236,7 +238,7 @@ export default function FestivoDetallePage() {
                 </div>
 
                 <div className="bg-white rounded-lg shadow-sm border p-6">
-                    {solicitud.estadoSolicitud === 'Pendiente' && (
+                    {solicitud.estadoSolicitud === 'Pendiente' && !isReadOnly && (
                         <div className="mb-6 pb-6 border-b flex gap-4">
                             <Button
                                 onClick={() => { setSelectedSolicitudForApprove(solicitud); setShowApproveModal(true) }}
@@ -255,6 +257,13 @@ export default function FestivoDetallePage() {
                                 <XCircle className="w-4 h-4 mr-2" />
                                 Rechazar Solicitud
                             </Button>
+                        </div>
+                    )}
+                    {solicitud.estadoSolicitud === 'Pendiente' && isReadOnly && (
+                        <div className="mb-6 pb-6 border-b">
+                            <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                                Modo lectura: RH solo puede consultar la solicitud.
+                            </div>
                         </div>
                     )}
 

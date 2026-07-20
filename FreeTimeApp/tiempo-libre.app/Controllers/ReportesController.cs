@@ -233,7 +233,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpGet("reporte-sap-permutas-nuevos")]
-        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial,Gerente BT,GerenteBT,RH")]
         public Task<IActionResult> ExportarReporteSapPermutasNuevos(
             [FromQuery] int year,
             [FromQuery] int? areaId = null,
@@ -245,7 +245,7 @@ namespace tiempo_libre.Controllers
             => ExportarReporteSapPermutas(year, areaId, gruposRol, fechaResolucionDesde, horaDesde, fechaResolucionHasta, horaHasta);
 
         [HttpGet("reporte-sap-permutas-eliminar")]
-        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ExportarReporteSapPermutasEliminar(
             [FromQuery] int year,
             [FromQuery] int? areaId = null,
@@ -276,7 +276,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpGet("reporte-sap-festivos-nuevos")]
-        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ExportarReporteSapFestivosNuevos(
             [FromQuery] int year,
             [FromQuery] int? areaId = null,
@@ -307,7 +307,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpGet("reporte-sap-festivos-eliminar")]
-        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,IngenieroIndustrial,Ingeniero Industrial,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ExportarReporteSapFestivosEliminar(
             [FromQuery] int year,
             [FromQuery] int? areaId = null,

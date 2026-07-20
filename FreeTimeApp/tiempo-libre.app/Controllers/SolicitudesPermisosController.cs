@@ -107,18 +107,23 @@ namespace tiempo_libre.Controllers
         /// Consulta solicitudes de permisos
         /// </summary>
         [HttpPost("consultar")]
-        [Authorize(Roles = "EmpleadoSindicalizado,Empleado Sindicalizado,DelegadoSindical,Delegado Sindical,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "EmpleadoSindicalizado,Empleado Sindicalizado,DelegadoSindical,Delegado Sindical,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ConsultarSolicitudes([FromBody] ConsultarSolicitudesRequest request)
         {
             try
             {
-                // Si el caller es Jefe de Área (no SuperUsuario), auto-restringimos
-                // las solicitudes a las que le correspondan: las asignadas a él como
-                // JefeAprobadorId. Sin esto, la pestaña 'Todas' mostraba solicitudes
-                // de otras áreas y se veía inconsistente vs 'Pendiente' (que sí
-                // filtra por jefe).
+                // Si el caller es Jefe de Área (no SuperUsuario, Gerente BT ni RH),
+                // auto-restringimos las solicitudes a las que le correspondan: las
+                // asignadas a él como JefeAprobadorId. Sin esto, la pestaña 'Todas'
+                // mostraba solicitudes de otras áreas y se veía inconsistente vs
+                // 'Pendiente' (que sí filtra por jefe). Gerente BT y RH ven planta
+                // completa (read-only en el caso de RH — el frontend oculta los
+                // botones de aprobar/rechazar).
                 int? jefeIdAutoFiltro = null;
-                if (User.IsInRole("Jefe De Area") && !User.IsInRole("SuperUsuario"))
+                if (User.IsInRole("Jefe De Area")
+                    && !User.IsInRole("SuperUsuario")
+                    && !User.IsInRole("Gerente BT") && !User.IsInRole("GerenteBT")
+                    && !User.IsInRole("RH"))
                 {
                     var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                     if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out var uid))

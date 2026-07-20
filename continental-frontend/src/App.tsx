@@ -41,7 +41,7 @@ function App(): JSX.Element {
               } />
               
               <Route path="/area/*" element={
-                <ProtectedRoute requiredRole={[UserRole.AREA_ADMIN, UserRole.LEADER, UserRole.INDUSTRIAL]}>
+                <ProtectedRoute requiredRole={[UserRole.AREA_ADMIN, UserRole.LEADER, UserRole.INDUSTRIAL, UserRole.GERENTE_BT, UserRole.RH]}>
                   <AreaDashboard />
                 </ProtectedRoute>
               } />
