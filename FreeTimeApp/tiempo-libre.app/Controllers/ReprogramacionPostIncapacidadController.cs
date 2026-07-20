@@ -148,6 +148,25 @@ namespace tiempo_libre.Controllers
         {
             try
             {
+                // FIX privacidad: un sindicalizado solo puede consultar sus propias solicitudes.
+                var puedeConsultarOtros = User.IsInRole("SuperUsuario")
+                    || User.IsInRole("JefeArea") || User.IsInRole("Jefe De Area")
+                    || User.IsInRole("IngenieroIndustrial") || User.IsInRole("Ingeniero Industrial")
+                    || User.IsInRole("DelegadoSindical") || User.IsInRole("Delegado Sindical")
+                    || User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT")
+                    || User.IsInRole("RH");
+                if (!puedeConsultarOtros)
+                {
+                    var usuarioId = ObtenerUsuarioId();
+                    if (empleadoId != usuarioId)
+                    {
+                        _logger.LogWarning(
+                            "Usuario sindicalizado {UsuarioId} intentó consultar post-incapacidad del empleado {EmpleadoId} - bloqueado",
+                            usuarioId, empleadoId);
+                        return Forbid();
+                    }
+                }
+
                 var data = await _service.ObtenerPorEmpleadoAsync(empleadoId);
                 return Ok(new ApiResponse<object>(true, data));
             }

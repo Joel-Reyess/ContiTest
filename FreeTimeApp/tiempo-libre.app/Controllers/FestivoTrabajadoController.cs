@@ -202,6 +202,23 @@ namespace tiempo_libre.Controllers
                     return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
                 }
 
+                // FIX privacidad: un sindicalizado (u otro rol no privilegiado) solo puede
+                // consultar su propio historial. Roles que sí pueden consultar cualquier empleado:
+                // SuperUsuario, Jefe de Área, Ingeniero Industrial, Delegado Sindical, Gerente BT, RH.
+                var puedeConsultarOtros = User.IsInRole("SuperUsuario")
+                    || User.IsInRole("JefeArea") || User.IsInRole("Jefe De Area")
+                    || User.IsInRole("IngenieroIndustrial") || User.IsInRole("Ingeniero Industrial")
+                    || User.IsInRole("DelegadoSindical") || User.IsInRole("Delegado Sindical")
+                    || User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT")
+                    || User.IsInRole("RH");
+                if (!puedeConsultarOtros && empleadoId != usuarioId)
+                {
+                    _logger.LogWarning(
+                        "Usuario sindicalizado {UsuarioId} intentó consultar historial de festivos del empleado {EmpleadoId} - bloqueado",
+                        usuarioId, empleadoId);
+                    return Forbid();
+                }
+
                 _logger.LogInformation(
                     "Usuario {UsuarioId} consultando historial de festivos intercambiados del empleado {EmpleadoId}, año {Anio}",
                     usuarioId, empleadoId, anio);

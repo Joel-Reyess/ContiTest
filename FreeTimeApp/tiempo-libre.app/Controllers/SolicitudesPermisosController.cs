@@ -340,6 +340,36 @@ namespace tiempo_libre.Controllers
         {
             try
             {
+                // FIX privacidad: un sindicalizado (u otro rol no privilegiado) solo puede
+                // consultar su propio historial de permisos. Se compara contra la Nomina
+                // del usuario autenticado. Roles que sí pueden consultar cualquier empleado:
+                // SuperUsuario, Jefe de Área, Ingeniero Industrial, Delegado Sindical, Gerente BT, RH.
+                var puedeConsultarOtros = User.IsInRole("SuperUsuario")
+                    || User.IsInRole("JefeArea") || User.IsInRole("Jefe De Area")
+                    || User.IsInRole("IngenieroIndustrial") || User.IsInRole("Ingeniero Industrial")
+                    || User.IsInRole("DelegadoSindical") || User.IsInRole("Delegado Sindical")
+                    || User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT")
+                    || User.IsInRole("RH");
+                if (!puedeConsultarOtros)
+                {
+                    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    if (!int.TryParse(userIdClaim, out var usuarioId))
+                    {
+                        return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+                    }
+                    var nominaUsuario = await _db.Users
+                        .Where(u => u.Id == usuarioId)
+                        .Select(u => u.Nomina)
+                        .FirstOrDefaultAsync();
+                    if (nominaUsuario == null || nominaUsuario.Value != nomina)
+                    {
+                        _logger.LogWarning(
+                            "Usuario {UsuarioId} (Nomina={NominaUser}) intentó consultar historial de permisos de nomina {NominaSolicitada} - bloqueado",
+                            usuarioId, nominaUsuario, nomina);
+                        return Forbid();
+                    }
+                }
+
                 var response = await _solicitudesService.ObtenerHistorialPorEmpleadoAsync(nomina, anio);
 
                 if (!response.Success)

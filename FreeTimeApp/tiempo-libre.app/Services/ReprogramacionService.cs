@@ -475,13 +475,18 @@ namespace tiempo_libre.Services
                 var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
                 var esDelegadoSindical = usuarioConsulta.Roles.Any(r =>
                     r.Name == "DelegadoSindical" ||
-                    r.Name == "Delegado Sindical" ||
+                    r.Name == "Delegado Sindical");
+                var esSindicalizado = usuarioConsulta.Roles.Any(r =>
                     r.Name == "EmpleadoSindicalizado" ||
                     r.Name == "Empleado Sindicalizado");
+                var esIngenieroIndustrial = usuarioConsulta.Roles.Any(r =>
+                    r.Name == "IngenieroIndustrial" || r.Name == "Ingeniero Industrial");
+                var esGerentePlantaORH = usuarioConsulta.Roles.Any(r =>
+                    r.Name == "Gerente BT" || r.Name == "GerenteBT" || r.Name == "RH");
 
                 _logger.LogInformation(
-                    "Usuario {UserId} consultando solicitudes. Roles: SuperUsuario={Super}, JefeArea={Jefe}, Delegado={Delegado}",
-                    usuarioConsultaId, esSuperUsuario, esJefeArea, esDelegadoSindical);
+                    "Usuario {UserId} consultando solicitudes. Roles: SuperUsuario={Super}, JefeArea={Jefe}, Delegado={Delegado}, Sindicalizado={Sind}",
+                    usuarioConsultaId, esSuperUsuario, esJefeArea, esDelegadoSindical, esSindicalizado);
 
                 var query = _db.SolicitudesReprogramacion
                     .Include(s => s.Empleado)
@@ -494,14 +499,19 @@ namespace tiempo_libre.Services
                     .AsQueryable();
 
                 // FILTROS DE ROL
-                if (esSuperUsuario)
+                if (esSuperUsuario || esGerentePlantaORH)
                 {
-                    _logger.LogInformation("SuperUsuario - sin filtros de rol");
+                    _logger.LogInformation("SuperUsuario / Gerente BT / RH - sin filtros de rol");
                 }
                 else if (esJefeArea && usuarioConsulta.AreaId.HasValue)
                 {
                     query = query.Where(s => s.Empleado.Grupo.Area.AreaId == usuarioConsulta.AreaId.Value);
                     _logger.LogInformation("Jefe de Área - filtrando por área {AreaId}", usuarioConsulta.AreaId.Value);
+                }
+                else if (esIngenieroIndustrial && usuarioConsulta.AreaId.HasValue)
+                {
+                    query = query.Where(s => s.Empleado.Grupo.Area.AreaId == usuarioConsulta.AreaId.Value);
+                    _logger.LogInformation("Ingeniero Industrial - filtrando por área {AreaId}", usuarioConsulta.AreaId.Value);
                 }
                 else if (esDelegadoSindical)
                 {
@@ -516,6 +526,15 @@ namespace tiempo_libre.Services
                     _logger.LogInformation(
                         "Delegado Sindical {UserId} (AreaId={AreaId}) - filtrando por SolicitadoPorId = {UserId} OR NULL OR misma área",
                         usuarioConsultaId, areaIdDelegado, usuarioConsultaId);
+                }
+                else
+                {
+                    // FIX privacidad: sindicalizado (u otro rol no privilegiado) SOLO ve sus propias solicitudes.
+                    // Antes esto caía en el bucket del delegado y veía las de sus compañeros de área.
+                    query = query.Where(s => s.EmpleadoId == usuarioConsultaId);
+                    _logger.LogInformation(
+                        "Usuario {UserId} sin rol privilegiado (Sindicalizado={Sind}) - restringiendo a EmpleadoId = {UserId}",
+                        usuarioConsultaId, esSindicalizado, usuarioConsultaId);
                 }
 
                 if (!string.IsNullOrEmpty(request.Estado))
