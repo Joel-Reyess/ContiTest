@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
 using tiempo_libre.Models;
+using tiempo_libre.Models.Enums;
 
 namespace tiempo_libre.Services
 {
@@ -13,21 +14,26 @@ namespace tiempo_libre.Services
         private readonly FreeTimeDbContext _context;
         private readonly ILogger<SincronizacionRolesService> _logger;
         private readonly ReglasTurnoService _reglasTurnoService;
+        private readonly NotificacionesService _notificacionesService;
 
         public SincronizacionRolesService(
             FreeTimeDbContext context,
             ILogger<SincronizacionRolesService> logger,
-            ReglasTurnoService reglasTurnoService)
+            ReglasTurnoService reglasTurnoService,
+            NotificacionesService notificacionesService)
         {
             _context = context;
             _logger = logger;
             _reglasTurnoService = reglasTurnoService;
+            _notificacionesService = notificacionesService;
         }
 
         public async Task<int> SincronizarRolesDesdeRegla()
         {
             int registrosActualizados = 0;
-            var empleadosCambiaronGrupo = new List<(User user, int grupoAnterior, int grupoNuevo)>();
+            // Tracking extendido: además de grupo, guardamos el área anterior y la regla
+            // para emitir notificaciones al SuperUsuario con contexto suficiente.
+            var empleadosCambiaronGrupo = new List<(User user, int grupoAnterior, int grupoNuevo, int? areaAnterior, int? areaNueva, string? regla)>();
 
             await ActualizarEncargadoRegistroEnAreas();
 
@@ -41,6 +47,9 @@ namespace tiempo_libre.Services
                 _logger.LogWarning(
                     "🆕 Reglas nuevas auto-descubiertas desde SAP (Estado=PendienteConfiguracion): {Codigos}",
                     string.Join(", ", reglasNuevas));
+
+                // Notificar a los SuperUsuarios: hay reglas nuevas pendientes de configurar.
+                await NotificarReglasNuevasAsync(reglasNuevas);
             }
 
             var reglasPendientes = await _context.ReglasTurno
@@ -214,11 +223,12 @@ namespace tiempo_libre.Services
                         {
                             _logger.LogInformation($"🔄 Usuario {user.Nomina}: GrupoId {user.GrupoId}→{grupoCorrect.GrupoId} | AreaId {user.AreaId}→{grupoCorrect.AreaId}");
                             var grupoAnterior = user.GrupoId ?? 0;
+                            var areaAnterior = user.AreaId;
                             user.GrupoId = grupoCorrect.GrupoId;
                             user.AreaId = grupoCorrect.AreaId;
                             user.UpdatedAt = DateTime.UtcNow;
                             registrosActualizados++;
-                            empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId));
+                            empleadosCambiaronGrupo.Add((user, grupoAnterior, grupoCorrect.GrupoId, areaAnterior, grupoCorrect.AreaId, rolSAP.Regla));
                         }
                     }
                     else
@@ -230,9 +240,15 @@ namespace tiempo_libre.Services
 
             await _context.SaveChangesAsync();
 
-            foreach (var (user, grupoAnterior, grupoNuevo) in empleadosCambiaronGrupo)
+            foreach (var (user, grupoAnterior, grupoNuevo, areaAnterior, areaNueva, regla) in empleadosCambiaronGrupo)
             {
                 await RegenerarCalendarioFuturo(user.Id);
+            }
+
+            // Notificar a SuperUsuarios los cambios de área/grupo detectados en esta sincronización.
+            if (empleadosCambiaronGrupo.Count > 0)
+            {
+                await NotificarCambiosAreaAsync(empleadosCambiaronGrupo);
             }
 
             // ⛔ ELIMINACIÓN DESACTIVADA TEMPORALMENTE - Reactivar solo cuando SAP sea estable
@@ -588,6 +604,143 @@ namespace tiempo_libre.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ Error al actualizar EncargadoRegistro en Areas");
+            }
+        }
+
+        // ── Notificaciones SAP ────────────────────────────────────────────────
+
+        private async Task<List<int>> GetSuperUsuarioIdsAsync()
+        {
+            return await _context.Users
+                .Where(u => u.Roles.Any(r => r.Name == "SuperUsuario"))
+                .Select(u => u.Id)
+                .ToListAsync();
+        }
+
+        /// <summary>
+        /// Envía una notificación a todos los SuperUsuarios listando las reglas nuevas
+        /// que fueron auto-descubiertas desde SAP y quedaron PendienteConfiguracion.
+        /// </summary>
+        private async Task NotificarReglasNuevasAsync(List<string> reglasNuevas)
+        {
+            try
+            {
+                var superIds = await GetSuperUsuarioIdsAsync();
+                if (superIds.Count == 0)
+                {
+                    _logger.LogWarning("No hay SuperUsuarios configurados para recibir notificaciones de reglas nuevas");
+                    return;
+                }
+
+                // Para cada regla nueva, obtener empleados que la traen desde SAP.
+                var reglasConEmpleados = await _context.RolesEmpleadosSAP
+                    .Where(r => r.Regla != null && reglasNuevas.Contains(r.Regla))
+                    .GroupBy(r => r.Regla!)
+                    .Select(g => new { Regla = g.Key, Nominas = g.Select(r => r.Nomina).Distinct().ToList() })
+                    .ToListAsync();
+
+                var listadoBreve = string.Join(", ", reglasConEmpleados
+                    .Select(r => $"{r.Regla} ({r.Nominas.Count} emp)"));
+                var titulo = $"Reglas SAP nuevas por configurar ({reglasNuevas.Count})";
+                var mensaje = listadoBreve.Length > 480
+                    ? listadoBreve.Substring(0, 480) + "…"
+                    : listadoBreve;
+
+                foreach (var superId in superIds)
+                {
+                    await _notificacionesService.CrearNotificacionAsync(
+                        TiposDeNotificacionEnum.NuevaReglaSAP,
+                        titulo,
+                        mensaje,
+                        nombreEmisor: "Sincronización SAP",
+                        idUsuarioReceptor: superId,
+                        tipoMovimiento: "SAP: Regla nueva PendienteConfiguracion",
+                        metadatos: new { Reglas = reglasNuevas }
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error notificando reglas nuevas SAP a SuperUsuarios");
+            }
+        }
+
+        /// <summary>
+        /// Envía a los SuperUsuarios una notificación por cada empleado que cambió
+        /// de área/grupo tras la sincronización SAP (una notificación por empleado
+        /// para que el link/metadatos sean navegables por caso).
+        /// </summary>
+        private async Task NotificarCambiosAreaAsync(
+            List<(User user, int grupoAnterior, int grupoNuevo, int? areaAnterior, int? areaNueva, string? regla)> cambios)
+        {
+            try
+            {
+                var superIds = await GetSuperUsuarioIdsAsync();
+                if (superIds.Count == 0)
+                {
+                    _logger.LogWarning("No hay SuperUsuarios configurados para recibir notificaciones de cambios SAP");
+                    return;
+                }
+
+                // Cachear nombres de áreas y grupos que aparecen en los cambios.
+                var areaIds = cambios
+                    .SelectMany(c => new[] { c.areaAnterior, c.areaNueva })
+                    .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+                var areasMap = await _context.Areas
+                    .Where(a => areaIds.Contains(a.AreaId))
+                    .ToDictionaryAsync(a => a.AreaId, a => a.NombreGeneral ?? $"Area {a.AreaId}");
+
+                var grupoIds = cambios
+                    .SelectMany(c => new[] { c.grupoAnterior, c.grupoNuevo })
+                    .Where(id => id > 0).Distinct().ToList();
+                var gruposMap = await _context.Grupos
+                    .Where(g => grupoIds.Contains(g.GrupoId))
+                    .ToDictionaryAsync(g => g.GrupoId, g => g.Rol ?? $"G{g.GrupoId}");
+
+                string NombreArea(int? id) => id.HasValue && areasMap.TryGetValue(id.Value, out var n) ? n : (id.HasValue ? $"Area {id.Value}" : "(sin área)");
+                string NombreGrupo(int id) => gruposMap.TryGetValue(id, out var n) ? n : (id == 0 ? "(sin grupo)" : $"G{id}");
+
+                foreach (var c in cambios)
+                {
+                    var nombreEmp = !string.IsNullOrWhiteSpace(c.user.FullName)
+                        ? c.user.FullName
+                        : (c.user.Username ?? c.user.Nomina?.ToString() ?? $"UserId {c.user.Id}");
+
+                    var titulo = $"Cambio SAP: {nombreEmp}";
+                    if (titulo.Length > 140) titulo = titulo.Substring(0, 140) + "…";
+                    var mensaje = $"Nómina {c.user.Nomina}: {NombreArea(c.areaAnterior)} / {NombreGrupo(c.grupoAnterior)}"
+                        + $" → {NombreArea(c.areaNueva)} / {NombreGrupo(c.grupoNuevo)}"
+                        + (string.IsNullOrEmpty(c.regla) ? "" : $" (regla: {c.regla})");
+                    if (mensaje.Length > 480) mensaje = mensaje.Substring(0, 480) + "…";
+
+                    foreach (var superId in superIds)
+                    {
+                        await _notificacionesService.CrearNotificacionAsync(
+                            TiposDeNotificacionEnum.CambioAreaEmpleadoSAP,
+                            titulo,
+                            mensaje,
+                            nombreEmisor: "Sincronización SAP",
+                            idUsuarioReceptor: superId,
+                            areaId: c.areaNueva,
+                            grupoId: c.grupoNuevo > 0 ? c.grupoNuevo : (int?)null,
+                            tipoMovimiento: "SAP: Cambio área/grupo",
+                            metadatos: new
+                            {
+                                Nomina = c.user.Nomina,
+                                UserId = c.user.Id,
+                                AreaAnteriorId = c.areaAnterior,
+                                AreaNuevaId = c.areaNueva,
+                                GrupoAnteriorId = c.grupoAnterior,
+                                GrupoNuevoId = c.grupoNuevo,
+                                Regla = c.regla
+                            }
+                        );
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error notificando cambios SAP de área/grupo a SuperUsuarios");
             }
         }
     }

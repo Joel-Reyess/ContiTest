@@ -14,7 +14,9 @@ namespace tiempo_libre.Models.Enums
         SolicitudPermiso,      // Para cuando se crea una solicitud
         RespuestaSolicitud,
         SolicitudEdicionDiaEmpresa = 12, // Solicitud de edición de días asignados por empresa
-        RespuestaEdicionDiaEmpresa = 13  // Respuesta del jefe a solicitud de edición
+        RespuestaEdicionDiaEmpresa = 13,  // Respuesta del jefe a solicitud de edición
+        CambioAreaEmpleadoSAP = 14,      // Sincronización SAP movió a un empleado de área/grupo
+        NuevaReglaSAP = 15               // Sincronización SAP descubrió una regla nueva sin configurar
     }
 
     public enum EstatusNotificacionEnum

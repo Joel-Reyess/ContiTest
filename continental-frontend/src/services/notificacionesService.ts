@@ -11,7 +11,13 @@ export enum TipoNotificacion {
   RechazoReprogramacion = 6,
   SolicitudFestivoTrabajado = 7,
   SolicitudIntercambioDiaFestivo = 8, // legacy
-  SistemaBloques = 9
+  SistemaBloques = 9,
+  SolicitudPermiso = 10,
+  RespuestaSolicitud = 11,
+  SolicitudEdicionDiaEmpresa = 12,
+  RespuestaEdicionDiaEmpresa = 13,
+  CambioAreaEmpleadoSAP = 14,
+  NuevaReglaSAP = 15
 }
 
 export enum EstatusNotificacion {

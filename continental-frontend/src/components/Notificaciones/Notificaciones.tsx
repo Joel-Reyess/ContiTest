@@ -331,6 +331,8 @@ export const Notificaciones = () => {
             [TipoNotificacion.SistemaBloques]: "text-gray-600",
             [TipoNotificacion.CambioDeManning]: "text-orange-600",
             [TipoNotificacion.SolicitudSuplente]: "text-indigo-600",
+            [TipoNotificacion.CambioAreaEmpleadoSAP]: "text-orange-700",
+            [TipoNotificacion.NuevaReglaSAP]: "text-yellow-700",
         };
         return colores[tipo] || "text-gray-600";
     };
@@ -344,6 +346,9 @@ export const Notificaciones = () => {
                 return <CheckCircle className="w-4 h-4" />;
             case TipoNotificacion.SistemaBloques:
                 return <Archive className="w-4 h-4" />;
+            case TipoNotificacion.CambioAreaEmpleadoSAP:
+            case TipoNotificacion.NuevaReglaSAP:
+                return <Bell className="w-4 h-4" />;
             default:
                 return <List className="w-4 h-4" />;
         }
