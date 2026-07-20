@@ -16,6 +16,8 @@ import { UserRole } from "@/interfaces/User.interface";
 import { httpClient } from '@/services/httpClient'; 
 import { vacacionesService } from "@/services/vacacionesService";
 import { excepcionesManningService } from "@/services/excepcionesManningService";
+import { SAP_NOMENCLATURA, type SAPCodigo } from "@/utils/sapNomenclatura";
+import NomenclaturaLegend from "@/components/Calendar/NomenclaturaLegend";
 
 const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
@@ -746,6 +748,11 @@ const WeeklyRoles = () => {
                 </div>
             </div>
 
+            <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-xs font-semibold text-gray-700 mb-2">Nomenclatura SAP</div>
+                <NomenclaturaLegend variant="grouped" />
+            </div>
+
             <div className="overflow-auto border border-gray-200 rounded-lg shadow-sm">
                 <table className="min-w-full text-sm">
                     <thead className="bg-gray-50">
@@ -786,45 +793,17 @@ const WeeklyRoles = () => {
                                     </td>
                                     {weekDays.map((day, idx) => {
                                         const shift = getShiftForDay(emp, day);
-                                        const chipColor =
-                                            shift === "D"
-                                                ? "bg-gray-100 text-gray-700"
-                                                : shift === "1"
-                                                    ? "bg-emerald-100 text-emerald-700"
-                                                    : shift === "2"
-                                                        ? "bg-yellow-100 text-yellow-700"
-                                                        : shift === "3"
-                                                            ? "bg-blue-100 text-blue-700"
-                                                            : shift === "V"
-                                                                ? "bg-purple-100 text-purple-700"
-                                                                : shift === "P"
-                                                                    ? "bg-green-100 text-green-700"
-                                                                    : shift === "E"
-                                                                        ? "bg-red-100 text-red-700"
-                                                                        : shift === "A"
-                                                                            ? "bg-orange-100 text-orange-700"
-                                                                            : shift === "M"
-                                                                                ? "bg-pink-100 text-pink-700"
-                                                                                : shift === "G"
-                                                                                    ? "bg-amber-100 text-amber-700"
-                                                                                    : shift === "R"
-                                                                                        ? "bg-rose-100 text-rose-700"
-                                                                                        : shift === "S"
-                                                                                            ? "bg-slate-100 text-slate-700"
-                                                                                            : shift === "F"
-                                                                                                ? "bg-teal-100 text-teal-700"
-                                                                                                : shift === "O"
-                                                                                                    ? "bg-cyan-100 text-cyan-700"
-                                                                                                    : shift === "H"
-                                                                                                        ? "bg-indigo-100 text-indigo-700"
-                                                                                                        : shift === "C"
-                                                                                                            ? "bg-amber-100 text-amber-800"
-                                                                                                            : "bg-slate-100 text-slate-600";
-
+                                        // Nomenclatura compartida en @/utils/sapNomenclatura para
+                                        // que WeeklyRoles y Calendar hablen los mismos colores.
+                                        const sapEntry = shift ? SAP_NOMENCLATURA[shift.toUpperCase() as SAPCodigo] : undefined;
+                                        const chipColor = sapEntry
+                                            ? `${sapEntry.chipBg} ${sapEntry.chipFg}`
+                                            : "bg-slate-100 text-slate-600";
                                         return (
                                             <td key={idx} className="px-3 py-2 text-center">
                                                 <span
                                                     className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${chipColor}`}
+                                                    title={sapEntry?.label}
                                                 >
                                                     {shift || "—"}
                                                 </span>

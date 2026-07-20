@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { OvertimeIndicator } from '../Dashboard-Area/OvertimeIndicator';
 import type { ExcepcionPorcentaje } from '@/interfaces/Api.interface';
+import { getSAPEntry } from '@/utils/sapNomenclatura';
+import NomenclaturaLegend from './NomenclaturaLegend';
 
 const localizer = dateFnsLocalizer({
   format,
@@ -46,45 +48,9 @@ const datesEqual = (date1: Date, date2: Date): boolean => {
          date1.getDate() === date2.getDate();
 };
 
-// Paleta de nomenclatura SAP (mismas que la leyenda de roles semanales).
-// Sólo color y significado — no se muestra la letra en la celda.
-type SAPColorEntry = { bg: string; fg: string; label: string };
-const SAP_COLOR_MAP: Record<string, SAPColorEntry> = {
-  V: { bg: '#f3e8ff', fg: '#6b21a8', label: 'Vacaciones' },
-  P: { bg: '#dcfce7', fg: '#15803d', label: 'Permiso con goce' },
-  E: { bg: '#fee2e2', fg: '#b91c1c', label: 'Incapacidad por enfermedad' },
-  A: { bg: '#ffedd5', fg: '#c2410c', label: 'Incapacidad por accidente' },
-  M: { bg: '#fce7f3', fg: '#be185d', label: 'Incapacidad por maternidad' },
-  G: { bg: '#fef3c7', fg: '#92400e', label: 'Permiso sin goce' },
-  R: { bg: '#ffe4e6', fg: '#9f1239', label: 'Incapacidad por riesgo' },
-  S: { bg: '#f1f5f9', fg: '#334155', label: 'Suspensión' },
-  O: { bg: '#cffafe', fg: '#155e75', label: 'Permiso por paternidad' },
-  H: { bg: '#e0e7ff', fg: '#3730a3', label: 'Permiso sin goce alterno' },
-  F: { bg: '#ccfbf1', fg: '#0f766e', label: 'Festivo trabajado' },
-  C: { bg: '#fef3c7', fg: '#92400e', label: 'Día empresa reprogramado' },
-};
-
-// Resuelve el color SAP a partir del tipoIncidencia que viene del backend.
-// El tipoIncidencia puede ser una letra exacta (E/P/A/M…), o un texto largo
-// como "Incapacidad por enfermedad" / "Permiso por defunción".
-const resolveSAPColor = (tipoIncidencia?: string): SAPColorEntry | null => {
-  if (!tipoIncidencia) return null;
-  const t = tipoIncidencia.trim();
-  if (t.length <= 2 && SAP_COLOR_MAP[t.toUpperCase()]) return SAP_COLOR_MAP[t.toUpperCase()];
-  const lower = t.toLowerCase();
-  if (lower.includes('maternidad')) return SAP_COLOR_MAP.M;
-  if (lower.includes('paternidad')) return SAP_COLOR_MAP.O;
-  if (lower.includes('riesgo')) return SAP_COLOR_MAP.R;
-  if (lower.includes('accidente')) return SAP_COLOR_MAP.A;
-  if (lower.includes('enfermedad')) return SAP_COLOR_MAP.E;
-  if (lower.includes('incapacidad')) return SAP_COLOR_MAP.E;
-  if (lower.includes('suspensi')) return SAP_COLOR_MAP.S;
-  if (lower.includes('festivo')) return SAP_COLOR_MAP.F;
-  if (lower.includes('defunci') || lower.includes('permiso con goce')) return SAP_COLOR_MAP.P;
-  if (lower.includes('sin goce')) return SAP_COLOR_MAP.G;
-  if (lower.includes('reprog')) return SAP_COLOR_MAP.C;
-  return null;
-};
+// La nomenclatura SAP vive en @/utils/sapNomenclatura para que Calendar,
+// WeeklyRoles y otros componentes compartan la misma fuente de verdad.
+// Aquí se usa vía getSAPEntry(tipoIncidencia).
 
 // Componente personalizado para las casillas del día
 const CustomDateCellWrapper = ({
@@ -114,6 +80,8 @@ const CustomDateCellWrapper = ({
   let className = "relative custom-date-cell-wrapper";
   let inlineStyle: React.CSSProperties | undefined;
   let title: string | undefined;
+  // Letra SAP a renderizar dentro de la celda (V, P, E, A, M, G, R, S, F, O, H, C, ...).
+  let sapChip: { codigo: string; bg: string; fg: string; label: string } | null = null;
 
   // Si está seleccionado para vacaciones, aplicar el estilo de holiday-day
   if (isSelectedForVacation) {
@@ -127,24 +95,32 @@ const CustomDateCellWrapper = ({
       case "rest":
         className += " rest-day";
         break;
-      case "holiday":
+      case "holiday": {
         className += " holiday-day";
+        // Marcar con letra si sabemos el tipo (F = festivo trabajado, C = reprogramación, V = vacación).
+        const sap = getSAPEntry(eventData.tipoIncidencia);
+        if (sap) sapChip = sap;
+        else sapChip = { codigo: 'V', bg: '#f3e8ff', fg: '#6b21a8', label: 'Vacaciones' };
         break;
-      case "holiday-boss":
+      }
+      case "holiday-boss": {
         className += " holiday-boss-day";
+        sapChip = { codigo: 'V', bg: '#f3e8ff', fg: '#6b21a8', label: 'Vacaciones' };
         break;
+      }
       case "not-work":
         className += " not-work-day";
         title = eventData.razon || "Día no laborable";
         break;
       case "inability": {
         // Override del color por nomenclatura SAP cuando esté disponible.
-        // No mostramos la letra en la celda — solo color y tooltip.
-        const sap = resolveSAPColor(eventData.tipoIncidencia);
+        // Ahora sí mostramos la letra en la celda (E, A, M, P, G, R, S, O, H).
+        const sap = getSAPEntry(eventData.tipoIncidencia);
         if (sap) {
           inlineStyle = { backgroundColor: sap.bg, cursor: 'not-allowed' };
           title = sap.label;
           className += " sap-day";
+          sapChip = sap;
         } else {
           className += " inability-day";
         }
@@ -157,6 +133,19 @@ const CustomDateCellWrapper = ({
 
   return (
     <div className={className} style={inlineStyle} title={title}>
+      {/* Letra de nomenclatura SAP para incapacidades / permisos / suspensión / festivos.
+          Se muestra siempre que resolvemos un sapChip y NO es una vacación/festivo/holiday
+          (esos casos ya se renderizan con el Sun icon + turno bubble más abajo). */}
+      {sapChip && eventData?.eventType !== 'holiday' && eventData?.eventType !== 'holiday-boss' && (
+        <span
+          className="absolute top-1 right-1 inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border"
+          style={{ backgroundColor: sapChip.bg, color: sapChip.fg, borderColor: sapChip.fg + '55' }}
+          title={sapChip.label}
+        >
+          {sapChip.codigo}
+        </span>
+      )}
+
       {/* Turno bubble (hide if holiday or holiday-boss because we'll render next to the sun) */}
       {eventData?.turno && eventData.eventType !== 'holiday' && eventData.eventType !== 'holiday-boss' && (
         <span className="text-center m-2 text-2xl border-2 border-continental-yellow rounded-full w-6 h-6 flex items-center justify-center font-bold p-3 text-continental-yellow">
@@ -177,6 +166,16 @@ const CustomDateCellWrapper = ({
           {eventData?.turno && (
             <span className="ml-1 text-2xl  text-yellow-400 border-2 border-continental-yellow rounded-full w-7 h-7 flex items-center justify-center font-bold">
               {eventData.turno}
+            </span>
+          )}
+          {/* Letra SAP (V, F, C) para distinguir tipo de vacación / festivo / reprogramación */}
+          {sapChip && (
+            <span
+              className="inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border"
+              style={{ backgroundColor: sapChip.bg, color: sapChip.fg, borderColor: sapChip.fg + '55' }}
+              title={sapChip.label}
+            >
+              {sapChip.codigo}
             </span>
           )}
           <Sun className="text-white" />
@@ -488,18 +487,8 @@ export const CalendarLegend = () => {
           </div>
 
           <div className="mt-3 pt-3 border-t border-gray-200">
-            <p className="text-xs font-semibold text-gray-700 mb-2">Por tipo de permiso/incapacidad (SAP):</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-              {Object.entries(SAP_COLOR_MAP)
-                // No duplicamos V (ya está como Vacaciones arriba)
-                .filter(([code]) => code !== 'V')
-                .map(([code, c]) => (
-                  <div key={code} className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded border border-gray-200" style={{ backgroundColor: c.bg }}></div>
-                    <span className="text-xs">{c.label}</span>
-                  </div>
-                ))}
-            </div>
+            <p className="text-xs font-semibold text-gray-700 mb-2">Nomenclatura SAP:</p>
+            <NomenclaturaLegend variant="grouped" />
           </div>
         </div>
 
