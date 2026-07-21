@@ -238,160 +238,156 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
 
     return (
         <AlertDialog open onOpenChange={(open) => !open && !saving && onClose()}>
-            <AlertDialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
-                <AlertDialogHeader>
+            <AlertDialogContent className="max-w-6xl w-[95vw] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
+                <AlertDialogHeader className="px-6 pt-5 pb-3 border-b shrink-0">
                     <AlertDialogTitle className="flex items-center gap-2">
                         <CalendarClock className="size-5 text-continental-yellow" />
                         Fechas de arranque
                     </AlertDialogTitle>
-                    <AlertDialogDescription asChild>
-                        <div className="space-y-4 text-sm">
-                            <p>
-                                Programa uno o más <strong>arranques</strong> para esta regla. Cada arranque
-                                fija su propio patrón en la fecha elegida; entre dos arranques rige el más reciente.
-                                Selecciona la fecha en el mini-calendario (no la escribas) para evitar errores.
-                            </p>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <Label className="text-xs">Regla</Label>
-                                    {loadingReglas ? (
-                                        <div className="flex items-center gap-2 text-continental-gray-1 text-xs py-2">
-                                            <Loader2 className="size-3 animate-spin" /> Cargando reglas…
-                                        </div>
-                                    ) : (
-                                        <select
-                                            value={codigoRegla}
-                                            onChange={(e) => setCodigoRegla(e.target.value)}
-                                            className="w-full border rounded px-2 py-2 text-sm"
-                                        >
-                                            {reglas.length === 0 && <option value="">(sin reglas disponibles)</option>}
-                                            {reglas.map(r => (
-                                                <option key={r.codigo} value={r.codigo}>
-                                                    {r.codigo}
-                                                    {r.estado === "PendienteConfiguracion" ? "  (pendiente)" : ""}
-                                                    {r.patron.length > 0 ? `  ·  ${Math.floor(r.patron.length / 7)} sem` : ""}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                                <div className="flex items-end">
-                                    <Link
-                                        to="/admin/calendario-anual"
-                                        target="_blank"
-                                        className="inline-flex items-center gap-1 text-xs text-continental-yellow hover:underline"
-                                    >
-                                        Ver cómo quedan los arranques ya guardados
-                                        <ArrowRight className="size-3" />
-                                    </Link>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                {arranques.map((a, i) => (
-                                    <div key={a.id} className="border rounded-lg p-3 bg-continental-gray-4/20">
-                                        <div className="flex items-center justify-between mb-3">
-                                            <div className="flex items-center gap-2">
-                                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-continental-yellow text-black text-xs font-semibold">
-                                                    {i + 1}
-                                                </span>
-                                                <span className="text-sm font-semibold">
-                                                    Arranque #{i + 1}
-                                                </span>
-                                                <span className="text-[11px] text-continental-gray-1">
-                                                    ({new Date(a.fechaIso + "T00:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "2-digit", month: "long", year: "numeric" })})
-                                                </span>
-                                            </div>
-                                            {arranques.length > 1 && (
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => quitarArranque(a.id)}
-                                                    className="text-red-600 hover:text-red-800"
-                                                >
-                                                    <Trash2 className="size-4" />
-                                                </Button>
-                                            )}
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
-                                            <div>
-                                                <Label className="text-xs">Fecha (click para seleccionar)</Label>
-                                                <MiniCalendar
-                                                    fechaIso={a.fechaIso}
-                                                    onPick={(iso) => setFechaArranque(a.id, iso)}
-                                                    fechasBloqueadas={arranques
-                                                        .filter(x => x.id !== a.id)
-                                                        .map(x => x.fechaIso)}
-                                                />
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <Label className="text-xs">Patrón que aplica desde esa fecha</Label>
-                                                    <div className="flex items-center gap-2">
-                                                        <Button type="button" variant="outline" size="sm"
-                                                            onClick={() => cambiarSemanas(a.id, -1)}
-                                                            disabled={a.semanas <= 1}
-                                                        >− sem</Button>
-                                                        <Button type="button" variant="outline" size="sm"
-                                                            onClick={() => cambiarSemanas(a.id, 1)}
-                                                        >+ sem</Button>
-                                                        {i > 0 && (
-                                                            <Button type="button" variant="outline" size="sm"
-                                                                onClick={() => copiarDeArranquePrevio(a.id)}
-                                                                title="Copiar el patrón del arranque anterior"
-                                                            >
-                                                                <Copy className="size-3 mr-1" /> Copiar previo
-                                                            </Button>
-                                                        )}
-                                                        <Button type="button" variant="outline" size="sm"
-                                                            onClick={() => restablecerAPatronVigente(a.id)}
-                                                            title="Restablecer al patrón vigente de la regla"
-                                                            disabled={!reglaSel}
-                                                        >
-                                                            <RotateCcw className="size-3 mr-1" /> Vigente
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                                <PatronEditor
-                                                    codigoRegla={codigoRegla || "—"}
-                                                    patron={a.patron}
-                                                    semanas={a.semanas}
-                                                    onCambiarCelda={(idx, v) => setCeldaArranque(a.id, idx, v)}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={agregarArranque}
-                                    disabled={!reglaSel}
-                                    className="w-full border-dashed"
-                                >
-                                    <Plus className="size-4 mr-1" /> Agregar otro arranque
-                                </Button>
-                            </div>
-
-                            <div>
-                                <Label className="text-xs">Notas (aplica a todos los arranques)</Label>
-                                <textarea
-                                    value={notas}
-                                    onChange={(e) => setNotas(e.target.value)}
-                                    rows={2}
-                                    maxLength={500}
-                                    placeholder="Ej. Arranque enero + arranque Semana Santa"
-                                    className="w-full border rounded px-2 py-1.5 text-sm"
-                                />
-                            </div>
-                        </div>
+                    <AlertDialogDescription className="text-xs">
+                        Programa uno o más arranques. Cada uno fija su propio patrón en la fecha elegida;
+                        entre dos arranques rige el más reciente. Elige la fecha en el mini-calendario.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter>
+
+                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end">
+                        <div>
+                            <Label className="text-xs">Regla</Label>
+                            {loadingReglas ? (
+                                <div className="flex items-center gap-2 text-continental-gray-1 text-xs py-2">
+                                    <Loader2 className="size-3 animate-spin" /> Cargando reglas…
+                                </div>
+                            ) : (
+                                <select
+                                    value={codigoRegla}
+                                    onChange={(e) => setCodigoRegla(e.target.value)}
+                                    className="w-full border rounded px-2 py-2 text-sm"
+                                >
+                                    {reglas.length === 0 && <option value="">(sin reglas disponibles)</option>}
+                                    {reglas.map(r => (
+                                        <option key={r.codigo} value={r.codigo}>
+                                            {r.codigo}
+                                            {r.estado === "PendienteConfiguracion" ? "  (pendiente)" : ""}
+                                            {r.patron.length > 0 ? `  ·  ${Math.floor(r.patron.length / 7)} sem` : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+                        <Link
+                            to="/admin/calendario-anual"
+                            target="_blank"
+                            className="inline-flex items-center gap-1 text-xs text-continental-yellow hover:underline whitespace-nowrap pb-2"
+                        >
+                            Ver arranques guardados
+                            <ArrowRight className="size-3" />
+                        </Link>
+                    </div>
+
+                    <div className="space-y-4">
+                        {arranques.map((a, i) => (
+                            <div key={a.id} className="border rounded-lg p-3 bg-continental-gray-4/20">
+                                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-continental-yellow text-black text-xs font-semibold">
+                                            {i + 1}
+                                        </span>
+                                        <span className="text-sm font-semibold">
+                                            Arranque #{i + 1}
+                                        </span>
+                                        <span className="text-[11px] text-continental-gray-1">
+                                            ({new Date(a.fechaIso + "T00:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "2-digit", month: "long", year: "numeric" })})
+                                        </span>
+                                    </div>
+                                    {arranques.length > 1 && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => quitarArranque(a.id)}
+                                            className="text-red-600 hover:text-red-800"
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </Button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
+                                    <div>
+                                        <Label className="text-xs">Fecha (click para seleccionar)</Label>
+                                        <MiniCalendar
+                                            fechaIso={a.fechaIso}
+                                            onPick={(iso) => setFechaArranque(a.id, iso)}
+                                            fechasBloqueadas={arranques
+                                                .filter(x => x.id !== a.id)
+                                                .map(x => x.fechaIso)}
+                                        />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                                            <Label className="text-xs">Patrón que aplica desde esa fecha</Label>
+                                            <div className="flex items-center gap-1 flex-wrap">
+                                                <Button type="button" variant="outline" size="sm"
+                                                    onClick={() => cambiarSemanas(a.id, -1)}
+                                                    disabled={a.semanas <= 1}
+                                                >− sem</Button>
+                                                <Button type="button" variant="outline" size="sm"
+                                                    onClick={() => cambiarSemanas(a.id, 1)}
+                                                >+ sem</Button>
+                                                {i > 0 && (
+                                                    <Button type="button" variant="outline" size="sm"
+                                                        onClick={() => copiarDeArranquePrevio(a.id)}
+                                                        title="Copiar el patrón del arranque anterior"
+                                                    >
+                                                        <Copy className="size-3 mr-1" /> Copiar previo
+                                                    </Button>
+                                                )}
+                                                <Button type="button" variant="outline" size="sm"
+                                                    onClick={() => restablecerAPatronVigente(a.id)}
+                                                    title="Restablecer al patrón vigente de la regla"
+                                                    disabled={!reglaSel}
+                                                >
+                                                    <RotateCcw className="size-3 mr-1" /> Vigente
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <PatronEditor
+                                            codigoRegla={codigoRegla || "—"}
+                                            patron={a.patron}
+                                            semanas={a.semanas}
+                                            onCambiarCelda={(idx, v) => setCeldaArranque(a.id, idx, v)}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={agregarArranque}
+                            disabled={!reglaSel}
+                            className="w-full border-dashed"
+                        >
+                            <Plus className="size-4 mr-1" /> Agregar otro arranque
+                        </Button>
+                    </div>
+
+                    <div>
+                        <Label className="text-xs">Notas (aplica a todos los arranques)</Label>
+                        <textarea
+                            value={notas}
+                            onChange={(e) => setNotas(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                            placeholder="Ej. Arranque enero + arranque Semana Santa"
+                            className="w-full border rounded px-2 py-1.5 text-sm"
+                        />
+                    </div>
+                </div>
+
+                <AlertDialogFooter className="px-6 py-3 border-t shrink-0 bg-background">
                     <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={(e) => { e.preventDefault(); handleSubmit(); }}

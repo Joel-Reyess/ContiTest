@@ -196,54 +196,52 @@ export const CalendarioAnualReglas = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-4">
-                <Card className="overflow-hidden">
-                    <CardContent className="p-0">
-                        {loading ? (
-                            <div className="flex items-center justify-center py-20">
-                                <Loader2 className="size-6 animate-spin text-continental-gray-1" />
-                            </div>
-                        ) : filas.length === 0 ? (
-                            <div className="py-20 text-center text-sm text-continental-gray-1">
-                                No hay reglas configuradas para mostrar.
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto">
-                                {MESES.map((mesLabel, mes0) => (
-                                    <MesTabla
-                                        key={mes0}
-                                        anio={anio}
-                                        mes0={mes0}
-                                        mesLabel={mesLabel}
-                                        filas={filas}
-                                        arranques={arranques}
-                                        hoyIso={hoyIso}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Nomenclatura</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                        <NomenclaturaLegend variant="grouped" />
-                        <div className="mt-4 pt-3 border-t space-y-1 text-[11px] text-continental-gray-1">
-                            <div className="flex items-center gap-2">
-                                <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-continental-yellow" />
-                                <span>Arranque programado</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-blue-500" />
-                                <span>Día de hoy</span>
-                            </div>
+            <Card className="overflow-hidden">
+                <CardContent className="p-0">
+                    {loading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="size-6 animate-spin text-continental-gray-1" />
                         </div>
-                    </CardContent>
-                </Card>
-            </div>
+                    ) : filas.length === 0 ? (
+                        <div className="py-20 text-center text-sm text-continental-gray-1">
+                            No hay reglas configuradas para mostrar.
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            {MESES.map((mesLabel, mes0) => (
+                                <MesTabla
+                                    key={mes0}
+                                    anio={anio}
+                                    mes0={mes0}
+                                    mesLabel={mesLabel}
+                                    filas={filas}
+                                    arranques={arranques}
+                                    hoyIso={hoyIso}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Nomenclatura</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                    <NomenclaturaLegend variant="grouped" />
+                    <div className="pt-3 border-t flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-continental-gray-1">
+                        <div className="flex items-center gap-2">
+                            <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-continental-yellow" />
+                            <span>Arranque programado</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-blue-500" />
+                            <span>Día de hoy</span>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     );
 };
@@ -267,21 +265,21 @@ const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso }: MesTablaPr
                 <span className="text-sm font-semibold">{mesLabel} {anio}</span>
                 <span className="text-[11px] text-continental-gray-1">({dias} días)</span>
             </div>
-            <table className="min-w-full text-[10px] font-mono border-collapse">
+            <table className="text-[11px] font-mono border-collapse">
                 <thead>
                     <tr>
-                        <th className="sticky left-0 bg-white z-10 border-r px-2 py-1 text-left text-[11px] font-semibold w-[110px]">
+                        <th className="sticky left-0 bg-white z-20 border-r border-b px-2 py-1 text-left text-[11px] font-semibold w-[120px]">
                             Sub-grupo
                         </th>
                         {fechas.map((f, i) => (
                             <th
                                 key={i}
-                                className={`border px-0 py-0.5 text-center min-w-[22px] ${f.getDay() === 0 || f.getDay() === 6 ? "bg-gray-50" : ""}`}
+                                className={`border-b border-r px-1 py-1 text-center w-[30px] min-w-[30px] ${f.getDay() === 0 || f.getDay() === 6 ? "bg-gray-50" : ""}`}
                             >
-                                <div className="text-[9px] text-continental-gray-1">
+                                <div className="text-[9px] leading-none text-continental-gray-1 mb-0.5">
                                     {DIAS_SEMANA_CORTO[f.getDay()]}
                                 </div>
-                                <div className="text-[10px]">{f.getDate()}</div>
+                                <div className="text-[11px] leading-none font-semibold">{f.getDate()}</div>
                             </th>
                         ))}
                     </tr>
@@ -289,7 +287,7 @@ const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso }: MesTablaPr
                 <tbody>
                     {filas.map((fila) => (
                         <tr key={`${fila.regla.codigo}-${fila.subGrupo}`}>
-                            <td className="sticky left-0 bg-white z-10 border-r px-2 py-1 text-[11px] whitespace-nowrap">
+                            <td className="sticky left-0 bg-white z-10 border-r border-b px-2 py-1 text-[11px] whitespace-nowrap">
                                 {fila.nombre}
                             </td>
                             {fechas.map((f, i) => {
@@ -307,7 +305,7 @@ const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso }: MesTablaPr
                                 return (
                                     <td
                                         key={i}
-                                        className={`border text-center px-0 py-0.5 ${ring}`}
+                                        className={`border-r border-b text-center px-0 py-1 h-6 w-[30px] min-w-[30px] font-semibold ${ring}`}
                                         style={entry ? { backgroundColor: entry.bg, color: entry.fg } : undefined}
                                         title={`${fila.nombre} — ${toIsoDate(f)}: ${entry?.label ?? codigo ?? "(sin dato)"}${isArranque ? " · Día de arranque" : ""}`}
                                     >
