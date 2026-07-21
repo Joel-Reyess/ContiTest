@@ -17,7 +17,6 @@ import { httpClient } from '@/services/httpClient';
 import { vacacionesService } from "@/services/vacacionesService";
 import { excepcionesManningService } from "@/services/excepcionesManningService";
 import { SAP_NOMENCLATURA, type SAPCodigo } from "@/utils/sapNomenclatura";
-import NomenclaturaLegend from "@/components/Calendar/NomenclaturaLegend";
 
 const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
@@ -746,11 +745,6 @@ const WeeklyRoles = () => {
                         {exportingAll ? "Exportando año..." : <><Download className="w-4 h-4" /> Excel año completo</>}
                     </Button>
                 </div>
-            </div>
-
-            <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="text-xs font-semibold text-gray-700 mb-2">Nomenclatura SAP</div>
-                <NomenclaturaLegend variant="grouped" />
             </div>
 
             <div className="overflow-auto border border-gray-200 rounded-lg shadow-sm">

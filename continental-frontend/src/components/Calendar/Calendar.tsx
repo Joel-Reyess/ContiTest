@@ -453,46 +453,9 @@ export default CalendarComponent;
 export const CalendarLegend = () => {
   return (
     <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-        <h3 className="text-lg font-semibold mb-4 text-gray-800">Leyenda del Calendario</h3>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded border" style={{ backgroundColor: 'var(--color-continental-white)' }}></div>
-            <span className="border-2 border-yellow-500 rounded-full w-6 h-6 flex items-center justify-center font-bold text-yellow-500 text-xs">1</span>
-              <span className="text-sm">Turno de trabajo (1, 2, 3)</span>
-            <span className="text-sm font-medium">Trabajo</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--color-continental-gray-3)' }}>
-            </div>
-              <span className="border-2 border-yellow-500 rounded-full w-6 h-6 flex items-center justify-center font-bold text-yellow-500 text-xs">D</span>
-            <span className="text-sm font-medium">Descanso</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--color-continental-yellow)' }}></div>
-            <Sun className="w-4 h-4 text-yellow-500" />
-            <span className="text-sm font-medium">Vacaciones</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--color-continental-blue-light)' }}></div>
-            <Sun className="w-4 h-4 text-yellow-500" />
-            <span className="text-sm font-medium">Vacaciones asignadas por la empresa</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--continental-gray-2)' }}></div>
-            <span className="text-sm font-medium">Días inhábiles o no disponibles</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--color-continental-green-dark)' }}></div>
-            <span className="text-sm font-medium">Incapacidad / permiso (genérico)</span>
-          </div>
-
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <p className="text-xs font-semibold text-gray-700 mb-2">Nomenclatura SAP:</p>
-            <NomenclaturaLegend variant="grouped" />
-          </div>
-        </div>
-
-      </div>
+      <h3 className="text-lg font-semibold mb-4 text-gray-800">Nomenclatura SAP</h3>
+      <NomenclaturaLegend variant="grouped" />
+    </div>
   )
 }
 

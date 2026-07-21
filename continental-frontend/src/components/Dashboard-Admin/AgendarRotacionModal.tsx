@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
     CalendarClock, Loader2, Plus, Trash2, Copy, ChevronLeft, ChevronRight,
-    RotateCcw, ArrowRight,
+    RotateCcw, ArrowRight, ArrowDown,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -186,6 +186,24 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
         ));
     };
 
+    // Rota el patrón un renglón hacia abajo:
+    // fila i toma los valores de la fila (i-1). La última fila se ancla arriba.
+    const rotarPatronUnRenglon = (id: string) => {
+        setArranques(prev => prev.map(a => {
+            if (a.id !== id) return a;
+            if (a.semanas <= 1) return a;
+            const ancho = 7;
+            const nuevo: string[] = new Array(a.patron.length);
+            for (let i = 0; i < a.semanas; i++) {
+                const srcRow = (i - 1 + a.semanas) % a.semanas;
+                for (let j = 0; j < ancho; j++) {
+                    nuevo[i * ancho + j] = a.patron[srcRow * ancho + j];
+                }
+            }
+            return { ...a, patron: nuevo };
+        }));
+    };
+
     const arranquesValidos = useMemo(() => {
         if (arranques.length === 0) return false;
         const fechas = arranques.map(a => a.fechaIso);
@@ -343,6 +361,13 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
                                                         <Copy className="size-3 mr-1" /> Copiar previo
                                                     </Button>
                                                 )}
+                                                <Button type="button" variant="outline" size="sm"
+                                                    onClick={() => rotarPatronUnRenglon(a.id)}
+                                                    disabled={a.semanas <= 1}
+                                                    title="Recorrer todo el patrón un renglón hacia abajo (última fila sube al inicio)"
+                                                >
+                                                    <ArrowDown className="size-3 mr-1" /> Rotar +1
+                                                </Button>
                                                 <Button type="button" variant="outline" size="sm"
                                                     onClick={() => restablecerAPatronVigente(a.id)}
                                                     title="Restablecer al patrón vigente de la regla"
