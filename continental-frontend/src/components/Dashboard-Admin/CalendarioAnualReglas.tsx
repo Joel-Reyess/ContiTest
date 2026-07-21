@@ -196,6 +196,25 @@ export const CalendarioAnualReglas = () => {
                 </div>
             </div>
 
+            <Card>
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Nomenclatura</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                    <NomenclaturaLegend variant="grouped" />
+                    <div className="pt-3 border-t flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-continental-gray-1">
+                        <div className="flex items-center gap-2">
+                            <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-continental-yellow" />
+                            <span>Arranque programado</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-blue-500" />
+                            <span>Día de hoy</span>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
             <Card className="overflow-hidden">
                 <CardContent className="p-0">
                     {loading ? (
@@ -221,25 +240,6 @@ export const CalendarioAnualReglas = () => {
                             ))}
                         </div>
                     )}
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Nomenclatura</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
-                    <NomenclaturaLegend variant="grouped" />
-                    <div className="pt-3 border-t flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-continental-gray-1">
-                        <div className="flex items-center gap-2">
-                            <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-continental-yellow" />
-                            <span>Arranque programado</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-blue-500" />
-                            <span>Día de hoy</span>
-                        </div>
-                    </div>
                 </CardContent>
             </Card>
         </div>
