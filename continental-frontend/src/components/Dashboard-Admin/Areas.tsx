@@ -57,6 +57,13 @@ export const Areas = () => {
     // Multi-jefes: lista de IDs de jefes asignados al área actual
     const [jefesActuales, setJefesActuales] = useState<number[]>([]);
     const [jefeToAdd, setJefeToAdd] = useState<string>("");
+    // Multi-Gerente BT y multi-RH
+    const [gerentesActuales, setGerentesActuales] = useState<number[]>([]);
+    const [gerenteToAdd, setGerenteToAdd] = useState<string>("");
+    const [rhActuales, setRhActuales] = useState<number[]>([]);
+    const [rhToAdd, setRhToAdd] = useState<string>("");
+    const [gerentesDisponibles, setGerentesDisponibles] = useState<User[]>([]);
+    const [rhDisponibles, setRhDisponibles] = useState<User[]>([]);
     const [isUpdating, setIsUpdating] = useState(false);
     const [usersByRole, setUsersByRole] = useState<User[]>([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
@@ -99,6 +106,16 @@ export const Areas = () => {
                 setJefesActuales(jefesIds);
                 setJefeToAdd("");
 
+                // Multi-Gerente / multi-RH
+                const gerentesIds: number[] = ((areaDetails as any)?.gerentes ?? [])
+                    .map((g: { id: number }) => g.id);
+                const rhIds: number[] = ((areaDetails as any)?.rh ?? [])
+                    .map((r: { id: number }) => r.id);
+                setGerentesActuales(gerentesIds);
+                setRhActuales(rhIds);
+                setGerenteToAdd("");
+                setRhToAdd("");
+
                 if (areaDetails.grupos && areaDetails.grupos.length > 0) {
                     console.log("areaDetails.grupos", areaDetails.grupos)
                     const sortedApiGroups = sortApiGroups([...areaDetails.grupos]);
@@ -130,6 +147,10 @@ export const Areas = () => {
             });
             setJefesActuales([]);
             setJefeToAdd("");
+            setGerentesActuales([]);
+            setRhActuales([]);
+            setGerenteToAdd("");
+            setRhToAdd("");
             setGroups([]);
         }
     }, [selectedArea, getAreaById]);
@@ -170,6 +191,18 @@ export const Areas = () => {
     useEffect(() => {
         fetchUsersByRole();
         fetchGroupLeaders();
+        (async () => {
+            try {
+                const [gerentes, rh] = await Promise.all([
+                    userService.getUsersByRole(UserRole.GERENTE_BT),
+                    userService.getUsersByRole(UserRole.RH),
+                ]);
+                setGerentesDisponibles(gerentes);
+                setRhDisponibles(rh);
+            } catch (err) {
+                console.error('Error cargando usuarios Gerente/RH', err);
+            }
+        })();
     }, []);
 
     const handleFormChange = (field: keyof AreaFormData, value: string) => {
@@ -411,6 +444,22 @@ export const Areas = () => {
                 hasErrors = true;
             }
 
+            // 2b. Asignar Gerente BT y RH
+            try {
+                const gIds = Array.from(new Set(gerentesActuales.filter(id => id > 0)));
+                const rIds = Array.from(new Set(rhActuales.filter(id => id > 0)));
+                await areasService.assignGerenteRH(areaId, { GerenteIds: gIds, RHIds: rIds });
+                toast.success(`Gerentes: ${gIds.length}, RH: ${rIds.length}`);
+            } catch (error) {
+                console.error('Error assigning Gerente/RH:', error);
+                let errorMessage = 'Error desconocido';
+                if (error && typeof error === 'object' && 'message' in error) {
+                    errorMessage = String(error.message);
+                }
+                toast.error(`Error al asignar Gerente/RH: ${errorMessage}`);
+                hasErrors = true;
+            }
+
             // 3. Actualizar asignaciones de ingenieros
             if (pendingAssignments.length > 0 || pendingUnassignments.length > 0) {
                 try {
@@ -587,6 +636,124 @@ export const Areas = () => {
                                         <SelectContent>
                                             {usersByRole
                                                 .filter(u => !jefesActuales.includes(u.id))
+                                                .map(user => (
+                                                    <SelectItem key={user.id} value={user.id.toString()}>
+                                                        {user.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {/* Gerentes BT asignados al área */}
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="text-sm font-medium text-continental-gray-1">
+                                    Gerentes BT <span className="text-xs text-continental-gray-1 font-normal">(múltiples permitidos — solo ven sus áreas asignadas)</span>
+                                </Label>
+                                <div className="flex flex-wrap gap-2 min-h-[38px] p-2 border border-continental-gray-3 rounded bg-white">
+                                    {gerentesActuales.length === 0 && (
+                                        <span className="text-xs text-continental-gray-1 self-center">
+                                            Sin gerentes asignados. Agrega uno abajo.
+                                        </span>
+                                    )}
+                                    {gerentesActuales.map(gerenteId => {
+                                        const u = gerentesDisponibles.find(x => x.id === gerenteId);
+                                        const label = u?.fullName ?? `#${gerenteId}`;
+                                        return (
+                                            <span
+                                                key={gerenteId}
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-continental-yellow/20 border border-continental-yellow text-xs"
+                                            >
+                                                {label}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setGerentesActuales(prev => prev.filter(id => id !== gerenteId))}
+                                                    className="text-continental-black hover:text-red-600"
+                                                    title="Quitar"
+                                                >
+                                                    <X className="size-3" />
+                                                </button>
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={gerenteToAdd}
+                                        onValueChange={(value) => {
+                                            const id = parseInt(value);
+                                            if (!isNaN(id) && id > 0 && !gerentesActuales.includes(id)) {
+                                                setGerentesActuales(prev => [...prev, id]);
+                                            }
+                                            setGerenteToAdd("");
+                                        }}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Agregar Gerente BT" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {gerentesDisponibles
+                                                .filter(u => !gerentesActuales.includes(u.id))
+                                                .map(user => (
+                                                    <SelectItem key={user.id} value={user.id.toString()}>
+                                                        {user.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {/* RH asignados al área */}
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="text-sm font-medium text-continental-gray-1">
+                                    RH <span className="text-xs text-continental-gray-1 font-normal">(múltiples permitidos — solo ven sus áreas asignadas, read-only)</span>
+                                </Label>
+                                <div className="flex flex-wrap gap-2 min-h-[38px] p-2 border border-continental-gray-3 rounded bg-white">
+                                    {rhActuales.length === 0 && (
+                                        <span className="text-xs text-continental-gray-1 self-center">
+                                            Sin RH asignados. Agrega uno abajo.
+                                        </span>
+                                    )}
+                                    {rhActuales.map(rhId => {
+                                        const u = rhDisponibles.find(x => x.id === rhId);
+                                        const label = u?.fullName ?? `#${rhId}`;
+                                        return (
+                                            <span
+                                                key={rhId}
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-continental-yellow/20 border border-continental-yellow text-xs"
+                                            >
+                                                {label}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRhActuales(prev => prev.filter(id => id !== rhId))}
+                                                    className="text-continental-black hover:text-red-600"
+                                                    title="Quitar"
+                                                >
+                                                    <X className="size-3" />
+                                                </button>
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={rhToAdd}
+                                        onValueChange={(value) => {
+                                            const id = parseInt(value);
+                                            if (!isNaN(id) && id > 0 && !rhActuales.includes(id)) {
+                                                setRhActuales(prev => [...prev, id]);
+                                            }
+                                            setRhToAdd("");
+                                        }}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Agregar RH" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {rhDisponibles
+                                                .filter(u => !rhActuales.includes(u.id))
                                                 .map(user => (
                                                     <SelectItem key={user.id} value={user.id.toString()}>
                                                         {user.fullName}

@@ -112,27 +112,42 @@ namespace tiempo_libre.Controllers
         {
             try
             {
-                // Si el caller es Jefe de Área (no SuperUsuario, Gerente BT ni RH),
-                // auto-restringimos las solicitudes a las que le correspondan: las
-                // asignadas a él como JefeAprobadorId. Sin esto, la pestaña 'Todas'
-                // mostraba solicitudes de otras áreas y se veía inconsistente vs
-                // 'Pendiente' (que sí filtra por jefe). Gerente BT y RH ven planta
-                // completa (read-only en el caso de RH — el frontend oculta los
-                // botones de aprobar/rechazar).
+                // Si el caller es Jefe de Área (no SuperUsuario/Gerente/RH),
+                // auto-restringimos las solicitudes a las asignadas a él vía
+                // JefeAprobadorId.
+                //
+                // Si el caller es Gerente BT o RH (ya no ven planta completa),
+                // se restringen las solicitudes a las de empleados de las áreas
+                // asignadas al usuario en AreaAsignaciones.
+                //
+                // SuperUsuario sigue viendo todo.
                 int? jefeIdAutoFiltro = null;
-                if (User.IsInRole("Jefe De Area")
-                    && !User.IsInRole("SuperUsuario")
-                    && !User.IsInRole("Gerente BT") && !User.IsInRole("GerenteBT")
-                    && !User.IsInRole("RH"))
+                List<int>? areaIdsFiltro = null;
+
+                var esSuperUsuario = User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario");
+                var esGerenteORH = User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT") || User.IsInRole("RH");
+
+                int? callerId = null;
                 {
                     var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                    if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out var uid))
-                    {
-                        jefeIdAutoFiltro = uid;
-                    }
+                    if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out var uidTmp))
+                        callerId = uidTmp;
                 }
 
-                var response = await _solicitudesService.ConsultarSolicitudesAsync(request, jefeIdAutoFiltro);
+                if (!esSuperUsuario && esGerenteORH && callerId.HasValue)
+                {
+                    areaIdsFiltro = await _db.AreaAsignaciones
+                        .Where(aa => aa.UserId == callerId.Value)
+                        .Select(aa => aa.AreaId)
+                        .Distinct()
+                        .ToListAsync();
+                }
+                else if (User.IsInRole("Jefe De Area") && !esSuperUsuario && !esGerenteORH && callerId.HasValue)
+                {
+                    jefeIdAutoFiltro = callerId.Value;
+                }
+
+                var response = await _solicitudesService.ConsultarSolicitudesAsync(request, jefeIdAutoFiltro, areaIdsFiltro);
 
                 if (!response.Success)
                 {

@@ -83,6 +83,7 @@ public partial class FreeTimeDbContext : DbContext
     public virtual DbSet<ReglasTurno> ReglasTurno { get; set; }
     public virtual DbSet<RotacionesReglaProgramadas> RotacionesReglaProgramadas { get; set; } = null!;
     public virtual DbSet<AreaJefe> AreaJefes { get; set; } = null!;
+    public virtual DbSet<AreaAsignacion> AreaAsignaciones { get; set; } = null!;
 
     // Sistema de edición de días asignados por empresa
     public virtual DbSet<ConfiguracionEdicionDiasEmpresa> ConfiguracionEdicionDiasEmpresa { get; set; }
@@ -1369,6 +1370,29 @@ public partial class FreeTimeDbContext : DbContext
             entity.HasOne(e => e.User)
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // AreaAsignaciones (many-to-many Area ↔ User ↔ Rol)
+        // Cubre roles "extra" sin tabla propia: Gerente BT (RolId=7) y RH (RolId=8).
+        modelBuilder.Entity<AreaAsignacion>(entity =>
+        {
+            entity.ToTable("AreaAsignaciones");
+            entity.HasKey(e => new { e.AreaId, e.UserId, e.RolId });
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.HasIndex(e => new { e.UserId, e.RolId });
+            entity.HasIndex(e => new { e.AreaId, e.RolId });
+            entity.HasOne(e => e.Area)
+                .WithMany(a => a.Asignaciones)
+                .HasForeignKey(e => e.AreaId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Rol)
+                .WithMany()
+                .HasForeignKey(e => e.RolId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

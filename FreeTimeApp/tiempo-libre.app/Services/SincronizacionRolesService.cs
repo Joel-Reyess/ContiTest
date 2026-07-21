@@ -618,6 +618,21 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Ids de Gerente BT + RH asignados a las áreas indicadas (vía AreaAsignaciones).
+        /// Vacío si no hay asignaciones o si el set de áreas es vacío/null.
+        /// </summary>
+        private async Task<List<int>> GetGerenteRHIdsPorAreaAsync(IEnumerable<int> areaIds)
+        {
+            var ids = areaIds.Where(a => a > 0).Distinct().ToList();
+            if (ids.Count == 0) return new List<int>();
+            return await _context.AreaAsignaciones
+                .Where(aa => ids.Contains(aa.AreaId))
+                .Select(aa => aa.UserId)
+                .Distinct()
+                .ToListAsync();
+        }
+
+        /// <summary>
         /// Envía una notificación a todos los SuperUsuarios listando las reglas nuevas
         /// que fueron auto-descubiertas desde SAP y quedaron PendienteConfiguracion.
         /// </summary>
@@ -713,14 +728,23 @@ namespace tiempo_libre.Services
                         + (string.IsNullOrEmpty(c.regla) ? "" : $" (regla: {c.regla})");
                     if (mensaje.Length > 480) mensaje = mensaje.Substring(0, 480) + "…";
 
-                    foreach (var superId in superIds)
+                    // Destinatarios: SuperUsuarios (siempre) + Gerentes/RH del
+                    // área anterior o nueva (los que pueden querer enterarse
+                    // del movimiento de personal a/desde su área).
+                    var areasAfectadas = new List<int>();
+                    if (c.areaAnterior.HasValue) areasAfectadas.Add(c.areaAnterior.Value);
+                    if (c.areaNueva.HasValue) areasAfectadas.Add(c.areaNueva.Value);
+                    var gerenteRhIds = await GetGerenteRHIdsPorAreaAsync(areasAfectadas);
+                    var destinatarios = superIds.Union(gerenteRhIds).Distinct();
+
+                    foreach (var receptorId in destinatarios)
                     {
                         await _notificacionesService.CrearNotificacionAsync(
                             TiposDeNotificacionEnum.CambioAreaEmpleadoSAP,
                             titulo,
                             mensaje,
                             nombreEmisor: "Sincronización SAP",
-                            idUsuarioReceptor: superId,
+                            idUsuarioReceptor: receptorId,
                             areaId: c.areaNueva,
                             grupoId: c.grupoNuevo > 0 ? c.grupoNuevo : (int?)null,
                             tipoMovimiento: "SAP: Cambio área/grupo",

@@ -16,6 +16,17 @@ export interface Area {
     jefeSuplente: BossUser | null;
     /** Multi-jefes: lista completa de jefes de área (incluye JefeId y JefeSuplenteId). */
     jefes?: AreaJefeBasic[];
+    /** Multi-Gerentes BT asignados al área (visibilidad restringida a estas áreas). */
+    gerentes?: AreaJefeBasic[];
+    /** Multi-RH asignados al área (visibilidad restringida a estas áreas). */
+    rh?: AreaJefeBasic[];
+  }
+
+  // Payload para asignar Gerentes/RH a un área. Cada lista es la fuente
+  // de verdad completa para su rol. Null = no tocar ese rol.
+  export interface AssignGerenteRHRequest {
+    GerenteIds?: number[] | null;
+    RHIds?: number[] | null;
   }
   
   export interface Grupo {

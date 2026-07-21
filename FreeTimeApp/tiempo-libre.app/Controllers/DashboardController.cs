@@ -36,19 +36,18 @@ namespace tiempo_libre.Controllers
             User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario");
 
         /// <summary>
-        /// Roles con visibilidad a toda la planta (equivalente a SuperUsuario
-        /// para efecto de filtrado por área): Gerente BT y RH ven todas las
-        /// áreas sin necesidad de estar en AreaJefes.
+        /// Roles con visibilidad a toda la planta. Antes incluía Gerente BT y
+        /// RH, pero ahora esos roles quedan restringidos a las áreas donde han
+        /// sido asignados vía AreaAsignaciones (igual que Jefe de Área).
+        /// SuperUsuario sigue siendo el único con visibilidad total.
         /// </summary>
-        private bool EsRolPlanta() =>
-            EsSuperUsuario()
-            || User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT")
-            || User.IsInRole("RH");
+        private bool EsRolPlanta() => EsSuperUsuario();
 
         /// <summary>
         /// Devuelve los IDs de áreas que el usuario puede ver.
-        /// SuperUsuario / Gerente BT / RH → null (todas).
-        /// Jefe de Área (Area.JefeId == userId) o Ingeniero Industrial (M:N AreaIngeniero) → áreas asignadas.
+        /// SuperUsuario → null (todas).
+        /// Jefe de Área (Area.Jefes) / Ingeniero Industrial (M:N AreaIngeniero) /
+        /// Gerente BT / RH (M:N AreaAsignaciones) → áreas asignadas.
         /// </summary>
         private async Task<List<int>?> GetAreasPermitidasAsync()
         {
@@ -67,7 +66,18 @@ namespace tiempo_libre.Controllers
                 .Select(a => a.AreaId)
                 .ToListAsync();
 
-            return jefeAreaIds.Union(ingenieroAreaIds).Distinct().ToList();
+            // Gerente BT (RolId=7) y RH (RolId=8) ahora se filtran igual que
+            // el resto: solo ven sus áreas asignadas.
+            var asignacionAreaIds = await _db.AreaAsignaciones
+                .Where(aa => aa.UserId == userId)
+                .Select(aa => aa.AreaId)
+                .ToListAsync();
+
+            return jefeAreaIds
+                .Union(ingenieroAreaIds)
+                .Union(asignacionAreaIds)
+                .Distinct()
+                .ToList();
         }
 
         /// <summary>

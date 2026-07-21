@@ -1,6 +1,6 @@
 import { httpClient } from '@/services/httpClient';
 import type { ApiResponse } from '@/interfaces/Api.interface';
-import type { Area, Grupo, AreaUpdateRequest, AreaUpdateResponse, AssignBossRequest, AssignBossResponse, AreaByIngenieroResponse, AreaByLiderResponse } from '@/interfaces/Areas.interface';
+import type { Area, Grupo, AreaUpdateRequest, AreaUpdateResponse, AssignBossRequest, AssignBossResponse, AreaByIngenieroResponse, AreaByLiderResponse, AssignGerenteRHRequest } from '@/interfaces/Areas.interface';
 import { logger } from '@/utils/logger';
 
 export const areasService = {
@@ -192,6 +192,28 @@ export const areasService = {
       return response.data;
     } catch (error) {
       logger.error('Error assigning bosses to area', error, 'AREAS_SERVICE');
+      throw error;
+    }
+  },
+
+  /**
+   * Asigna Gerentes BT y/o RH a un área. Cada lista es la fuente de verdad
+   * completa para su rol (reemplaza a las asignaciones existentes). Pasar
+   * null en un campo = no tocar ese rol.
+   */
+  async assignGerenteRH(areaId: number, payload: AssignGerenteRHRequest): Promise<void> {
+    try {
+      logger.apiRequest('PATCH', `/api/Area/${areaId}/asignar-gerente-rh`, payload);
+      const response: ApiResponse<unknown> = await httpClient.patch<unknown>(
+        `/api/Area/${areaId}/asignar-gerente-rh`,
+        payload
+      );
+      if (!response.success) {
+        throw new Error(response.errorMsg || 'Error al asignar Gerente/RH al área');
+      }
+      logger.apiResponse('PATCH', `/api/Area/${areaId}/asignar-gerente-rh`, 200, null);
+    } catch (error) {
+      logger.error('Error assigning Gerente/RH to area', error, 'AREAS_SERVICE');
       throw error;
     }
   },

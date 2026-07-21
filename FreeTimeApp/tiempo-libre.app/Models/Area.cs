@@ -37,6 +37,14 @@ public partial class Area
     [JsonIgnore]
     public virtual ICollection<AreaJefe> Jefes { get; set; }
 
+    /// <summary>
+    /// Asignaciones de Gerente BT (RolId=7) y RH (RolId=8) al área. Al igual
+    /// que Jefes/Ingenieros, restringe la visibilidad del usuario al conjunto
+    /// de áreas asignadas.
+    /// </summary>
+    [JsonIgnore]
+    public virtual ICollection<AreaAsignacion> Asignaciones { get; set; }
+
     public Area()
     {
         Grupos = new HashSet<Grupo>();
@@ -45,5 +53,6 @@ public partial class Area
         AreaIngenieros = new HashSet<AreaIngeniero>();
         Ingenieros = new HashSet<User>();
         Jefes = new HashSet<AreaJefe>();
+        Asignaciones = new HashSet<AreaAsignacion>();
     }
 }

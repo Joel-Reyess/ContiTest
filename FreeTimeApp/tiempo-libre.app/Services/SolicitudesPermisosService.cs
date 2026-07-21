@@ -293,10 +293,15 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Consulta solicitudes de permisos
+        /// Consulta solicitudes de permisos.
+        /// - jefeId: cuando el caller es Jefe de Área, filtra las solicitudes
+        ///   asignadas a él.
+        /// - areaIdsFilter: cuando el caller es Gerente BT / RH, restringe las
+        ///   solicitudes a las de empleados de las áreas asignadas al usuario.
+        ///   null = sin filtro por área (SuperUsuario o similares).
         /// </summary>
         public async Task<ApiResponse<ConsultarSolicitudesResponse>> ConsultarSolicitudesAsync(
-    ConsultarSolicitudesRequest request, int? jefeId = null)
+    ConsultarSolicitudesRequest request, int? jefeId = null, List<int>? areaIdsFilter = null)
         {
             try
             {
@@ -312,6 +317,22 @@ namespace tiempo_libre.Services
 
                 if (jefeId.HasValue)
                     query = query.Where(s => s.JefeAprobadorId == jefeId.Value);
+
+                if (areaIdsFilter != null)
+                {
+                    if (areaIdsFilter.Count == 0)
+                    {
+                        // Sin áreas asignadas → no ve solicitudes.
+                        query = query.Where(s => false);
+                    }
+                    else
+                    {
+                        var nominasEnAreas = _db.Users
+                            .Where(u => u.AreaId.HasValue && areaIdsFilter.Contains(u.AreaId.Value) && u.Nomina.HasValue)
+                            .Select(u => u.Nomina!.Value);
+                        query = query.Where(s => nominasEnAreas.Contains(s.Nomina));
+                    }
+                }
 
                 if (!string.IsNullOrEmpty(request.Estado))
                     query = query.Where(s => s.EstadoSolicitud == request.Estado);

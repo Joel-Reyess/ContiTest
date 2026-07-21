@@ -41,6 +41,7 @@ public class AreaController : ControllerBase
             .Include(a => a.Jefe)
             .Include(a => a.JefeSuplente)
             .Include(a => a.Jefes).ThenInclude(aj => aj.User)
+            .Include(a => a.Asignaciones).ThenInclude(aa => aa.User)
             .FirstOrDefaultAsync(a => a.AreaId == id);
 
         if (area == null)
@@ -55,6 +56,28 @@ public class AreaController : ControllerBase
                 Id = aj.User!.Id,
                 FullName = aj.User.FullName,
                 Username = aj.User.Username
+            })
+            .OrderBy(u => u.FullName)
+            .ToList();
+
+        var gerentesLista = area.Asignaciones
+            .Where(aa => aa.User != null && aa.RolId == (int)tiempo_libre.Models.RolEnum.Gerente_BT)
+            .Select(aa => new UserBasicDto
+            {
+                Id = aa.User!.Id,
+                FullName = aa.User.FullName,
+                Username = aa.User.Username
+            })
+            .OrderBy(u => u.FullName)
+            .ToList();
+
+        var rhLista = area.Asignaciones
+            .Where(aa => aa.User != null && aa.RolId == (int)tiempo_libre.Models.RolEnum.RH)
+            .Select(aa => new UserBasicDto
+            {
+                Id = aa.User!.Id,
+                FullName = aa.User.FullName,
+                Username = aa.User.Username
             })
             .OrderBy(u => u.FullName)
             .ToList();
@@ -79,7 +102,9 @@ public class AreaController : ControllerBase
                 FullName = area.JefeSuplente.FullName,
                 Username = area.JefeSuplente.Username
             } : null,
-            Jefes = jefesLista
+            Jefes = jefesLista,
+            Gerentes = gerentesLista,
+            RH = rhLista
         };
 
         return Ok(new ApiResponse<AreaDetailDto>(true, areaDetail));
@@ -345,6 +370,95 @@ public class AreaController : ControllerBase
         return Ok(new ApiResponse<Area>(true, area));
     }
 
+    // PATCH: api/Area/{id}/asignar-gerente-rh
+    // Reemplaza en un solo request la lista de Gerentes BT y/o RH asignados
+    // al área. Cada lista es "fuente de verdad": lo que venga en el body es
+    // exactamente lo que queda. Null = no tocar ese rol.
+    [HttpPatch("{id}/asignar-gerente-rh")]
+    [Authorize(Roles = "SuperUsuario")]
+    public async Task<IActionResult> AssignGerenteRH(int id, [FromBody] tiempo_libre.DTOs.AreaAsignarGerenteRHRequest request)
+    {
+        var area = await _db.Areas
+            .Include(a => a.Asignaciones)
+            .FirstOrDefaultAsync(a => a.AreaId == id);
+        if (area == null)
+            return NotFound(new ApiResponse<Area>(false, null, "Área no encontrada"));
+
+        var gerenteRolId = (int)tiempo_libre.Models.RolEnum.Gerente_BT;
+        var rhRolId = (int)tiempo_libre.Models.RolEnum.RH;
+
+        // Validar existencia y rol de los usuarios que vienen (si vienen).
+        var todosIds = new HashSet<int>();
+        if (request.GerenteIds != null) foreach (var uid in request.GerenteIds) if (uid > 0) todosIds.Add(uid);
+        if (request.RHIds != null) foreach (var uid in request.RHIds) if (uid > 0) todosIds.Add(uid);
+
+        Dictionary<int, tiempo_libre.Models.User> usersById = new();
+        if (todosIds.Count > 0)
+        {
+            var usersLoaded = await _db.Users
+                .Include(u => u.Roles)
+                .Where(u => todosIds.Contains(u.Id))
+                .ToListAsync();
+            if (usersLoaded.Count != todosIds.Count)
+                return BadRequest(new ApiResponse<Area>(false, null, "Alguno(s) de los usuarios indicados no existe(n)."));
+            usersById = usersLoaded.ToDictionary(u => u.Id);
+        }
+
+        List<string> Invalidos(IEnumerable<int>? ids, string rolNombre)
+        {
+            if (ids == null) return new List<string>();
+            return ids.Where(uid => uid > 0)
+                .Where(uid => usersById.TryGetValue(uid, out var u) && !u.Roles.Any(r => r.Name == rolNombre))
+                .Select(uid => usersById[uid].FullName)
+                .ToList();
+        }
+
+        var invGerente = Invalidos(request.GerenteIds, "Gerente BT");
+        if (invGerente.Any())
+            return BadRequest(new ApiResponse<Area>(false, null, $"No tiene(n) rol 'Gerente BT': {string.Join(", ", invGerente)}"));
+
+        var invRH = Invalidos(request.RHIds, "RH");
+        if (invRH.Any())
+            return BadRequest(new ApiResponse<Area>(false, null, $"No tiene(n) rol 'RH': {string.Join(", ", invRH)}"));
+
+        // Reemplazar Gerentes si la lista viene (null → conservar).
+        if (request.GerenteIds != null)
+        {
+            var actuales = area.Asignaciones.Where(a => a.RolId == gerenteRolId).ToList();
+            _db.AreaAsignaciones.RemoveRange(actuales);
+            foreach (var uid in request.GerenteIds.Where(v => v > 0).Distinct())
+            {
+                area.Asignaciones.Add(new AreaAsignacion
+                {
+                    AreaId = area.AreaId,
+                    UserId = uid,
+                    RolId = gerenteRolId,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        // Reemplazar RH si la lista viene.
+        if (request.RHIds != null)
+        {
+            var actuales = area.Asignaciones.Where(a => a.RolId == rhRolId).ToList();
+            _db.AreaAsignaciones.RemoveRange(actuales);
+            foreach (var uid in request.RHIds.Where(v => v > 0).Distinct())
+            {
+                area.Asignaciones.Add(new AreaAsignacion
+                {
+                    AreaId = area.AreaId,
+                    UserId = uid,
+                    RolId = rhRolId,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        return Ok(new ApiResponse<Area>(true, area));
+    }
+
     /// <summary>
     /// Obtiene las áreas donde el usuario especificado es líder de grupo
     /// </summary>
@@ -602,6 +716,8 @@ public class AreaController : ControllerBase
         public int? JefeSuplenteId { get; set; }
         public UserBasicDto? JefeSuplente { get; set; }
         public List<UserBasicDto> Jefes { get; set; } = new();
+        public List<UserBasicDto> Gerentes { get; set; } = new();
+        public List<UserBasicDto> RH { get; set; } = new();
         public List<GrupoBasicDto> Grupos { get; set; } = new();
     }
 
