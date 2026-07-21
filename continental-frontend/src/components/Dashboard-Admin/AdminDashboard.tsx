@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Navbar } from '../Navbar/Navbar';
-import { Calendar, Factory, FileChartColumn, User2, Users, ArrowLeftRight, CalendarClock, BarChart2, Repeat } from 'lucide-react';
+import { Calendar, Factory, FileChartColumn, User2, Users, ArrowLeftRight, CalendarClock, BarChart2, Repeat, CalendarRange } from 'lucide-react';
 import { Areas } from './Areas';
 import { Vacaciones } from './Vacaciones';
 import { Plantilla } from './Plantilla';
@@ -15,6 +15,7 @@ import WeeklyRoles from "../Dashboard-Empleados/WeeklyRoles";
 /*import { TransferenciaPersonal } from '../TransferenciaPersonal/TransferenciaPersonal';*/
 import { Dashboard } from './Dashboard';
 import { ReglasTurnos } from './ReglasTurnos';
+import { CalendarioAnualReglas } from './CalendarioAnualReglas';
 //import { DiagnosticoFT } from './DiagnosticoFT';
 
 const navItems = [
@@ -25,6 +26,7 @@ const navItems = [
     { to: "/admin/usuarios", label: "Usuarios", icon: <User2 /> },
     { to: "/admin/roles-semanales", label: "Roles semanales", icon: <CalendarClock /> },
     { to: "/admin/reglas-turnos", label: "Reglas turnos", icon: <Repeat /> },
+    { to: "/admin/calendario-anual", label: "Calendario anual", icon: <CalendarRange /> },
     //{ to: "/admin/diagnostico-ft", label: "Diagnóstico FT", icon: <Stethoscope /> },
     /*{ to: "/admin/transferencia-personal", label: "Transferencia", icon: <ArrowLeftRight /> },*/
     { to: "/admin/dashboard", label: "Dashboard", icon: <BarChart2 /> },
@@ -77,6 +79,7 @@ const AdminDashboard = (): JSX.Element => {
                     <Route path="usuarios/:id" element={<DetallesUsuario />} />
                     <Route path="dashboard" element={<Dashboard />} />
                     <Route path="reglas-turnos" element={<ReglasTurnos />} />
+                    <Route path="calendario-anual" element={<CalendarioAnualReglas />} />
                     {/*<Route path="diagnostico-ft" element={<DiagnosticoFT />} />*/}
                     {/*<Route path="transferencia-personal" element={<TransferenciaPersonal />} />*/}
                 </Routes>

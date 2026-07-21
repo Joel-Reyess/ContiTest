@@ -32,7 +32,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Listar todas las reglas con su patrón actual.</summary>
         [HttpGet]
-        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,IngenieroIndustrial,Jefe De Area,JefeArea,Delegado Sindical,DelegadoSindical,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> GetAll()
         {
             try
@@ -49,7 +49,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Obtener una regla por código.</summary>
         [HttpGet("{codigo}")]
-        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,IngenieroIndustrial,Jefe De Area,JefeArea,Delegado Sindical,DelegadoSindical,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> GetByCodigo(string codigo)
         {
             try
@@ -72,7 +72,7 @@ namespace tiempo_libre.Controllers
         /// ven aún el patrón nuevo (p.ej. IIS con múltiples workers).
         /// </summary>
         [HttpPost("reload-cache")]
-        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,IngenieroIndustrial,Jefe De Area,JefeArea,Delegado Sindical,DelegadoSindical,Gerente BT,GerenteBT,RH")]
         public IActionResult ReloadCache()
         {
             try
@@ -229,7 +229,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Listar rotaciones agendadas en un rango (default = año en curso).</summary>
         [HttpGet("rotaciones-programadas")]
-        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,IngenieroIndustrial,Jefe De Area,JefeArea,Delegado Sindical,DelegadoSindical,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ListarRotacionesProgramadas(
             [FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
         {

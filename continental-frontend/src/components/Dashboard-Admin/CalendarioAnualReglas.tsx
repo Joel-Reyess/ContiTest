@@ -1,0 +1,326 @@
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Loader2, ChevronLeft, ChevronRight, CalendarClock, Filter } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { NomenclaturaLegend } from "@/components/Calendar/NomenclaturaLegend";
+import { SAP_NOMENCLATURA, type SAPCodigo } from "@/utils/sapNomenclatura";
+import { reglasTurnoService } from "@/services/reglasTurnoService";
+import type { ReglaTurno, RotacionProgramada } from "@/interfaces/Api.interface";
+
+const MESES = [
+    "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+];
+
+const DIAS_SEMANA_CORTO = ["D", "L", "M", "X", "J", "V", "S"];
+
+function diasEnMes(anio: number, mes0: number): number {
+    return new Date(anio, mes0 + 1, 0).getDate();
+}
+
+function toIsoDate(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function diffDias(desde: Date, hasta: Date): number {
+    const MS_DIA = 86_400_000;
+    const a = Date.UTC(desde.getFullYear(), desde.getMonth(), desde.getDate());
+    const b = Date.UTC(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+    return Math.floor((b - a) / MS_DIA);
+}
+
+function nombreSubGrupo(codigoBase: string, gpoRef: number): string {
+    return gpoRef === 1 ? codigoBase : `${codigoBase}_${String(gpoRef).padStart(2, "0")}`;
+}
+
+interface ArranqueVigenteInfo {
+    patron: string[];
+    fechaAncla: Date;
+}
+
+function arranqueVigenteEn(
+    fecha: Date,
+    regla: ReglaTurno,
+    arranques: RotacionProgramada[],
+): ArranqueVigenteInfo {
+    const arranqueAplicable = arranques
+        .filter(a => a.codigoRegla === regla.codigo && a.patronBaseline && a.patronBaseline.length > 0)
+        .filter(a => {
+            const ejec = new Date(a.fechaEjecucion);
+            return diffDias(ejec, fecha) >= 0;
+        })
+        .sort((a, b) => (a.fechaEjecucion < b.fechaEjecucion ? 1 : -1))[0];
+
+    if (arranqueAplicable) {
+        return {
+            patron: arranqueAplicable.patronBaseline as string[],
+            fechaAncla: new Date(arranqueAplicable.fechaEjecucion),
+        };
+    }
+
+    return {
+        patron: regla.patron,
+        fechaAncla: new Date(regla.fechaReferencia),
+    };
+}
+
+function codigoParaFecha(
+    fecha: Date,
+    regla: ReglaTurno,
+    arranques: RotacionProgramada[],
+    subGrupo: number,
+): string {
+    const { patron, fechaAncla } = arranqueVigenteEn(fecha, regla, arranques);
+    const n = patron.length;
+    if (n === 0) return "";
+    const dias = diffDias(fechaAncla, fecha);
+    const offset = ((subGrupo - 1) * 7) % n;
+    const idx = (((dias + offset) % n) + n) % n;
+    return (patron[idx] ?? "").toUpperCase();
+}
+
+function esDiaArranque(
+    fecha: Date,
+    codigoRegla: string,
+    arranques: RotacionProgramada[],
+): boolean {
+    const iso = toIsoDate(fecha);
+    return arranques.some(
+        a => a.codigoRegla === codigoRegla &&
+             a.patronBaseline && a.patronBaseline.length > 0 &&
+             a.fechaEjecucion.slice(0, 10) === iso
+    );
+}
+
+interface FilaSubGrupo {
+    regla: ReglaTurno;
+    subGrupo: number;
+    nombre: string;
+}
+
+export const CalendarioAnualReglas = () => {
+    const [reglas, setReglas] = useState<ReglaTurno[]>([]);
+    const [arranques, setArranques] = useState<RotacionProgramada[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [anio, setAnio] = useState<number>(new Date().getFullYear());
+    const [filtroRegla, setFiltroRegla] = useState<string>("__todas__");
+
+    const cargar = async () => {
+        setLoading(true);
+        try {
+            const [rs, ars] = await Promise.all([
+                reglasTurnoService.getAll(),
+                reglasTurnoService.listarRotacionesProgramadas(
+                    `${anio}-01-01`,
+                    `${anio}-12-31`,
+                ).catch(() => [] as RotacionProgramada[]),
+            ]);
+            setReglas(rs.filter(r => r.patron.length > 0));
+            setArranques(ars.filter(a => a.estado !== "Cancelada"));
+        } catch (err: any) {
+            toast.error(err?.message ?? "Error al cargar el calendario anual");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        cargar();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [anio]);
+
+    const filas: FilaSubGrupo[] = useMemo(() => {
+        const reglasFiltradas = filtroRegla === "__todas__"
+            ? reglas
+            : reglas.filter(r => r.codigo === filtroRegla);
+        const out: FilaSubGrupo[] = [];
+        for (const regla of reglasFiltradas) {
+            const numGrupos = Math.max(1, Math.floor(regla.patron.length / 7));
+            for (let g = 1; g <= numGrupos; g++) {
+                out.push({
+                    regla,
+                    subGrupo: g,
+                    nombre: nombreSubGrupo(regla.codigo, g),
+                });
+            }
+        }
+        return out;
+    }, [reglas, filtroRegla]);
+
+    const hoyIso = toIsoDate(new Date());
+
+    return (
+        <div className="p-6 max-w-[1600px] mx-auto space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                    <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+                        <CalendarClock className="size-6 text-continental-yellow" />
+                        Calendario anual de reglas
+                    </h1>
+                    <p className="text-sm text-continental-gray-1 mt-1">
+                        Vista panorámica del año: cada fila es un sub-grupo y cada celda es el turno o
+                        ausencia proyectada según el patrón vigente (incluyendo arranques programados).
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setAnio(a => a - 1)}>
+                        <ChevronLeft className="size-4" />
+                    </Button>
+                    <span className="text-lg font-semibold tabular-nums px-2">{anio}</span>
+                    <Button variant="outline" size="sm" onClick={() => setAnio(a => a + 1)}>
+                        <ChevronRight className="size-4" />
+                    </Button>
+                </div>
+            </div>
+
+            <div className="flex items-end gap-3 flex-wrap">
+                <div className="min-w-[200px]">
+                    <Label className="text-xs flex items-center gap-1">
+                        <Filter className="size-3" /> Filtrar por regla
+                    </Label>
+                    <select
+                        value={filtroRegla}
+                        onChange={(e) => setFiltroRegla(e.target.value)}
+                        className="w-full border rounded px-2 py-1.5 text-sm mt-1"
+                    >
+                        <option value="__todas__">Todas las reglas</option>
+                        {reglas.map(r => (
+                            <option key={r.codigo} value={r.codigo}>{r.codigo}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="text-[11px] text-continental-gray-1 pb-1">
+                    {filas.length} sub-grupo(s) · {arranques.length} arranque(s) programado(s) en {anio}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-4">
+                <Card className="overflow-hidden">
+                    <CardContent className="p-0">
+                        {loading ? (
+                            <div className="flex items-center justify-center py-20">
+                                <Loader2 className="size-6 animate-spin text-continental-gray-1" />
+                            </div>
+                        ) : filas.length === 0 ? (
+                            <div className="py-20 text-center text-sm text-continental-gray-1">
+                                No hay reglas configuradas para mostrar.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                {MESES.map((mesLabel, mes0) => (
+                                    <MesTabla
+                                        key={mes0}
+                                        anio={anio}
+                                        mes0={mes0}
+                                        mesLabel={mesLabel}
+                                        filas={filas}
+                                        arranques={arranques}
+                                        hoyIso={hoyIso}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Nomenclatura</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                        <NomenclaturaLegend variant="grouped" />
+                        <div className="mt-4 pt-3 border-t space-y-1 text-[11px] text-continental-gray-1">
+                            <div className="flex items-center gap-2">
+                                <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-continental-yellow" />
+                                <span>Arranque programado</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="inline-block w-3 h-3 rounded-sm ring-2 ring-blue-500" />
+                                <span>Día de hoy</span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+    );
+};
+
+interface MesTablaProps {
+    anio: number;
+    mes0: number;
+    mesLabel: string;
+    filas: FilaSubGrupo[];
+    arranques: RotacionProgramada[];
+    hoyIso: string;
+}
+
+const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso }: MesTablaProps) => {
+    const dias = diasEnMes(anio, mes0);
+    const fechas = Array.from({ length: dias }, (_, i) => new Date(anio, mes0, i + 1));
+
+    return (
+        <div className="border-b last:border-b-0">
+            <div className="px-3 py-2 bg-continental-gray-4/40 border-b flex items-center gap-2 sticky left-0 z-10">
+                <span className="text-sm font-semibold">{mesLabel} {anio}</span>
+                <span className="text-[11px] text-continental-gray-1">({dias} días)</span>
+            </div>
+            <table className="min-w-full text-[10px] font-mono border-collapse">
+                <thead>
+                    <tr>
+                        <th className="sticky left-0 bg-white z-10 border-r px-2 py-1 text-left text-[11px] font-semibold w-[110px]">
+                            Sub-grupo
+                        </th>
+                        {fechas.map((f, i) => (
+                            <th
+                                key={i}
+                                className={`border px-0 py-0.5 text-center min-w-[22px] ${f.getDay() === 0 || f.getDay() === 6 ? "bg-gray-50" : ""}`}
+                            >
+                                <div className="text-[9px] text-continental-gray-1">
+                                    {DIAS_SEMANA_CORTO[f.getDay()]}
+                                </div>
+                                <div className="text-[10px]">{f.getDate()}</div>
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {filas.map((fila) => (
+                        <tr key={`${fila.regla.codigo}-${fila.subGrupo}`}>
+                            <td className="sticky left-0 bg-white z-10 border-r px-2 py-1 text-[11px] whitespace-nowrap">
+                                {fila.nombre}
+                            </td>
+                            {fechas.map((f, i) => {
+                                const codigo = codigoParaFecha(f, fila.regla, arranques, fila.subGrupo);
+                                const entry = codigo && (codigo in SAP_NOMENCLATURA)
+                                    ? SAP_NOMENCLATURA[codigo as SAPCodigo]
+                                    : null;
+                                const isHoy = toIsoDate(f) === hoyIso;
+                                const isArranque = esDiaArranque(f, fila.regla.codigo, arranques);
+                                const ring = isArranque
+                                    ? "ring-2 ring-inset ring-continental-yellow"
+                                    : isHoy
+                                        ? "ring-2 ring-inset ring-blue-500"
+                                        : "";
+                                return (
+                                    <td
+                                        key={i}
+                                        className={`border text-center px-0 py-0.5 ${ring}`}
+                                        style={entry ? { backgroundColor: entry.bg, color: entry.fg } : undefined}
+                                        title={`${fila.nombre} — ${toIsoDate(f)}: ${entry?.label ?? codigo ?? "(sin dato)"}${isArranque ? " · Día de arranque" : ""}`}
+                                    >
+                                        {codigo}
+                                    </td>
+                                );
+                            })}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+export default CalendarioAnualReglas;

@@ -36,7 +36,7 @@
 import { useState, type JSX } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
 import { Navbar } from "../Navbar/Navbar";
-import { Calendar, File, FileChartColumn, Users, CalendarClock, BarChart3 } from "lucide-react";
+import { Calendar, File, FileChartColumn, Users, CalendarClock, BarChart3, CalendarRange } from "lucide-react";
 import CalendarComponent from "./CalendarComponent";
 import SolicitudesComponent from "./SolicitudesComponent";
 import SolicitudDetallePage from "./SolicitudDetallePage";
@@ -47,6 +47,7 @@ import { Dashboard as GraficosDashboard } from "../Dashboard-Admin/Dashboard";
 import { DetallesEmpleado } from "../Empleado/DetallesEmpleado";
 import { PeriodOptions, type Period } from "@/interfaces/Calendar.interface";
 import WeeklyRoles from "../Dashboard-Empleados/WeeklyRoles";
+import { CalendarioAnualReglas } from "../Dashboard-Admin/CalendarioAnualReglas";
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/interfaces/User.interface';
 import FestivoDetallePage from './FestivoDetallePage';
@@ -74,6 +75,7 @@ const AreaDashboard = (): JSX.Element => {
     const navItems = [
         { to: "/area/calendario", label: "Calendario", icon: <Calendar /> },
         { to: "/area/roles-semanales", label: "Roles semanales", icon: <CalendarClock /> },
+        { to: "/area/calendario-anual", label: "Calendario anual", icon: <CalendarRange /> },
         // Dashboard de gráficos: LEADER no puede verlo. Gerente BT / RH sí (planta completa).
         ...(!isLeader ? [{ to: "/area/dashboard", label: "Dashboard", icon: <BarChart3 /> }] : []),
         // Solicitudes: LEADER e INDUSTRIAL no las ven. Gerente BT tampoco. RH sí, pero en modo lectura.
@@ -122,6 +124,7 @@ const AreaDashboard = (): JSX.Element => {
                     <Route index element={<Navigate to="/area/calendario" replace />} />
                     <Route path="calendario" element={<CalendarComponent />} />
                     <Route path="roles-semanales" element={<WeeklyRoles />} />
+                    <Route path="calendario-anual" element={<CalendarioAnualReglas />} />
 
                     {/* Solicitudes: LEADER, INDUSTRIAL y Gerente BT no las ven. RH sí (solo lectura). */}
                     {!isLeader && !isIndustrial && !isGerenteBT && (
