@@ -196,6 +196,8 @@ namespace tiempo_libre.Controllers
                     return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
                 }
 
+                // JefeAreaId aquí se usa como scope multi-área (JefeAreaId OR
+                // Empleado.Area ∈ áreas del jefe). Ver ConsultarSolicitudesAsync.
                 var request = new ConsultaSolicitudesRequest
                 {
                     Estado = "Pendiente",

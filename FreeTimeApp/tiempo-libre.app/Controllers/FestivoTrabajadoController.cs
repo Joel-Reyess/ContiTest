@@ -405,10 +405,14 @@ namespace tiempo_libre.Controllers
                     return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
                 }
 
+                // NO se pasa JefeAreaId aquí. Ese filtro es un match estricto contra
+                // el JefeAreaId clavado en cada solicitud y ocultaría las de la(s)
+                // otra(s) área(s) del jefe cuando la solicitud quedó clavada a un
+                // compañero (multi-jefes por área). Dejamos que ConsultarSolicitudes
+                // aplique el scope de áreas visibles.
                 var request = new ConsultaSolicitudesFestivoRequest
                 {
-                    Estado = "Pendiente",
-                    JefeAreaId = usuarioId
+                    Estado = "Pendiente"
                 };
 
                 _logger.LogInformation("Jefe {UsuarioId} consultando sus solicitudes pendientes de festivos", usuarioId);

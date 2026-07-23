@@ -416,10 +416,11 @@ namespace tiempo_libre.Services
                     return new ApiResponse<object>(false, null,
                         $"La nueva fecha Hasta ({request.NuevaFechaHasta:yyyy-MM-dd}) debe ser posterior a la actual ({permiso.Hasta:yyyy-MM-dd}).");
 
-                // Punto 6: NO se sobrescribe el registro original (evita perder lo
-                // que vino del Excel). Se crea un registro de extensión manual que
-                // cubre solo los días nuevos [hastaAnterior+1 → nuevaHasta], y se
-                // protege el original para que el sync de Excel no lo toque.
+                // La extensión ACTUALIZA el registro original en vez de crear uno
+                // paralelo (los registros duplicados confundían al usuario en el
+                // modal de extender y en el dashboard). Se marca ProtegidoPorExtension
+                // para que el sync de SAP no vuelva a sobreescribir la fecha con la
+                // versión original del Excel. La traza queda en Observaciones.
                 var hastaAnterior = permiso.Hasta;
                 var extensionDesde = hastaAnterior.AddDays(1);
                 var extensionHasta = request.NuevaFechaHasta;
@@ -439,53 +440,39 @@ namespace tiempo_libre.Services
                     diasHabilesExt++;
                 }
 
-                var marcaExtension = $"[Extensión de permiso #{permiso.Id} por usuario {usuarioId} el {DateTime.UtcNow:yyyy-MM-dd HH:mm}: {hastaAnterior:yyyy-MM-dd} → {extensionHasta:yyyy-MM-dd}]";
+                var marcaExtension = $"[Extensión por usuario {usuarioId} el {DateTime.UtcNow:yyyy-MM-dd HH:mm}: {hastaAnterior:yyyy-MM-dd} → {extensionHasta:yyyy-MM-dd}]";
                 var observacionesExt = string.IsNullOrWhiteSpace(request.Observaciones)
                     ? marcaExtension
                     : marcaExtension + " " + request.Observaciones;
-                if (observacionesExt.Length > 500) observacionesExt = observacionesExt.Substring(0, 500);
+                var observacionesFinal = string.IsNullOrWhiteSpace(permiso.Observaciones)
+                    ? observacionesExt
+                    : permiso.Observaciones + " | " + observacionesExt;
+                if (observacionesFinal.Length > 500) observacionesFinal = observacionesFinal.Substring(0, 500);
 
-                var extension = new PermisosEIncapacidadesSAP
-                {
-                    Nomina = permiso.Nomina,
-                    Nombre = permiso.Nombre,
-                    Posicion = permiso.Posicion,
-                    Desde = extensionDesde,
-                    Hasta = extensionHasta,
-                    ClAbPre = permiso.ClAbPre,
-                    ClaseAbsentismo = permiso.ClaseAbsentismo,
-                    Dias = diasHabilesExt,
-                    DiaNat = diasNaturalesExt,
-                    Observaciones = observacionesExt,
-                    EsRegistroManual = true,
-                    FechaRegistro = DateTime.Now,
-                    UsuarioRegistraId = usuarioId,
-                    EstadoSolicitud = "Aprobado",
-                    PermisoOriginalId = permiso.Id,
-                };
-                _db.PermisosEIncapacidadesSAP.Add(extension);
-
-                // Marcar el original como protegido para que el sync no lo sobrescriba.
+                permiso.Hasta = extensionHasta;
+                permiso.Dias = (permiso.Dias ?? 0) + diasHabilesExt;
+                permiso.DiaNat = (permiso.DiaNat ?? 0) + diasNaturalesExt;
+                permiso.Observaciones = observacionesFinal;
                 permiso.ProtegidoPorExtension = true;
 
                 await _db.SaveChangesAsync();
                 await transaction.CommitAsync();
 
                 _logger.LogInformation(
-                    "Usuario {UsuarioId} extendió permiso {PermisoId} de nómina {Nomina}: registro extensión #{ExtId} cubre {Desde}→{Hasta}",
-                    usuarioId, permiso.Id, permiso.Nomina, extension.Id, extensionDesde, extensionHasta);
+                    "Usuario {UsuarioId} extendió permiso {PermisoId} de nómina {Nomina}: {HastaAnterior} → {HastaNuevo}",
+                    usuarioId, permiso.Id, permiso.Nomina, hastaAnterior, extensionHasta);
 
                 return new ApiResponse<object>(true, new
                 {
                     permisoId = permiso.Id,
-                    extensionId = extension.Id,
+                    extensionId = permiso.Id,
                     nomina = permiso.Nomina,
                     desde = permiso.Desde,
                     hastaAnterior,
                     hastaNuevo = extensionHasta,
                     diasHabilesExtension = diasHabilesExt,
                     diasNaturalesExtension = diasNaturalesExt,
-                }, "Permiso/incapacidad extendido correctamente (registro original preservado).");
+                }, "Permiso/incapacidad extendido correctamente.");
             }
             catch (Exception ex)
             {

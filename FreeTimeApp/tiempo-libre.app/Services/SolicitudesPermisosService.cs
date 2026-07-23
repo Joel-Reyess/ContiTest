@@ -41,19 +41,27 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Obtiene solicitudes pendientes para un jefe de área
+        /// Obtiene solicitudes pendientes de todas las áreas visibles para el
+        /// usuario (jefe multi-área o Gerente/RH). Filtramos por área — NO por
+        /// JefeAprobadorId — para no ocultar solicitudes clavadas al compañero
+        /// co-jefe cuando el área tiene multi-jefes.
         /// </summary>
         public async Task<ApiResponse<ConsultarSolicitudesResponse>> ObtenerSolicitudesPendientesParaJefeAsync(int jefeId)
         {
             try
             {
+                var areaIdsVisibles = await _db.Areas
+                    .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
+                                a.Asignaciones.Any(aa => aa.UserId == jefeId))
+                    .Select(a => a.AreaId)
+                    .ToListAsync();
+
                 var consultaRequest = new ConsultarSolicitudesRequest
                 {
                     Estado = "Pendiente"
-                    // El filtro por jefe se hará en la query
                 };
 
-                return await ConsultarSolicitudesAsync(consultaRequest, jefeId);
+                return await ConsultarSolicitudesAsync(consultaRequest, null, areaIdsVisibles);
             }
             catch (Exception ex)
             {
