@@ -55,11 +55,14 @@ const WeeklyRoles = () => {
         hasRole(UserRole.LEADER) ||
         hasRole(UserRole.INDUSTRIAL) ||
         hasRole(UserRole.UNION_REPRESENTATIVE) ||
+        hasRole(UserRole.GERENTE_BT) ||
+        hasRole(UserRole.RH) ||
         (user as any)?.isUnionCommittee ||
         user?.area?.nombreGeneral === "Sindicato";
     const isIndustrial = hasRole(UserRole.INDUSTRIAL);
     const isBoss = hasRole(UserRole.AREA_ADMIN);
     const isAdmin = hasRole(UserRole.SUPER_ADMIN);
+    const isGerenteORH = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH);
 
     // Cargar areas y grupos (si es jefe de área solo ve sus áreas)
     useEffect(() => {
@@ -113,6 +116,18 @@ const WeeklyRoles = () => {
                         // Fallback al área del usuario si falla
                         allowedAreas = allAreas.filter((a) => a.areaId === user?.area?.areaId);
                     }
+                } else if (isGerenteORH && user?.id) {
+                    // Gerente BT / RH: áreas asignadas vía AreaAsignaciones.
+                    // Mismo pipeline que Plantilla/CalendarComponent.
+                    try {
+                        const resp = await areasService.getAreasByAsignacion(user.id);
+                        const asignAreas = (resp?.success && resp.data) ? resp.data : [];
+                        const areaIds = asignAreas.map((a) => a.areaId);
+                        allowedAreas = allAreas.filter((a) => a.areaId != null && areaIds.includes(a.areaId));
+                    } catch (error) {
+                        console.error('Error obteniendo áreas asignadas a Gerente/RH:', error);
+                        allowedAreas = [];
+                    }
                 } else {
                     allowedAreas = allAreas;
                 }
@@ -126,9 +141,9 @@ const WeeklyRoles = () => {
                 setAreas(allowedAreas);
                 setGroups(filteredGroups);
 
-                if ((isBoss || isIndustrial) && allowedAreaIds.length > 0) {  // ✅ AGREGAR isIndustrial
+                if ((isBoss || isIndustrial || isGerenteORH) && allowedAreaIds.length > 0) {
                     setSelectedArea(allowedAreaIds[0] as number);
-                } else if (!isBoss && !isIndustrial && filteredGroups.length > 0) {  // ✅ AGREGAR !isIndustrial
+                } else if (!isBoss && !isIndustrial && !isGerenteORH && filteredGroups.length > 0) {
                     setSelectedArea("all");
                 }
 
@@ -707,7 +722,7 @@ const WeeklyRoles = () => {
                         onChange={(e) => setSelectedArea(e.target.value === "all" ? "all" : parseInt(e.target.value, 10))}
                         disabled={loadingGroups}
                     >
-                        {(isAdmin || (!isBoss && !isIndustrial)) && <option value="all">Todas</option>}
+                        {(isAdmin || (!isBoss && !isIndustrial && !isGerenteORH)) && <option value="all">Todas</option>}
                         {uniqueAreas.map((a) => (
                             <option key={a.id ?? "na"} value={a.id ?? ""}>
                                 {a.name}

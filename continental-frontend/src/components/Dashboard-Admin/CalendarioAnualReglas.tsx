@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronLeft, ChevronRight, CalendarClock, Filter } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, CalendarClock, Filter, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -151,6 +151,58 @@ export const CalendarioAnualReglas = () => {
 
     const hoyIso = toIsoDate(new Date());
 
+    const exportarCsv = () => {
+        if (filas.length === 0) {
+            toast.info("No hay reglas para exportar.");
+            return;
+        }
+        // Formato largo: una fila por (sub-grupo, día) con etiqueta y flag de arranque.
+        // Sirve tanto para abrir en Excel como para pasar a un pipeline de datos.
+        const encabezados = ["Sub-grupo", "Regla base", "Fecha", "Dia semana", "Codigo", "Etiqueta", "Es arranque"];
+        const escapar = (v: string) => {
+            const s = v ?? "";
+            return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lineas: string[] = [encabezados.join(",")];
+        for (let mes0 = 0; mes0 < 12; mes0++) {
+            const dias = diasEnMes(anio, mes0);
+            for (let d = 1; d <= dias; d++) {
+                const fecha = new Date(anio, mes0, d);
+                const fechaIso = toIsoDate(fecha);
+                const diaSemana = DIAS_SEMANA_CORTO[fecha.getDay()];
+                for (const fila of filas) {
+                    const codigo = codigoParaFecha(fecha, fila.regla, arranques, fila.subGrupo);
+                    const entry = codigo && (codigo in SAP_NOMENCLATURA)
+                        ? SAP_NOMENCLATURA[codigo as SAPCodigo]
+                        : null;
+                    const esArranque = esDiaArranque(fecha, fila.regla.codigo, arranques);
+                    lineas.push([
+                        fila.nombre,
+                        fila.regla.codigo,
+                        fechaIso,
+                        diaSemana,
+                        codigo,
+                        entry?.label ?? "",
+                        esArranque ? "Si" : "",
+                    ].map(escapar).join(","));
+                }
+            }
+        }
+        // BOM UTF-8 para que Excel abra los acentos correctamente.
+        const csv = "﻿" + lineas.join("\r\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        const filtro = filtroRegla === "__todas__" ? "todas" : filtroRegla;
+        link.download = `calendario-anual-reglas_${anio}_${filtro}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success(`CSV exportado (${lineas.length - 1} filas).`);
+    };
+
     return (
         <div className="p-6 max-w-[1600px] mx-auto space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -165,6 +217,16 @@ export const CalendarioAnualReglas = () => {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={exportarCsv}
+                        disabled={loading || filas.length === 0}
+                        title="Exportar el calendario visible a CSV (una fila por sub-grupo × día)"
+                    >
+                        <Download className="size-4 mr-1" />
+                        Exportar CSV
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setAnio(a => a - 1)}>
                         <ChevronLeft className="size-4" />
                     </Button>
