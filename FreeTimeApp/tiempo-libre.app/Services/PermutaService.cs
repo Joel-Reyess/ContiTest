@@ -143,12 +143,18 @@ namespace tiempo_libre.Services
 
                 var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
                 var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
+                var esGerenteOrRH = usuarioConsulta.Roles.Any(r => r.Name == "Gerente BT" ||
+                                                                    r.Name == "GerenteBT" ||
+                                                                    r.Name == "RH");
+                var tieneAreaScope = esJefeArea || esGerenteOrRH;
 
-                // ✅ TODAS las áreas donde este usuario está registrado como JefeId
-                // (un jefe puede liderar múltiples áreas; el código anterior solo tomaba la primera).
-                var areasComoJefe = esJefeArea
+                // Áreas donde este usuario tiene visibilidad: AreaJefes (Jefe de Área)
+                // ∪ AreaAsignaciones (Gerente BT / RH). Un mismo usuario puede tener
+                // varias áreas — todas cuentan.
+                var areasComoJefe = tieneAreaScope
                     ? await _db.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioId))
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioId) ||
+                                    a.Asignaciones.Any(aa => aa.UserId == usuarioId))
                         .Select(a => a.AreaId)
                         .ToListAsync()
                     : new List<int>();
@@ -198,12 +204,13 @@ namespace tiempo_libre.Services
                          p.EmpleadoDestino.Grupo.Area.AreaId == area) ||
                         (esJefeArea && p.JefeAprobadorId == jefeIdLocal));
                 }
-                else if (esJefeArea && !esSuperUsuario && areasComoJefe.Count > 0)
+                else if (tieneAreaScope && !esSuperUsuario && areasComoJefe.Count > 0)
                 {
-                    // Sin filtro frontend: auto-restringir a TODAS las áreas que lidera
-                    // este jefe (origen O destino) + permutas asignadas a él.
+                    // Sin filtro frontend: auto-restringir a TODAS las áreas visibles
+                    // (jefe o asignación Gerente/RH), origen O destino, más permutas
+                    // asignadas a él como jefe aprobador.
                     var jefeIdLocal = usuarioId!.Value;
-                    _logger.LogInformation("🔒 APLICANDO FILTRO MULTI-ÁREA del jefe: [{Areas}]",
+                    _logger.LogInformation("🔒 APLICANDO FILTRO MULTI-ÁREA del usuario: [{Areas}]",
                         string.Join(", ", areasComoJefe));
 
                     query = query.Where(p =>
@@ -211,7 +218,7 @@ namespace tiempo_libre.Services
                          areasComoJefe.Contains(p.EmpleadoOrigen.Grupo.Area.AreaId)) ||
                         (p.EmpleadoDestino != null && p.EmpleadoDestino.Grupo != null && p.EmpleadoDestino.Grupo.Area != null &&
                          areasComoJefe.Contains(p.EmpleadoDestino.Grupo.Area.AreaId)) ||
-                        p.JefeAprobadorId == jefeIdLocal);
+                        (esJefeArea && p.JefeAprobadorId == jefeIdLocal));
                 }
                 else
                 {

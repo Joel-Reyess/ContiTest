@@ -297,8 +297,13 @@ namespace tiempo_libre.Services
 
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerSolicitudesPendientesJefeAsync(int jefeId)
         {
-            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.Jefes.Any(aj => aj.UserId == jefeId));
-            if (areaDelJefe == null) return new List<SolicitudEdicionDiaEmpresaDto>();
+            // Áreas visibles: AreaJefes ∪ AreaAsignaciones (Gerente BT / RH).
+            var areasVisibles = await _db.Areas
+                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
+                            a.Asignaciones.Any(aa => aa.UserId == jefeId))
+                .Select(a => a.AreaId)
+                .ToListAsync();
+            if (!areasVisibles.Any()) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa
                 .Include(s => s.Empleado)
@@ -307,7 +312,9 @@ namespace tiempo_libre.Services
                     .ThenInclude(e => e.Grupo)
                 .Include(s => s.JefeArea)
                 .Include(s => s.SolicitadoPor)
-                .Where(s => s.Empleado.AreaId == areaDelJefe.AreaId && s.EstadoSolicitud == "Pendiente")
+                .Where(s => s.Empleado.AreaId.HasValue &&
+                            areasVisibles.Contains(s.Empleado.AreaId.Value) &&
+                            s.EstadoSolicitud == "Pendiente")
                 .OrderBy(s => s.FechaSolicitud)
                 .ToListAsync();
 
@@ -316,8 +323,12 @@ namespace tiempo_libre.Services
 
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerTodasSolicitudesJefeAsync(int jefeId)
         {
-            var areaDelJefe = await _db.Areas.FirstOrDefaultAsync(a => a.Jefes.Any(aj => aj.UserId == jefeId));
-            if (areaDelJefe == null) return new List<SolicitudEdicionDiaEmpresaDto>();
+            var areasVisibles = await _db.Areas
+                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
+                            a.Asignaciones.Any(aa => aa.UserId == jefeId))
+                .Select(a => a.AreaId)
+                .ToListAsync();
+            if (!areasVisibles.Any()) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa
                 .Include(s => s.Empleado)
@@ -326,7 +337,8 @@ namespace tiempo_libre.Services
                     .ThenInclude(e => e.Grupo)
                 .Include(s => s.JefeArea)
                 .Include(s => s.SolicitadoPor)
-                .Where(s => s.Empleado.AreaId == areaDelJefe.AreaId)
+                .Where(s => s.Empleado.AreaId.HasValue &&
+                            areasVisibles.Contains(s.Empleado.AreaId.Value))
                 .OrderByDescending(s => s.FechaSolicitud)
                 .ToListAsync();
 

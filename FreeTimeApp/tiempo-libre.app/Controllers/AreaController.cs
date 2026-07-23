@@ -704,6 +704,39 @@ public class AreaController : ControllerBase
 
     #endregion
 
+    /// <summary>
+    /// Devuelve las áreas asignadas a un usuario vía AreaAsignaciones (Gerente BT
+    /// y RH). Formato paralelo a by-lider para poder reutilizar el pipeline de
+    /// frontend (getAreasByAsignacion → AreaByIngenieroResponse-like).
+    /// </summary>
+    [HttpGet("by-asignacion/{userId}")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<List<AreaDetailDTO>>>> GetAreasByAsignacion(int userId)
+    {
+        var areas = await _db.Areas
+            .Where(a => a.Asignaciones.Any(aa => aa.UserId == userId))
+            .Select(a => new AreaDetailDTO
+            {
+                AreaId = a.AreaId,
+                UnidadOrganizativaSap = a.UnidadOrganizativaSap,
+                NombreGeneral = a.NombreGeneral,
+                Manning = (int)a.Manning,
+                Grupos = a.Grupos
+                    .Select(g => new GrupoDetailDTO
+                    {
+                        GrupoId = g.GrupoId,
+                        Rol = g.Rol,
+                        IdentificadorSAP = g.IdentificadorSAP,
+                        PersonasPorTurno = g.PersonasPorTurno,
+                        DuracionDeturno = g.DuracionDeturno,
+                        LiderId = g.LiderId
+                    }).ToList()
+            })
+            .ToListAsync();
+
+        return Ok(new ApiResponse<List<AreaDetailDTO>>(true, areas));
+    }
+
     #region DTOs for AreaController
     public class AreaDetailDto
     {

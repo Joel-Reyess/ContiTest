@@ -125,6 +125,22 @@ export const Plantilla = () => {
                     } catch { /* ignore */ }
                 }
 
+                // Si es Gerente BT o RH, agrega las áreas asignadas vía AreaAsignaciones
+                if (user?.id && (hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH))) {
+                    try {
+                        const resp = await areasService.getAreasByAsignacion(user.id);
+                        const rawData = (resp?.success && resp.data) ? resp.data : (resp?.data ?? resp ?? []);
+                        const data = Array.isArray(rawData) ? rawData : [];
+                        list.push(
+                            ...data.map((a: any) => ({
+                                areaId: a.areaId,
+                                nombreGeneral: a.nombreGeneral || a.areaNombre,
+                                grupos: a.grupos as any
+                            }))
+                        );
+                    } catch { /* ignore */ }
+                }
+
                 // Si es ingeniero industrial, agrega sus áreas
                 if (user?.id && hasRole(UserRole.INDUSTRIAL)) {
                     try {

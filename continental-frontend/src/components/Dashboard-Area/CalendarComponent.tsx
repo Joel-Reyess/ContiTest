@@ -128,6 +128,22 @@ const CalendarComponent: React.FC = () => {
                         })
                     );
                 }
+            } else if (hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH)) {
+                // Gerente BT / RH: áreas asignadas vía AreaAsignaciones
+                logger.info(`Loading areas for Gerente/RH - User ID: ${user.id}`, 'CALENDAR_COMPONENT');
+                try {
+                    const response = await areasService.getAreasByAsignacion(user.id);
+                    if (response.success && response.data) {
+                        areasData = response.data.map((item: AreaByLiderItem) => ({
+                            id: item.areaId.toString(),
+                            name: item.nombreGeneral,
+                            grupos: item.grupos,
+                            manning: item.manning
+                        }));
+                    }
+                } catch (apiError) {
+                    logger.error('Failed to load areas for Gerente/RH', apiError, 'CALENDAR_COMPONENT');
+                }
             } else if (hasRole(UserRole.LEADER)) {
                 // Líder de Grupo: usar endpoint específico
                 logger.info(`Loading areas for Líder de Grupo - User ID: ${user.id}`, 'CALENDAR_COMPONENT');

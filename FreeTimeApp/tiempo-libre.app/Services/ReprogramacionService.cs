@@ -558,12 +558,13 @@ namespace tiempo_libre.Services
 
                 if (request.JefeAreaId.HasValue)
                 {
-                    // Con co-jefes (AreaJefes): cualquier jefe del área del empleado
-                    // puede ver la solicitud, además del JefeAreaId "clavado" al
-                    // momento de crearla (compat).
+                    // Con co-jefes (AreaJefes) + Gerente BT / RH (AreaAsignaciones):
+                    // cualquier usuario con visibilidad al área del empleado puede ver
+                    // la solicitud, además del JefeAreaId "clavado" al crearla (compat).
                     var jefeIdConsulta = request.JefeAreaId.Value;
                     var areasDelJefe = await _db.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == jefeIdConsulta))
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == jefeIdConsulta) ||
+                                    a.Asignaciones.Any(aa => aa.UserId == jefeIdConsulta))
                         .Select(a => a.AreaId)
                         .ToListAsync();
 

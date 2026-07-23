@@ -420,12 +420,17 @@ namespace tiempo_libre.Services
                 var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
                 var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" ||
                                                                 r.Name == "Jefe De Area");
+                var esGerenteOrRH = usuarioConsulta.Roles.Any(r => r.Name == "Gerente BT" ||
+                                                                    r.Name == "GerenteBT" ||
+                                                                    r.Name == "RH");
+                var tieneAreaScope = esJefeArea || esGerenteOrRH;
 
-                // Áreas donde este usuario está registrado como JefeId (para jefes,
-                // no para SuperUsuario que ve todo).
-                var areasJefeIds = (esJefeArea && !esSuperUsuario)
+                // Áreas visibles para el usuario: AreaJefes (Jefe de Área) ∪
+                // AreaAsignaciones (Gerente BT / RH). SuperUsuario no aplica scope.
+                var areasJefeIds = (tieneAreaScope && !esSuperUsuario)
                     ? await _db.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId))
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId) ||
+                                    a.Asignaciones.Any(aa => aa.UserId == usuarioConsultaId))
                         .Select(a => a.AreaId)
                         .ToListAsync()
                     : new List<int>();
@@ -484,16 +489,16 @@ namespace tiempo_libre.Services
                         s.Empleado.Grupo.Area.AreaId == request.AreaId.Value ||
                         (esJefeArea && s.JefeAreaId == jefeIdParaFiltro));
                 }
-                else if (esJefeArea && !esSuperUsuario)
+                else if (tieneAreaScope && !esSuperUsuario)
                 {
-                    // Si el jefe no manda areaId, restringimos automáticamente a las
-                    // áreas donde es JefeId (replica el patrón de PermutaService) o a
-                    // las solicitudes asignadas a él como JefeAreaId.
+                    // Si el usuario con scope de área no manda areaId, restringimos a
+                    // sus áreas permitidas (jefe o asignación) o a las solicitudes
+                    // que quedaron enlazadas a él como JefeAreaId.
                     var jefeIdParaFiltro = usuarioConsultaId;
                     query = query.Where(s =>
                         (s.Empleado.AreaId.HasValue && areasJefeIds.Contains(s.Empleado.AreaId.Value)) ||
                         (s.Empleado.Grupo != null && areasJefeIds.Contains(s.Empleado.Grupo.AreaId)) ||
-                        s.JefeAreaId == jefeIdParaFiltro);
+                        (esJefeArea && s.JefeAreaId == jefeIdParaFiltro));
                 }
 
                 var solicitudes = await query

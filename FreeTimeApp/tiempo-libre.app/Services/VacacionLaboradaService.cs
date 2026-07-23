@@ -278,8 +278,10 @@ namespace tiempo_libre.Services
 
         public async Task<List<VacacionLaboradaDto>> ObtenerPorJefeAsync(int jefeId, string? estado = null)
         {
+            // Incluye AreaJefes (Jefe de Área) y AreaAsignaciones (Gerente BT / RH).
             var areasJefe = await _db.Areas
-                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId))
+                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
+                            a.Asignaciones.Any(aa => aa.UserId == jefeId))
                 .Select(a => a.AreaId)
                 .ToListAsync();
             if (!areasJefe.Any())

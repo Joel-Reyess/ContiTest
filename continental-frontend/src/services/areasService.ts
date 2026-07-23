@@ -238,6 +238,22 @@ export const areasService = {
   },
 
   /**
+   * Obtiene áreas asignadas a un usuario vía AreaAsignaciones (Gerente BT / RH).
+   * Formato paralelo a by-lider para poder pasarlo por el mismo pipeline en UI.
+   */
+  async getAreasByAsignacion(userId: number): Promise<AreaByLiderResponse> {
+    try {
+      logger.apiRequest('GET', `/api/Area/by-asignacion/${userId}`, null);
+      const response = await httpClient.get<AreaByLiderResponse>(`/api/Area/by-asignacion/${userId}`) as unknown as AreaByLiderResponse;
+      logger.apiResponse('GET', `/api/Area/by-asignacion/${userId}`, 200, response);
+      return response;
+    } catch (error) {
+      logger.error('Error getting areas by asignacion', error, 'AREAS_SERVICE');
+      throw error;
+    }
+  },
+
+  /**
    * Obtiene áreas asignadas a un líder de grupo específico
    * @param userId ID del usuario líder
    * @returns Promise<AreaByLiderResponse> Áreas del líder

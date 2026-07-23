@@ -338,9 +338,10 @@ namespace tiempo_libre.Services
         public async Task<List<SolicitudReprogramacionPostIncapacidadDto>> ObtenerPorJefeAsync(
             int jefeId, string? estado = null)
         {
-            // Áreas a cargo del jefe
+            // Áreas visibles para el usuario: AreaJefes ∪ AreaAsignaciones (Gerente/RH).
             var areasJefe = await _db.Areas
-                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId))
+                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
+                            a.Asignaciones.Any(aa => aa.UserId == jefeId))
                 .Select(a => a.AreaId)
                 .ToListAsync();
 

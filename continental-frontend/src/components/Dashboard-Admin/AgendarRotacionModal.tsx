@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
     CalendarClock, Loader2, Plus, Trash2, Copy, ChevronLeft, ChevronRight,
-    RotateCcw, ArrowRight, ArrowDown,
+    RotateCcw, ArrowRight, Repeat,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -186,20 +186,17 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
         ));
     };
 
-    // Rota el patrón un renglón hacia abajo:
-    // fila i toma los valores de la fila (i-1). La última fila se ancla arriba.
-    const rotarPatronUnRenglon = (id: string) => {
+    // Recorre el patrón 7 días adelante (misma semántica que "Recorrer 7" en Reglas
+    // Turno): patron[i] = patron[(i+7) % n]. Cada sub-grupo derivado pasa a ver el
+    // horario que antes tenía el sub-grupo siguiente del ciclo — la secuencia de
+    // R0144, R0144_02, R0144_03… se preserva íntegra, sólo cambia el punto de arranque.
+    const recorrerPatronSieteDias = (id: string) => {
         setArranques(prev => prev.map(a => {
             if (a.id !== id) return a;
             if (a.semanas <= 1) return a;
-            const ancho = 7;
-            const nuevo: string[] = new Array(a.patron.length);
-            for (let i = 0; i < a.semanas; i++) {
-                const srcRow = (i - 1 + a.semanas) % a.semanas;
-                for (let j = 0; j < ancho; j++) {
-                    nuevo[i * ancho + j] = a.patron[srcRow * ancho + j];
-                }
-            }
+            const n = a.patron.length;
+            const shift = 7 % n;
+            const nuevo = a.patron.map((_, i) => a.patron[(i + shift) % n]);
             return { ...a, patron: nuevo };
         }));
     };
@@ -362,11 +359,11 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
                                                     </Button>
                                                 )}
                                                 <Button type="button" variant="outline" size="sm"
-                                                    onClick={() => rotarPatronUnRenglon(a.id)}
+                                                    onClick={() => recorrerPatronSieteDias(a.id)}
                                                     disabled={a.semanas <= 1}
-                                                    title="Recorrer todo el patrón un renglón hacia abajo (última fila sube al inicio)"
+                                                    title="Recorrer el patrón 7 días (cada sub-grupo pasa a ver el horario del siguiente — misma semántica que Reglas Turno)"
                                                 >
-                                                    <ArrowDown className="size-3 mr-1" /> Rotar +1
+                                                    <Repeat className="size-3 mr-1" /> Recorrer 7
                                                 </Button>
                                                 <Button type="button" variant="outline" size="sm"
                                                     onClick={() => restablecerAPatronVigente(a.id)}
