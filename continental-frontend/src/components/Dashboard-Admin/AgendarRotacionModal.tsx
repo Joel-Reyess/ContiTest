@@ -109,15 +109,19 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
         [reglas, codigoRegla]
     );
 
-    // Sembramos un arranque inicial cuando se selecciona una regla.
+    // Sembramos un arranque inicial cuando se selecciona una regla. Cada vez que
+    // cambia la regla, reseteamos el primer arranque al patrón vigente de la nueva
+    // regla (respetando la fecha ya elegida) y descartamos los arranques extra —
+    // así R0144 con 4 sub-grupos aparece ya poblado en cuanto la eliges, sin dejar
+    // celdas vacías del patrón anterior. Manda la regla, no la edición previa.
     useEffect(() => {
         if (!reglaSel) {
             setArranques([]);
             return;
         }
         setArranques(prev => {
-            if (prev.length > 0) return prev;
-            return [nuevoArranque(MIN_ISO, reglaSel.patron)];
+            const fecha = prev[0]?.fechaIso ?? MIN_ISO;
+            return [nuevoArranque(fecha, reglaSel.patron)];
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [reglaSel?.codigo]);
