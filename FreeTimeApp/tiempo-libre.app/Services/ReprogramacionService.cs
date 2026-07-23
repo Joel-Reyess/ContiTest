@@ -503,10 +503,35 @@ namespace tiempo_libre.Services
                 {
                     _logger.LogInformation("SuperUsuario / Gerente BT / RH - sin filtros de rol");
                 }
-                else if (esJefeArea && usuarioConsulta.AreaId.HasValue)
+                else if (esJefeArea)
                 {
-                    query = query.Where(s => s.Empleado.Grupo.Area.AreaId == usuarioConsulta.AreaId.Value);
-                    _logger.LogInformation("Jefe de Área - filtrando por área {AreaId}", usuarioConsulta.AreaId.Value);
+                    // Multi-área: unión AreaJefes ∪ AreaAsignaciones + user.AreaId (compat
+                    // legado). Si el frontend manda request.AreaId con una de estas áreas,
+                    // el filtro posterior (línea request.AreaId.HasValue) lo estrecha; si
+                    // no, ve solicitudes de TODAS sus áreas asignadas.
+                    var areasJefe = await _db.Areas
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId) ||
+                                    a.Asignaciones.Any(aa => aa.UserId == usuarioConsultaId))
+                        .Select(a => a.AreaId)
+                        .ToListAsync();
+                    if (usuarioConsulta.AreaId.HasValue && !areasJefe.Contains(usuarioConsulta.AreaId.Value))
+                    {
+                        areasJefe.Add(usuarioConsulta.AreaId.Value);
+                    }
+                    if (areasJefe.Count > 0)
+                    {
+                        query = query.Where(s =>
+                            (s.Empleado.AreaId.HasValue && areasJefe.Contains(s.Empleado.AreaId.Value)) ||
+                            s.JefeAreaId == usuarioConsultaId);
+                        _logger.LogInformation(
+                            "Jefe de Área {UserId} - filtrando por áreas visibles [{Areas}]",
+                            usuarioConsultaId, string.Join(",", areasJefe));
+                    }
+                    else if (usuarioConsulta.AreaId.HasValue)
+                    {
+                        query = query.Where(s => s.Empleado.Grupo.Area.AreaId == usuarioConsulta.AreaId.Value);
+                        _logger.LogInformation("Jefe de Área - filtrando por área {AreaId}", usuarioConsulta.AreaId.Value);
+                    }
                 }
                 else if (esIngenieroIndustrial && usuarioConsulta.AreaId.HasValue)
                 {
