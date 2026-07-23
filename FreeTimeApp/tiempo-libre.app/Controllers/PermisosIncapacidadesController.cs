@@ -49,7 +49,7 @@ namespace tiempo_libre.Controllers
         /// Crea un nuevo registro de permiso o incapacidad
         /// </summary>
         [HttpPost("crear")]
-        [Authorize(Roles = "SuperUsuario,Jefe De Area,Lider De Grupo,Ingeniero Industrial,Delegado Sindical")]
+        [Authorize(Roles = "SuperUsuario,Jefe De Area,Lider De Grupo,Ingeniero Industrial,Delegado Sindical,Gerente BT,GerenteBT")]
         public async Task<IActionResult> CrearPermiso([FromBody] CrearPermisoIncapacidadRequest request)
         {
             try
@@ -95,7 +95,7 @@ namespace tiempo_libre.Controllers
         /// Activa las nomenclaturas (E, A, M, P, etc.) en el rol semanal en los nuevos d�as.
         /// </summary>
         [HttpPost("extender")]
-        [Authorize(Roles = "SuperUsuario,Jefe De Area,Lider De Grupo,Ingeniero Industrial")]
+        [Authorize(Roles = "SuperUsuario,Jefe De Area,Lider De Grupo,Ingeniero Industrial,Gerente BT,GerenteBT")]
         public async Task<IActionResult> ExtenderPermiso([FromBody] ExtenderPermisoIncapacidadRequest request)
         {
             try
@@ -205,7 +205,7 @@ namespace tiempo_libre.Controllers
         /// Elimina un permiso o incapacidad (solo registros manuales)
         /// </summary>
         [HttpDelete("eliminar")]
-        [Authorize(Roles = "SuperUsuario,Jefe De Area,Lider De Grupo,Ingeniero Industrial")]
+        [Authorize(Roles = "SuperUsuario,Jefe De Area,Lider De Grupo,Ingeniero Industrial,Gerente BT,GerenteBT")]
         public async Task<IActionResult> EliminarPermiso([FromBody] EliminarPermisoRequest request)
         {
             try
@@ -250,7 +250,7 @@ namespace tiempo_libre.Controllers
         /// Obtiene estad�sticas de permisos e incapacidades de un periodo
         /// </summary>
         [HttpGet("estadisticas")]
-        [Authorize(Roles = "SuperUsuario,Jefe De Area,Ingeniero Industrial")]
+        [Authorize(Roles = "SuperUsuario,Jefe De Area,Ingeniero Industrial,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerEstadisticas(
             [FromQuery] string? fechaInicio = null,
             [FromQuery] string? fechaFin = null,

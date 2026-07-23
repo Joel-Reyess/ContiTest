@@ -85,7 +85,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpPost("responder/{permutaId}")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,DelegadoSindical,Delegado Sindical")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,DelegadoSindical,Delegado Sindical,Gerente BT,GerenteBT")]
         public async Task<IActionResult> ResponderPermuta(
     int permutaId,
     [FromBody] ResponderPermutaRequest request)

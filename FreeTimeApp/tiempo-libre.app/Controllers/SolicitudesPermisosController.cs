@@ -204,7 +204,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpGet("pendientes")]
-        [Authorize(Roles = "Jefe De Area")]
+        [Authorize(Roles = "Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerSolicitudesPendientes()
         {
             try
@@ -237,7 +237,7 @@ namespace tiempo_libre.Controllers
         /// Obtiene una solicitud específica por ID
         /// </summary>
         [HttpGet("{id}")]
-        [Authorize(Roles = "Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerSolicitudPorId(int id)
         {
             try
@@ -308,7 +308,7 @@ namespace tiempo_libre.Controllers
         /// Aprueba o rechaza una solicitud de permiso (solo jefes de área)
         /// </summary>
         [HttpPost("responder")]
-        [Authorize(Roles = "Jefe De Area")]
+        [Authorize(Roles = "Jefe De Area,SuperUsuario,Gerente BT,GerenteBT")]
         public async Task<IActionResult> ResponderSolicitud([FromBody] ResponderSolicitudPermisoRequest request)
         {
             try

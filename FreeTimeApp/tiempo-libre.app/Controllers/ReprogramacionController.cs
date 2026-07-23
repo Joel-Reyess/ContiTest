@@ -81,7 +81,7 @@ namespace tiempo_libre.Controllers
         /// <param name="request">Datos de aprobación/rechazo</param>
         /// <returns>Resultado de la aprobación</returns>
         [HttpPost("aprobar")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT")]
         public async Task<IActionResult> AprobarRechazarSolicitud([FromBody] AprobarReprogramacionRequest request)
         {
             try
@@ -183,7 +183,7 @@ namespace tiempo_libre.Controllers
         /// </summary>
         /// <returns>Lista de solicitudes pendientes del área del jefe</returns>
         [HttpGet("pendientes")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerSolicitudesPendientes()
         {
             try

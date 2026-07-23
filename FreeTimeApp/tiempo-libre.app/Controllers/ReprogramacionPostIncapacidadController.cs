@@ -120,7 +120,7 @@ namespace tiempo_libre.Controllers
         // ─── Aprobar / rechazar ───────────────────────────────────────────────
 
         [HttpPost("aprobar")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT")]
         public async Task<IActionResult> AprobarRechazar([FromBody] AprobarReprogramacionPostIncapacidadRequest request)
         {
             try
@@ -179,7 +179,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Pendientes del jefe autenticado.</summary>
         [HttpGet("pendientes")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerPendientes()
         {
             try
@@ -214,7 +214,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Todas las solicitudes del área del jefe (historial).</summary>
         [HttpGet("solicitudes-area")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerSolicitudesArea([FromQuery] string? estado = null)
         {
             try

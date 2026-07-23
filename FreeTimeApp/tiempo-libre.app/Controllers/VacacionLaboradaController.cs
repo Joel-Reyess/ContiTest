@@ -77,7 +77,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpPost("aprobar")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT")]
         public async Task<IActionResult> AprobarRechazar([FromBody] AprobarVacacionLaboradaRequest request)
         {
             try
@@ -113,7 +113,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpGet("pendientes")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerPendientes()
         {
             try
@@ -146,7 +146,7 @@ namespace tiempo_libre.Controllers
         }
 
         [HttpGet("solicitudes-area")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerSolicitudesArea([FromQuery] string? estado = null)
         {
             try

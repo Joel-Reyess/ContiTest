@@ -125,7 +125,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Solicitudes pendientes de aprobación del área del jefe autenticado</summary>
         [HttpGet("pendientes")]
-        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario")]
+        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerPendientes()
         {
             try
@@ -143,7 +143,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Todas las solicitudes del área (historial)</summary>
         [HttpGet("solicitudes-area")]
-        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario")]
+        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario,Gerente BT,GerenteBT,RH")]
         public async Task<IActionResult> ObtenerSolicitudesArea()
         {
             try
@@ -161,7 +161,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Aprobar o rechazar una solicitud</summary>
         [HttpPost("responder")]
-        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario")]
+        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario,Gerente BT,GerenteBT")]
         public async Task<IActionResult> ResponderSolicitud([FromBody] ResponderEdicionDiaEmpresaRequest request)
         {
             try
