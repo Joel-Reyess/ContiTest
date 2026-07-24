@@ -224,7 +224,13 @@ class NotificacionesService {
       [TipoNotificacion.RechazoReprogramacion]: 'Rechazo de Reprogramación',
       [TipoNotificacion.SolicitudFestivoTrabajado]: 'Solicitud de Festivo Trabajado',
       [TipoNotificacion.SolicitudIntercambioDiaFestivo]: 'Solicitud de Intercambio de Día Festivo',
-      [TipoNotificacion.SistemaBloques]: 'Sistema de Bloques'
+      [TipoNotificacion.SistemaBloques]: 'Sistema de Bloques',
+      [TipoNotificacion.SolicitudPermiso]: 'Solicitud de Permiso',
+      [TipoNotificacion.RespuestaSolicitud]: 'Respuesta a Solicitud',
+      [TipoNotificacion.SolicitudEdicionDiaEmpresa]: 'Solicitud Edición Día Empresa',
+      [TipoNotificacion.RespuestaEdicionDiaEmpresa]: 'Respuesta Edición Día Empresa',
+      [TipoNotificacion.CambioAreaEmpleadoSAP]: 'Cambio de Área (SAP)',
+      [TipoNotificacion.NuevaReglaSAP]: 'Nueva Regla (SAP)'
     };
     return tipos[tipo] || 'Desconocido';
   }
@@ -254,7 +260,13 @@ class NotificacionesService {
       [TipoNotificacion.RechazoReprogramacion]: 'danger',
       [TipoNotificacion.SolicitudFestivoTrabajado]: 'primary',
       [TipoNotificacion.SolicitudIntercambioDiaFestivo]: 'info',
-      [TipoNotificacion.SistemaBloques]: 'dark'
+      [TipoNotificacion.SistemaBloques]: 'dark',
+      [TipoNotificacion.SolicitudPermiso]: 'primary',
+      [TipoNotificacion.RespuestaSolicitud]: 'success',
+      [TipoNotificacion.SolicitudEdicionDiaEmpresa]: 'warning',
+      [TipoNotificacion.RespuestaEdicionDiaEmpresa]: 'success',
+      [TipoNotificacion.CambioAreaEmpleadoSAP]: 'info',
+      [TipoNotificacion.NuevaReglaSAP]: 'secondary'
     };
     return colores[tipo] || 'secondary';
   }
@@ -272,7 +284,13 @@ class NotificacionesService {
       [TipoNotificacion.RechazoReprogramacion]: 'bi-x-circle',
       [TipoNotificacion.SolicitudFestivoTrabajado]: 'bi-calendar-event',
       [TipoNotificacion.SolicitudIntercambioDiaFestivo]: 'bi-arrow-left-right',
-      [TipoNotificacion.SistemaBloques]: 'bi-grid-3x3-gap'
+      [TipoNotificacion.SistemaBloques]: 'bi-grid-3x3-gap',
+      [TipoNotificacion.SolicitudPermiso]: 'bi-envelope-paper',
+      [TipoNotificacion.RespuestaSolicitud]: 'bi-reply',
+      [TipoNotificacion.SolicitudEdicionDiaEmpresa]: 'bi-pencil-square',
+      [TipoNotificacion.RespuestaEdicionDiaEmpresa]: 'bi-check2-square',
+      [TipoNotificacion.CambioAreaEmpleadoSAP]: 'bi-arrow-left-right',
+      [TipoNotificacion.NuevaReglaSAP]: 'bi-plus-square'
     };
     return iconos[tipo] || 'bi-bell';
   }
