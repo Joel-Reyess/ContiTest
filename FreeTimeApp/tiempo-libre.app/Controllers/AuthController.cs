@@ -48,7 +48,14 @@ public class AuthController : ControllerBase
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
         };
-        claims.AddRange(user.Roles.Select(r => new Claim(ClaimTypes.Role, r.Name)));
+        // Emitir cada rol en sus variantes de nomenclatura ("Jefe_De_Area",
+        // "Jefe De Area", "JefeDeArea") para que los [Authorize(Roles=...)] y
+        // User.IsInRole matcheen sin importar cómo esté escrito Roles.Name en
+        // la BD del ambiente.
+        claims.AddRange(user.Roles
+            .SelectMany(r => tiempo_libre.Helpers.RolesHelper.VariantesClaim(r.Name))
+            .Distinct()
+            .Select(nombre => new Claim(ClaimTypes.Role, nombre)));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("jCCAeagAwIBAgIJAJjMBdn72zEjMA0GCSqGSIb3DQEBCwUAMC0CwyW6DQjJSGCqHwe"));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -87,7 +94,10 @@ public class AuthController : ControllerBase
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
         };
-        claims.AddRange(user.Roles.Select(r => new Claim(ClaimTypes.Role, r.Name)));
+        claims.AddRange(user.Roles
+            .SelectMany(r => tiempo_libre.Helpers.RolesHelper.VariantesClaim(r.Name))
+            .Distinct()
+            .Select(nombre => new Claim(ClaimTypes.Role, nombre)));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("jCCAeagAwIBAgIJAJjMBdn72zEjMA0GCSqGSIb3DQEBCwUAMC0CwyW6DQjJSGCqHwe"));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

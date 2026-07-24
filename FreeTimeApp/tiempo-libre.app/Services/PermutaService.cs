@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.Controllers;
 
@@ -141,11 +142,9 @@ namespace tiempo_libre.Services
                     return new PermutasListResponse { Permutas = new List<PermutaListItem>(), Total = 0 };
                 }
 
-                var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
-                var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
-                var esGerenteOrRH = usuarioConsulta.Roles.Any(r => r.Name == "Gerente BT" ||
-                                                                    r.Name == "GerenteBT" ||
-                                                                    r.Name == "RH");
+                var esJefeArea = RolesHelper.TieneRol(usuarioConsulta.Roles, "Jefe De Area");
+                var esSuperUsuario = RolesHelper.TieneRol(usuarioConsulta.Roles, "SuperUsuario", "Super Usuario");
+                var esGerenteOrRH = RolesHelper.TieneRol(usuarioConsulta.Roles, "Gerente BT", "RH");
                 var tieneAreaScope = esJefeArea || esGerenteOrRH;
 
                 // Áreas donde este usuario tiene visibilidad: AreaJefes (Jefe de Área)
@@ -348,15 +347,13 @@ namespace tiempo_libre.Services
                     string.Join(", ", usuarioAprobador.Roles.Select(r => r.Name)));
 
                 // Verificar si es SuperUsuario
-                var esSuperUsuario = usuarioAprobador.Roles.Any(r => r.Name == "SuperUsuario");
+                var esSuperUsuario = RolesHelper.TieneRol(usuarioAprobador.Roles, "SuperUsuario", "Super Usuario");
 
                 // Verificar si es Delegado Sindical
-                var esDelegadoSindical = usuarioAprobador.Roles.Any(r =>
-                    r.Name == "DelegadoSindical" || r.Name == "Delegado Sindical");
+                var esDelegadoSindical = RolesHelper.TieneRol(usuarioAprobador.Roles, "Delegado Sindical");
 
                 // Verificar si es Jefe de Área
-                var esJefeArea = usuarioAprobador.Roles.Any(r =>
-                    r.Name == "JefeArea" || r.Name == "Jefe De Area");
+                var esJefeArea = RolesHelper.TieneRol(usuarioAprobador.Roles, "Jefe De Area");
 
                 _logger.LogInformation("Validación de roles - SuperUsuario: {Super}, Delegado: {Delegado}, Jefe: {Jefe}",
                     esSuperUsuario, esDelegadoSindical, esJefeArea);

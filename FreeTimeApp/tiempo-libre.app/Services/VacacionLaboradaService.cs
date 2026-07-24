@@ -290,7 +290,8 @@ namespace tiempo_libre.Services
                 return new List<VacacionLaboradaDto>();
 
             var query = BaseQuery()
-                .Where(s => s.Empleado.AreaId.HasValue && areasJefe.Contains(s.Empleado.AreaId.Value));
+                .Where(s => (s.Empleado.AreaId.HasValue && areasJefe.Contains(s.Empleado.AreaId.Value)) ||
+                            (s.Empleado.GrupoId.HasValue && areasJefe.Contains(s.Empleado.Grupo.AreaId)));
             if (!string.IsNullOrWhiteSpace(estado))
                 query = query.Where(s => s.EstadoSolicitud == estado);
 

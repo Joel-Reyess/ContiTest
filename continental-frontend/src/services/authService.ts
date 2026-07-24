@@ -143,17 +143,23 @@ class AuthService {
             // Normalizar roles y marcar a los integrantes del comite sindical como delegados
             const rawRoles = (userData?.roles || userData?.rols || []) as Array<string | Rol>;
 
-            // Normalizar a solo strings para roles
+            // Normalizar a solo strings para roles. Además, canonicalizar el
+            // nombre a los valores de UserRole: la BD de cada ambiente puede
+            // traer "Delegado_Sindical" o "DelegadoSindical" y todos los
+            // componentes comparan contra UserRole.X literal.
             const normalizedRoleNames = Array.from(new Set(
                 rawRoles
                     .map(role => typeof role === 'string' ? role : role.name)
                     .filter(Boolean)
+                    .map(name => this.canonicalRoleName(name))
             ));
 
             // Normalizar a solo objetos Rol para rols (filtrando solo los que son objetos)
-            const normalizedRols = rawRoles.filter((role): role is Rol =>
-                typeof role === 'object' && role !== null && 'name' in role
-            );
+            const normalizedRols = rawRoles
+                .filter((role): role is Rol =>
+                    typeof role === 'object' && role !== null && 'name' in role
+                )
+                .map(role => ({ ...role, name: this.canonicalRoleName(role.name) }));
 
             const isCommittee = isUnionCommitteeNomina(userData?.username || normalizedIdentifier);
             if (isCommittee && !normalizedRoleNames.includes(UserRole.UNION_REPRESENTATIVE)) {
@@ -506,28 +512,44 @@ class AuthService {
         return !!(user?.token && this.isTokenValid(user.token));
     }
 
+    /**
+     * Comparación de rol tolerante a la nomenclatura de la BD del ambiente:
+     * "Jefe De Area", "Jefe_De_Area" y "JefeDeArea" son el mismo rol.
+     */
+    private normalizeRoleName(name: string): string {
+        return name.replace(/[_\-\s]/g, '').toUpperCase();
+    }
+
+    /**
+     * Devuelve el valor canónico de UserRole equivalente al nombre recibido
+     * (p.ej. "Delegado_Sindical" → "Delegado Sindical"). Si no matchea ningún
+     * rol conocido, regresa el nombre original.
+     */
+    private canonicalRoleName(name: string): string {
+        const normalized = this.normalizeRoleName(name);
+        const canonical = Object.values(UserRole)
+            .find(v => this.normalizeRoleName(v) === normalized);
+        return canonical ?? name;
+    }
+
+    private roleMatches(userRole: string | Rol, expected: string): boolean {
+        const roleName = typeof userRole === 'string' ? userRole : userRole.name;
+        return this.normalizeRoleName(roleName) === this.normalizeRoleName(expected);
+    }
+
     hasRole(role: UserRole): boolean {
         const user = this.getCurrentUser();
         if (!user?.roles) return false;
 
-        // Handle both Rol[] and string[] formats
-        return user.roles.some(userRole => {
-            if (typeof userRole === 'string') {
-                return userRole === role;
-            }
-            return userRole.name === role;
-        });
+        return user.roles.some(userRole => this.roleMatches(userRole, role));
     }
 
     hasAnyRole(roles: UserRole[]): boolean {
         const user = this.getCurrentUser();
         if (!user?.roles) return false;
 
-        // Handle both Rol[] and string[] formats
-        return user.roles.some(userRole => {
-            const roleName = typeof userRole === 'string' ? userRole : userRole.name;
-            return roles.includes(roleName as UserRole);
-        });
+        return user.roles.some(userRole =>
+            roles.some(expected => this.roleMatches(userRole, expected)));
     }
 
     getAuthState(): AuthState {

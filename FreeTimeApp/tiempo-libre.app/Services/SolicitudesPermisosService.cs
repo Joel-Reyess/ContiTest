@@ -140,14 +140,7 @@ namespace tiempo_libre.Services
                     .Include(u => u.Area)
                     .FirstOrDefaultAsync(u => u.Id == delegadoId);
 
-                var rolesPermitidos = new[] {
-    "Delegado Sindical",
-    "DelegadoSindical",
-    "Empleado Sindicalizado",
-    "EmpleadoSindicalizado"
-};
-
-                if (delegado == null || !delegado.Roles.Any(r => rolesPermitidos.Contains(r.Name)))
+                if (delegado == null || !tiempo_libre.Helpers.RolesHelper.TieneRol(delegado.Roles, "Delegado Sindical", "Empleado Sindicalizado"))
                 {
                     _logger.LogWarning(
                         "Usuario {DelegadoId} no tiene rol permitido. Roles actuales: {Roles}",
@@ -337,8 +330,12 @@ namespace tiempo_libre.Services
                     }
                     else
                     {
+                        // Área efectiva tolerante: Users.AreaId O el área del Grupo,
+                        // por si el sync SAP los dejó desincronizados.
                         var nominasEnAreas = _db.Users
-                            .Where(u => u.AreaId.HasValue && areaIdsFilter.Contains(u.AreaId.Value) && u.Nomina.HasValue)
+                            .Where(u => u.Nomina.HasValue &&
+                                        ((u.AreaId.HasValue && areaIdsFilter.Contains(u.AreaId.Value)) ||
+                                         (u.GrupoId.HasValue && areaIdsFilter.Contains(u.Grupo.AreaId))))
                             .Select(u => u.Nomina!.Value);
                         query = query.Where(s => nominasEnAreas.Contains(s.Nomina));
                     }

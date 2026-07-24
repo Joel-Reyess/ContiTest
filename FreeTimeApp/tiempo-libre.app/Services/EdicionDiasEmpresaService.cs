@@ -314,8 +314,8 @@ namespace tiempo_libre.Services
                     .ThenInclude(e => e.Grupo)
                 .Include(s => s.JefeArea)
                 .Include(s => s.SolicitadoPor)
-                .Where(s => s.Empleado.AreaId.HasValue &&
-                            areasVisibles.Contains(s.Empleado.AreaId.Value) &&
+                .Where(s => ((s.Empleado.AreaId.HasValue && areasVisibles.Contains(s.Empleado.AreaId.Value)) ||
+                             (s.Empleado.GrupoId.HasValue && areasVisibles.Contains(s.Empleado.Grupo.AreaId))) &&
                             s.EstadoSolicitud == "Pendiente")
                 .OrderBy(s => s.FechaSolicitud)
                 .ToListAsync();
@@ -341,8 +341,8 @@ namespace tiempo_libre.Services
                     .ThenInclude(e => e.Grupo)
                 .Include(s => s.JefeArea)
                 .Include(s => s.SolicitadoPor)
-                .Where(s => s.Empleado.AreaId.HasValue &&
-                            areasVisibles.Contains(s.Empleado.AreaId.Value))
+                .Where(s => (s.Empleado.AreaId.HasValue && areasVisibles.Contains(s.Empleado.AreaId.Value)) ||
+                            (s.Empleado.GrupoId.HasValue && areasVisibles.Contains(s.Empleado.Grupo.AreaId)))
                 .OrderByDescending(s => s.FechaSolicitud)
                 .ToListAsync();
 

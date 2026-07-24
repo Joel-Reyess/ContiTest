@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.Models.Enums;
 
@@ -65,10 +66,10 @@ namespace tiempo_libre.Services
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null, "Usuario solicitante no encontrado");
                 }
 
-                var esJefeArea = usuarioSolicitante.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
-                var esDelegadoSindical = usuarioSolicitante.Roles.Any(r => r.Name == "DelegadoSindical" || r.Name == "Delegado Sindical") ||
+                var esJefeArea = RolesHelper.TieneRol(usuarioSolicitante.Roles, "Jefe De Area");
+                var esDelegadoSindical = RolesHelper.TieneRol(usuarioSolicitante.Roles, "Delegado Sindical") ||
                                          usuarioSolicitante.Grupo?.Area?.NombreGeneral?.ToLower() == "sindicato";
-                var esSuperUsuario = usuarioSolicitante.Roles.Any(r => r.Name == "SuperUsuario");
+                var esSuperUsuario = RolesHelper.TieneRol(usuarioSolicitante.Roles, "SuperUsuario", "Super Usuario");
 
                 if (!esJefeArea && !esDelegadoSindical && !esSuperUsuario)
                 {
@@ -199,7 +200,8 @@ namespace tiempo_libre.Services
                         .Include(u => u.Roles)
                         .FirstOrDefaultAsync(u =>
                             u.AreaId == empleado.AreaId &&
-                            u.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area"));
+                            u.Roles.Any(r => r.Name.Replace("_", "").Replace(" ", "").ToUpper() == "JEFEDEAREA"
+                                             || r.Name.Replace("_", "").Replace(" ", "").ToUpper() == "JEFEAREA"));
                 }
 
                 // 11. Crear solicitud siempre en estado Pendiente
@@ -318,8 +320,8 @@ namespace tiempo_libre.Services
                     return new ApiResponse<AprobarReprogramacionResponse>(false, null, "Usuario aprobador no encontrado");
                 }
 
-                var esSuperUsuario = usuarioAprobador.Roles.Any(r => r.Name == "SuperUsuario");
-                var esJefeArea = usuarioAprobador.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
+                var esSuperUsuario = RolesHelper.TieneRol(usuarioAprobador.Roles, "SuperUsuario", "Super Usuario");
+                var esJefeArea = RolesHelper.TieneRol(usuarioAprobador.Roles, "Jefe De Area");
 
                 if (!esSuperUsuario)
                 {
@@ -473,18 +475,12 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ListaSolicitudesReprogramacionResponse>(false, null, "Usuario no encontrado");
                 }
 
-                var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
-                var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
-                var esDelegadoSindical = usuarioConsulta.Roles.Any(r =>
-                    r.Name == "DelegadoSindical" ||
-                    r.Name == "Delegado Sindical");
-                var esSindicalizado = usuarioConsulta.Roles.Any(r =>
-                    r.Name == "EmpleadoSindicalizado" ||
-                    r.Name == "Empleado Sindicalizado");
-                var esIngenieroIndustrial = usuarioConsulta.Roles.Any(r =>
-                    r.Name == "IngenieroIndustrial" || r.Name == "Ingeniero Industrial");
-                var esGerentePlantaORH = usuarioConsulta.Roles.Any(r =>
-                    r.Name == "Gerente BT" || r.Name == "GerenteBT" || r.Name == "RH");
+                var esSuperUsuario = RolesHelper.TieneRol(usuarioConsulta.Roles, "SuperUsuario", "Super Usuario");
+                var esJefeArea = RolesHelper.TieneRol(usuarioConsulta.Roles, "Jefe De Area");
+                var esDelegadoSindical = RolesHelper.TieneRol(usuarioConsulta.Roles, "Delegado Sindical");
+                var esSindicalizado = RolesHelper.TieneRol(usuarioConsulta.Roles, "Empleado Sindicalizado");
+                var esIngenieroIndustrial = RolesHelper.TieneRol(usuarioConsulta.Roles, "Ingeniero Industrial");
+                var esGerentePlantaORH = RolesHelper.TieneRol(usuarioConsulta.Roles, "Gerente BT", "RH");
 
                 _logger.LogInformation(
                     "Usuario {UserId} consultando solicitudes. Roles: SuperUsuario={Super}, JefeArea={Jefe}, Delegado={Delegado}, Sindicalizado={Sind}",
@@ -507,10 +503,10 @@ namespace tiempo_libre.Services
                 }
                 else if (esJefeArea)
                 {
-                    // Multi-área: unión AreaJefes ∪ AreaAsignaciones + user.AreaId (compat
-                    // legado). Si el frontend manda request.AreaId con una de estas áreas,
-                    // el filtro posterior (línea request.AreaId.HasValue) lo estrecha; si
-                    // no, ve solicitudes de TODAS sus áreas asignadas.
+                    // Multi-área: unión AreaJefes ∪ AreaAsignaciones ∪ legacy
+                    // JefeId/JefeSuplenteId. NO se agrega user.AreaId: el AreaId
+                    // propio del jefe lo escribe el sync SAP y puede apuntar a un
+                    // área que NO tiene asignada (hacía que viera solicitudes ajenas).
                     var areasJefe = await _db.Areas
                         .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId) ||
                                     a.Asignaciones.Any(aa => aa.UserId == usuarioConsultaId) ||
@@ -518,14 +514,14 @@ namespace tiempo_libre.Services
                                     a.JefeSuplenteId == usuarioConsultaId)
                         .Select(a => a.AreaId)
                         .ToListAsync();
-                    if (usuarioConsulta.AreaId.HasValue && !areasJefe.Contains(usuarioConsulta.AreaId.Value))
-                    {
-                        areasJefe.Add(usuarioConsulta.AreaId.Value);
-                    }
                     if (areasJefe.Count > 0)
                     {
+                        // Área efectiva tolerante: Users.AreaId O el área del Grupo.
+                        // Cuando el sync SAP deja AreaId y GrupoId desincronizados,
+                        // exigir solo uno de los dos oculta solicitudes del área.
                         query = query.Where(s =>
                             (s.Empleado.AreaId.HasValue && areasJefe.Contains(s.Empleado.AreaId.Value)) ||
+                            (s.Empleado.GrupoId.HasValue && areasJefe.Contains(s.Empleado.Grupo.AreaId)) ||
                             s.JefeAreaId == usuarioConsultaId);
                         _logger.LogInformation(
                             "Jefe de Área {UserId} - filtrando por áreas visibles [{Areas}]",
@@ -533,6 +529,7 @@ namespace tiempo_libre.Services
                     }
                     else if (usuarioConsulta.AreaId.HasValue)
                     {
+                        // Último recurso: jefe sin ningún área asignada en catálogo.
                         query = query.Where(s => s.Empleado.Grupo.Area.AreaId == usuarioConsulta.AreaId.Value);
                         _logger.LogInformation("Jefe de Área - filtrando por área {AreaId}", usuarioConsulta.AreaId.Value);
                     }
@@ -544,12 +541,23 @@ namespace tiempo_libre.Services
                 }
                 else if (esDelegadoSindical)
                 {
-                    // FIX: Delegado ve sus solicitudes + sin solicitante + misma área
+                    // FIX: Delegado ve sus solicitudes + sin solicitante + misma área.
+                    // Área del delegado: Users.AreaId, o el área de su Grupo si
+                    // AreaId viene null/desincronizado por el sync SAP.
                     var areaIdDelegado = usuarioConsulta.AreaId;
+                    if (!areaIdDelegado.HasValue && usuarioConsulta.GrupoId.HasValue)
+                    {
+                        areaIdDelegado = await _db.Grupos
+                            .Where(g => g.GrupoId == usuarioConsulta.GrupoId.Value)
+                            .Select(g => (int?)g.AreaId)
+                            .FirstOrDefaultAsync();
+                    }
                     query = query.Where(s =>
                         s.SolicitadoPorId == usuarioConsultaId ||
                         !s.SolicitadoPorId.HasValue ||
-                        (areaIdDelegado.HasValue && s.Empleado.AreaId == areaIdDelegado.Value)
+                        (areaIdDelegado.HasValue &&
+                            (s.Empleado.AreaId == areaIdDelegado.Value ||
+                             (s.Empleado.GrupoId.HasValue && s.Empleado.Grupo.AreaId == areaIdDelegado.Value)))
                     );
 
                     _logger.LogInformation(
@@ -601,7 +609,8 @@ namespace tiempo_libre.Services
 
                     query = query.Where(s =>
                         s.JefeAreaId == jefeIdConsulta ||
-                        (s.Empleado.AreaId.HasValue && areasDelJefe.Contains(s.Empleado.AreaId.Value)));
+                        (s.Empleado.AreaId.HasValue && areasDelJefe.Contains(s.Empleado.AreaId.Value)) ||
+                        (s.Empleado.GrupoId.HasValue && areasDelJefe.Contains(s.Empleado.Grupo.AreaId)));
                 }
 
                 if (request.FechaDesde.HasValue)
@@ -617,7 +626,13 @@ namespace tiempo_libre.Services
 
                 if (request.AreaId.HasValue)
                 {
-                    query = query.Where(s => s.Empleado.Grupo.Area.AreaId == request.AreaId.Value);
+                    // Tolerante: el área efectiva del empleado puede venir de
+                    // Users.AreaId o del Grupo; si el sync SAP los dejó
+                    // desincronizados, exigir solo Grupo.Area regresaba 0
+                    // pendientes para el área correcta.
+                    query = query.Where(s =>
+                        (s.Empleado.GrupoId.HasValue && s.Empleado.Grupo.AreaId == request.AreaId.Value) ||
+                        s.Empleado.AreaId == request.AreaId.Value);
                 }
 
                 if (request.FechaNuevaDesde.HasValue)
@@ -934,7 +949,7 @@ namespace tiempo_libre.Services
             if (solicitud.SolicitadoPorId != usuarioId)
             {
                 var usuario = await _db.Users.Include(u => u.Roles).FirstOrDefaultAsync(u => u.Id == usuarioId);
-                bool esSuperUsuario = usuario?.Roles.Any(r => r.Name == "SuperUsuario") ?? false;
+                bool esSuperUsuario = usuario != null && RolesHelper.TieneRol(usuario.Roles, "SuperUsuario", "Super Usuario");
                 if (!esSuperUsuario)
                     return new ApiResponse<object>(false, null, "No tienes permiso para cancelar esta solicitud");
             }

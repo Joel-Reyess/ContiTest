@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using tiempo_libre.DTOs;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.Models.Enums;
 
@@ -155,7 +156,8 @@ namespace tiempo_libre.Services
                 {
                     jefeArea = await _db.Users.FirstOrDefaultAsync(u =>
                         u.AreaId == empleado.AreaId &&
-                        u.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area"));
+                        u.Roles.Any(r => r.Name.Replace("_", "").Replace(" ", "").ToUpper() == "JEFEDEAREA"
+                                         || r.Name.Replace("_", "").Replace(" ", "").ToUpper() == "JEFEAREA"));
                 }
                 // ✅ CAMBIO: Crear solicitud con referencia al día inhábil
                 var solicitud = new SolicitudesFestivosTrabajados
@@ -417,12 +419,9 @@ namespace tiempo_libre.Services
                         "Usuario no encontrado");
                 }
 
-                var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
-                var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" ||
-                                                                r.Name == "Jefe De Area");
-                var esGerenteOrRH = usuarioConsulta.Roles.Any(r => r.Name == "Gerente BT" ||
-                                                                    r.Name == "GerenteBT" ||
-                                                                    r.Name == "RH");
+                var esSuperUsuario = RolesHelper.TieneRol(usuarioConsulta.Roles, "SuperUsuario", "Super Usuario");
+                var esJefeArea = RolesHelper.TieneRol(usuarioConsulta.Roles, "Jefe De Area");
+                var esGerenteOrRH = RolesHelper.TieneRol(usuarioConsulta.Roles, "Gerente BT", "RH");
                 var tieneAreaScope = esJefeArea || esGerenteOrRH;
 
                 // Áreas visibles para el usuario: AreaJefes (Jefe de Área) ∪

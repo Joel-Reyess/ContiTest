@@ -409,7 +409,7 @@ namespace tiempo_libre.Services
                 }
 
                 var rolSindicalizado = await _context.Roles
-                    .FirstOrDefaultAsync(r => r.Name == "Empleado_Sindicalizado" || r.Name == "Empleado Sindicalizado");
+                    .FirstOrDefaultAsync(r => r.Name.Replace("_", "").Replace(" ", "").ToUpper() == "EMPLEADOSINDICALIZADO");
 
                 if (rolSindicalizado != null)
                 {
@@ -679,7 +679,7 @@ namespace tiempo_libre.Services
         private async Task<List<int>> GetSuperUsuarioIdsAsync()
         {
             return await _context.Users
-                .Where(u => u.Roles.Any(r => r.Name == "SuperUsuario"))
+                .Where(u => u.Roles.Any(r => r.Name.Replace("_", "").Replace(" ", "").ToUpper() == "SUPERUSUARIO"))
                 .Select(u => u.Id)
                 .ToListAsync();
         }

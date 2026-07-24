@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 using System.Collections.Generic;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.DTOs;
 using Microsoft.AspNetCore.Http;
@@ -46,8 +47,8 @@ namespace tiempo_libre.app.Controllers
                 return Unauthorized(new ApiResponse<object>(false, null, "No hay sesión iniciada"));
             }
 
-            var allowedRoles = new[] { "SuperUsuario", "Super Usuario", "Jefe De Area", "JefeArea", "Lider De Grupo", "Ingeniero Industrial" };
-            bool hasPermission = currentUser.Roles.Any(r => allowedRoles.Contains(r.Name));
+            bool hasPermission = RolesHelper.TieneRol(currentUser.Roles,
+                "SuperUsuario", "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial");
             if (!hasPermission)
             {
                 _logger.LogWarning("Usuario {Username} sin permisos para modificar máquina de usuario {Id}", currentUsername, id);
@@ -104,7 +105,7 @@ namespace tiempo_libre.app.Controllers
                 return Unauthorized(new ApiResponse<object>(false, null, "No hay sesión iniciada"));
             }
 
-            bool isSuperUser = currentUser.Roles.Any(r => r.Name == "SuperUsuario");
+            bool isSuperUser = RolesHelper.TieneRol(currentUser.Roles, "SuperUsuario", "Super Usuario");
             if (currentUser.Id != userToUpdate.Id && !isSuperUser)
             {
                 _logger.LogWarning("Usuario {Username} sin permisos para modificar datos de usuario {Id}", currentUsername, id);
@@ -295,8 +296,8 @@ namespace tiempo_libre.app.Controllers
             }
 
             // Verificar si tiene roles de liderazgo para incluir áreas consolidadas
-            var hasLeadershipRole = baseUser.Roles.Any(r =>
-                r.Name == "Jefe De Area" || r.Name == "Lider De Grupo" || r.Name == "Ingeniero Industrial");
+            var hasLeadershipRole = RolesHelper.TieneRol(baseUser.Roles,
+                "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial");
 
             _logger.LogInformation("Usuario {UserId} tiene rol de liderazgo: {HasLeadershipRole}. Roles: {Roles}",
                 baseUser.Id, hasLeadershipRole, string.Join(", ", baseUser.Roles.Select(r => r.Name)));
@@ -648,8 +649,8 @@ namespace tiempo_libre.app.Controllers
                 return Unauthorized(new ApiResponse<object>(false, null, "Usuario no encontrado"));
             }
 
-            var allowedRoles = new[] { "SuperUsuario", "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial" };
-            bool hasPermission = currentUser.Roles.Any(r => allowedRoles.Contains(r.Name));
+            bool hasPermission = RolesHelper.TieneRol(currentUser.Roles,
+                "SuperUsuario", "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial");
             if (!hasPermission)
             {
                 return Forbid();
@@ -924,7 +925,7 @@ namespace tiempo_libre.app.Controllers
                 return Unauthorized(new ApiResponse<List<UsuarioInfoDto>>(false, null, "No hay sesión iniciada"));
             }
 
-            var isJefe = currentUser.Roles.Any(r => r.Name == "Jefe De Area");
+            var isJefe = RolesHelper.TieneRol(currentUser.Roles, "Jefe De Area");
             if (!isJefe)
             {
                 return Forbid();

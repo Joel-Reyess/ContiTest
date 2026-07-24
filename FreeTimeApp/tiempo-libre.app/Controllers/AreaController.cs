@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.DTOs;
 using Microsoft.EntityFrameworkCore;
@@ -336,7 +337,7 @@ public class AreaController : ControllerBase
                 .ToListAsync();
             if (users.Count != ids.Count)
                 return BadRequest(new ApiResponse<Area>(false, null, "Alguno(s) de los jefes indicados no existe(n)."));
-            var invalid = users.Where(u => !u.Roles.Any(r => r.Name == "Jefe De Area")).Select(u => u.FullName).ToList();
+            var invalid = users.Where(u => !RolesHelper.TieneRol(u.Roles, "Jefe De Area")).Select(u => u.FullName).ToList();
             if (invalid.Any())
                 return BadRequest(new ApiResponse<Area>(false, null, $"No tiene(n) rol 'Jefe de Area': {string.Join(", ", invalid)}"));
         }

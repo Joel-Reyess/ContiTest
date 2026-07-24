@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.Models.Enums;
 using tiempo_libre.DTOs;
@@ -353,10 +354,10 @@ namespace tiempo_libre.Services
                     return new ApiResponse<NotificacionesResponse>(false, null, "Usuario no encontrado");
 
                 // Determinar rol principal
-                var esSuperUsuario = usuario.Roles.Any(r => r.Name == "Super Usuario" || r.Name == "SuperUsuario");
-                var esJefeArea = usuario.Roles.Any(r => r.Name == "Jefe De Area");
-                var esLiderGrupo = usuario.Roles.Any(r => r.Name == "Lider De Grupo");
-                var esIngenieroIndustrial = usuario.Roles.Any(r => r.Name == "Ingeniero Industrial");
+                var esSuperUsuario = RolesHelper.TieneRol(usuario.Roles, "Super Usuario", "SuperUsuario");
+                var esJefeArea = RolesHelper.TieneRol(usuario.Roles, "Jefe De Area");
+                var esLiderGrupo = RolesHelper.TieneRol(usuario.Roles, "Lider De Grupo");
+                var esIngenieroIndustrial = RolesHelper.TieneRol(usuario.Roles, "Ingeniero Industrial");
 
                 IQueryable<Notificaciones> query;
 
@@ -414,11 +415,8 @@ namespace tiempo_libre.Services
                 {
                     // Otros roles (incluidos sindicalizados) ven sus propias notificaciones
                     // Y también las notificaciones de solicitudes que ellos crearon (donde son emisores)
-                    var esDelegadoSindical = usuario.Roles.Any(r =>
-                        r.Name == "DelegadoSindical" ||
-                        r.Name == "Delegado Sindical" ||
-                        r.Name == "EmpleadoSindicalizado" ||
-                        r.Name == "Empleado Sindicalizado");
+                    var esDelegadoSindical = RolesHelper.TieneRol(usuario.Roles,
+                        "Delegado Sindical", "Empleado Sindicalizado");
 
                     if (esDelegadoSindical)
                     {
@@ -560,10 +558,10 @@ namespace tiempo_libre.Services
                 if (notificacion == null) return false;
 
                 // Verificar permisos según rol
-                var esSuperUsuario = usuario.Roles.Any(r => r.Name == "Super Usuario" || r.Name == "SuperUsuario");
-                var esJefeArea = usuario.Roles.Any(r => r.Name == "Jefe De Area");
-                var esLiderGrupo = usuario.Roles.Any(r => r.Name == "Lider De Grupo");
-                var esIngenieroIndustrial = usuario.Roles.Any(r => r.Name == "Ingeniero Industrial");
+                var esSuperUsuario = RolesHelper.TieneRol(usuario.Roles, "Super Usuario", "SuperUsuario");
+                var esJefeArea = RolesHelper.TieneRol(usuario.Roles, "Jefe De Area");
+                var esLiderGrupo = RolesHelper.TieneRol(usuario.Roles, "Lider De Grupo");
+                var esIngenieroIndustrial = RolesHelper.TieneRol(usuario.Roles, "Ingeniero Industrial");
 
                 bool tienePermiso = false;
 

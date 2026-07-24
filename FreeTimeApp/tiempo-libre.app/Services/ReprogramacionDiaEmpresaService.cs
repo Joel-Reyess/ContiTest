@@ -220,7 +220,8 @@ namespace tiempo_libre.Services
             if (!areasJefe.Any()) return new List<SolicitudReprogramacionDiaEmpresaDto>();
 
             var query = BaseQuery()
-                .Where(s => s.Empleado.AreaId.HasValue && areasJefe.Contains(s.Empleado.AreaId.Value));
+                .Where(s => (s.Empleado.AreaId.HasValue && areasJefe.Contains(s.Empleado.AreaId.Value)) ||
+                            (s.Empleado.GrupoId.HasValue && areasJefe.Contains(s.Empleado.Grupo.AreaId)));
             if (!string.IsNullOrWhiteSpace(estado))
                 query = query.Where(s => s.EstadoSolicitud == estado);
 
