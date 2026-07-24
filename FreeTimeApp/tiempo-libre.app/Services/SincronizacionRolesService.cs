@@ -36,6 +36,7 @@ namespace tiempo_libre.Services
             var empleadosCambiaronGrupo = new List<(User user, int grupoAnterior, int grupoNuevo, int? areaAnterior, int? areaNueva, string? regla)>();
 
             await ActualizarEncargadoRegistroEnAreas();
+            await BackfillAreaJefesDesdeLegacyAsync();
 
             // Auto-descubrir reglas nuevas de SAP y crearlas en ReglasTurno como
             // PendienteConfiguracion. El SuperUsuario debe capturar patrón y
@@ -80,6 +81,13 @@ namespace tiempo_libre.Services
                 var empleado = await _context.Empleados
                     .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
 
+                if (empleado == null)
+                {
+                    _logger.LogWarning(
+                        "⚠️ Nómina {Nomina}: existe en RolesEmpleadosSAP pero NO en Empleados (Regla={Regla}, UnidadOrg={UnidadOrg}). Empleado nunca cargado.",
+                        rolSAP.Nomina, rolSAP.Regla, rolSAP.UnidadOrganizativa);
+                }
+
                 if (empleado != null)
                 {
                     bool cambios = false;
@@ -105,6 +113,13 @@ namespace tiempo_libre.Services
                 var user = await _context.Users
                     .FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
 
+                if (user == null)
+                {
+                    _logger.LogWarning(
+                        "⚠️ Nómina {Nomina}: NO existe User con Users.Nomina={Nomina}. Primer pase saltado; SincronizarUsersDesdeEmpleados intentará match por Username.",
+                        rolSAP.Nomina, rolSAP.Nomina);
+                }
+
                 if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
                 {
                     var reglaLimpia = rolSAP.Regla.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper();
@@ -122,6 +137,9 @@ namespace tiempo_libre.Services
 
                     if (!gruposPosibles.Any())
                     {
+                        _logger.LogWarning(
+                            "❌ Nómina {Nomina}: NO existe Grupo con Rol normalizado='{ReglaLimpia}' (Regla SAP='{Regla}'). Empleado no actualiza Area/Grupo. Falta crear el Grupo o normalizar el Rol.",
+                            rolSAP.Nomina, reglaLimpia, rolSAP.Regla);
                         continue;
                     }
 
@@ -539,6 +557,55 @@ namespace tiempo_libre.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error al regenerar calendario para usuario {userId}");
+            }
+        }
+
+        /// <summary>
+        /// Backfill idempotente de AreaJefes desde las columnas legacy
+        /// Area.JefeId / Area.JefeSuplenteId. Necesario porque hay áreas cuyo
+        /// jefe se sembró por SQL o vía flujos previos al multi-jefe y nunca
+        /// obtuvieron su fila en AreaJefes, dejando invisibles a esos jefes en
+        /// las vistas que filtran por AreaJefes (solicitudes pendientes, etc.).
+        /// </summary>
+        public async Task BackfillAreaJefesDesdeLegacyAsync()
+        {
+            try
+            {
+                var faltantes = await _context.Areas
+                    .Where(a => a.JefeId.HasValue &&
+                                !_context.AreaJefes.Any(aj => aj.AreaId == a.AreaId && aj.UserId == a.JefeId!.Value))
+                    .Select(a => new { a.AreaId, UserId = a.JefeId!.Value })
+                    .ToListAsync();
+
+                var faltantesSuplente = await _context.Areas
+                    .Where(a => a.JefeSuplenteId.HasValue &&
+                                !_context.AreaJefes.Any(aj => aj.AreaId == a.AreaId && aj.UserId == a.JefeSuplenteId!.Value))
+                    .Select(a => new { a.AreaId, UserId = a.JefeSuplenteId!.Value })
+                    .ToListAsync();
+
+                var totalInsertadas = 0;
+                foreach (var f in faltantes.Concat(faltantesSuplente))
+                {
+                    _context.AreaJefes.Add(new AreaJefe
+                    {
+                        AreaId = f.AreaId,
+                        UserId = f.UserId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    totalInsertadas++;
+                }
+
+                if (totalInsertadas > 0)
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation(
+                        "✅ Backfill AreaJefes: {Count} filas insertadas desde JefeId/JefeSuplenteId legacy.",
+                        totalInsertadas);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error en BackfillAreaJefesDesdeLegacyAsync");
             }
         }
 
