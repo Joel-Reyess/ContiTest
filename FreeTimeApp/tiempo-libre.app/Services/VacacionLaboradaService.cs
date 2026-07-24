@@ -281,7 +281,9 @@ namespace tiempo_libre.Services
             // Incluye AreaJefes (Jefe de Área) y AreaAsignaciones (Gerente BT / RH).
             var areasJefe = await _db.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
-                            a.Asignaciones.Any(aa => aa.UserId == jefeId))
+                            a.Asignaciones.Any(aa => aa.UserId == jefeId) ||
+                            a.JefeId == jefeId ||
+                            a.JefeSuplenteId == jefeId)
                 .Select(a => a.AreaId)
                 .ToListAsync();
             if (!areasJefe.Any())

@@ -300,7 +300,9 @@ namespace tiempo_libre.Services
             // Áreas visibles: AreaJefes ∪ AreaAsignaciones (Gerente BT / RH).
             var areasVisibles = await _db.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
-                            a.Asignaciones.Any(aa => aa.UserId == jefeId))
+                            a.Asignaciones.Any(aa => aa.UserId == jefeId) ||
+                            a.JefeId == jefeId ||
+                            a.JefeSuplenteId == jefeId)
                 .Select(a => a.AreaId)
                 .ToListAsync();
             if (!areasVisibles.Any()) return new List<SolicitudEdicionDiaEmpresaDto>();
@@ -325,7 +327,9 @@ namespace tiempo_libre.Services
         {
             var areasVisibles = await _db.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
-                            a.Asignaciones.Any(aa => aa.UserId == jefeId))
+                            a.Asignaciones.Any(aa => aa.UserId == jefeId) ||
+                            a.JefeId == jefeId ||
+                            a.JefeSuplenteId == jefeId)
                 .Select(a => a.AreaId)
                 .ToListAsync();
             if (!areasVisibles.Any()) return new List<SolicitudEdicionDiaEmpresaDto>();
