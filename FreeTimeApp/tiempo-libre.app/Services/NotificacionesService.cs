@@ -370,7 +370,9 @@ namespace tiempo_libre.Services
                 {
                     // Jefe de Área ve notificaciones de todas las áreas donde es jefe y sus grupos
                     var areasComoJefe = await _context.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuario.Id))
+                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuario.Id) ||
+                                    a.JefeId == usuario.Id ||
+                                    a.JefeSuplenteId == usuario.Id)
                         .Select(a => a.AreaId)
                         .ToListAsync();
 
@@ -575,7 +577,9 @@ namespace tiempo_libre.Services
                     // Verificar que sea jefe del área de la notificación
                     var esJefeDelArea = await _context.Areas
                         .AnyAsync(a => a.AreaId == notificacion.AreaId.Value
-                                       && a.Jefes.Any(aj => aj.UserId == usuario.Id));
+                                       && (a.Jefes.Any(aj => aj.UserId == usuario.Id)
+                                           || a.JefeId == usuario.Id
+                                           || a.JefeSuplenteId == usuario.Id));
                     tienePermiso = esJefeDelArea;
                 }
                 else if (esLiderGrupo && notificacion.GrupoId.HasValue)

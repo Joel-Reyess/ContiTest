@@ -340,7 +340,9 @@ namespace tiempo_libre.Services
                     {
                         jefeDeAreaMatch = await _db.Areas
                             .AnyAsync(a => a.AreaId == areaEmpleado.Value
-                                           && a.Jefes.Any(aj => aj.UserId == usuarioAprobadorId));
+                                           && (a.Jefes.Any(aj => aj.UserId == usuarioAprobadorId)
+                                               || a.JefeId == usuarioAprobadorId
+                                               || a.JefeSuplenteId == usuarioAprobadorId));
                     }
 
                     if (!esJefeArea || (!aprobadorEsJefeAsignado && !aprobadorMismaArea && !jefeDeAreaMatch))
@@ -511,7 +513,9 @@ namespace tiempo_libre.Services
                     // no, ve solicitudes de TODAS sus áreas asignadas.
                     var areasJefe = await _db.Areas
                         .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId) ||
-                                    a.Asignaciones.Any(aa => aa.UserId == usuarioConsultaId))
+                                    a.Asignaciones.Any(aa => aa.UserId == usuarioConsultaId) ||
+                                    a.JefeId == usuarioConsultaId ||
+                                    a.JefeSuplenteId == usuarioConsultaId)
                         .Select(a => a.AreaId)
                         .ToListAsync();
                     if (usuarioConsulta.AreaId.HasValue && !areasJefe.Contains(usuarioConsulta.AreaId.Value))
@@ -589,7 +593,9 @@ namespace tiempo_libre.Services
                     var jefeIdConsulta = request.JefeAreaId.Value;
                     var areasDelJefe = await _db.Areas
                         .Where(a => a.Jefes.Any(aj => aj.UserId == jefeIdConsulta) ||
-                                    a.Asignaciones.Any(aa => aa.UserId == jefeIdConsulta))
+                                    a.Asignaciones.Any(aa => aa.UserId == jefeIdConsulta) ||
+                                    a.JefeId == jefeIdConsulta ||
+                                    a.JefeSuplenteId == jefeIdConsulta)
                         .Select(a => a.AreaId)
                         .ToListAsync();
 
