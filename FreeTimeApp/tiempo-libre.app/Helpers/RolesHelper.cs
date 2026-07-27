@@ -39,6 +39,16 @@ namespace tiempo_libre.Helpers
         }
 
         /// <summary>
+        /// Variante para colecciones de nombres de rol ya proyectados (DTOs).
+        /// </summary>
+        public static bool TieneRolNombres(IEnumerable<string?>? nombresUsuario, params string[] nombres)
+        {
+            if (nombresUsuario == null) return false;
+            var set = nombres.Select(Normalizar).ToHashSet();
+            return nombresUsuario.Any(n => set.Contains(Normalizar(n)));
+        }
+
+        /// <summary>
         /// Variantes del nombre de rol para emitir como claims: el original,
         /// con guiones bajos como espacios, y sin separadores. Así los
         /// [Authorize(Roles="Jefe De Area")] existentes matchean sin importar

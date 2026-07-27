@@ -296,7 +296,7 @@ namespace tiempo_libre.app.Controllers
             }
 
             // Verificar si tiene roles de liderazgo para incluir áreas consolidadas
-            var hasLeadershipRole = RolesHelper.TieneRol(baseUser.Roles,
+            var hasLeadershipRole = RolesHelper.TieneRolNombres(baseUser.Roles.Select(r => r.Name),
                 "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial");
 
             _logger.LogInformation("Usuario {UserId} tiene rol de liderazgo: {HasLeadershipRole}. Roles: {Roles}",
