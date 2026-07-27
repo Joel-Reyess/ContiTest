@@ -133,10 +133,11 @@ const mapPostIncapacidadToRequest = (
 };
 
 const mapPermisoToRequest = (solicitud: SolicitudPermisoDto): VacationRequest => {
+    const rawEstadoPermiso = solicitud.estado as string;
     const status: RequestStatus =
-        solicitud.estado === 'Aprobada' ? 'approved' :
-            solicitud.estado === 'Rechazada' ? 'rejected' :
-                solicitud.estado === 'Cancelada' ? 'cancelled' : 'pending';
+        rawEstadoPermiso === 'Aprobada' ? 'approved' :
+            rawEstadoPermiso === 'Rechazada' ? 'rejected' :
+                rawEstadoPermiso === 'Cancelada' ? 'cancelled' : 'pending';
 
     return {
         id: solicitud.id.toString(),
