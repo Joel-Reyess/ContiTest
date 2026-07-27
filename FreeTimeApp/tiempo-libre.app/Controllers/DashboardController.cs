@@ -58,8 +58,9 @@ namespace tiempo_libre.Controllers
 
             var jefeAreaIds = await _db.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == userId) ||
-                            a.JefeId == userId ||
-                            a.JefeSuplenteId == userId)
+                            (!a.Jefes.Any() &&
+                             (a.JefeId == userId ||
+                              a.JefeSuplenteId == userId)))
                 .Select(a => a.AreaId)
                 .ToListAsync();
 

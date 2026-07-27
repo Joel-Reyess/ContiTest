@@ -933,8 +933,9 @@ namespace tiempo_libre.app.Controllers
 
             var areasComoJefe = await _dbContext.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == currentUser.Id) ||
-                            a.JefeId == currentUser.Id ||
-                            a.JefeSuplenteId == currentUser.Id)
+                            (!a.Jefes.Any() &&
+                             (a.JefeId == currentUser.Id ||
+                              a.JefeSuplenteId == currentUser.Id)))
                 .Select(a => a.AreaId)
                 .ToListAsync();
 
@@ -1192,8 +1193,9 @@ namespace tiempo_libre.app.Controllers
             // 1. Áreas donde es jefe - incluir todos los grupos del área
             var areasAsJefe = await _dbContext.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == userId) ||
-                            a.JefeId == userId ||
-                            a.JefeSuplenteId == userId)
+                            (!a.Jefes.Any() &&
+                             (a.JefeId == userId ||
+                              a.JefeSuplenteId == userId)))
                 .Select(a => new
                 {
                     a.AreaId,

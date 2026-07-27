@@ -154,8 +154,9 @@ namespace tiempo_libre.Services
                     ? await _db.Areas
                         .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioId) ||
                                     a.Asignaciones.Any(aa => aa.UserId == usuarioId) ||
-                                    a.JefeId == usuarioId ||
-                                    a.JefeSuplenteId == usuarioId)
+                                    (!a.Jefes.Any() &&
+                                     (a.JefeId == usuarioId ||
+                                      a.JefeSuplenteId == usuarioId)))
                         .Select(a => a.AreaId)
                         .ToListAsync()
                     : new List<int>();

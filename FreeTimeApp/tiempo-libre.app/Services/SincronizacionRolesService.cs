@@ -566,6 +566,10 @@ namespace tiempo_libre.Services
         /// jefe se sembró por SQL o vía flujos previos al multi-jefe y nunca
         /// obtuvieron su fila en AreaJefes, dejando invisibles a esos jefes en
         /// las vistas que filtran por AreaJefes (solicitudes pendientes, etc.).
+        /// Solo aplica a áreas SIN ninguna fila en AreaJefes: si el área ya fue
+        /// administrada con multi-jefes, AreaJefes es la fuente de verdad y las
+        /// columnas legacy pueden estar obsoletas (copiarlas le daría al jefe
+        /// viejo visibilidad sobre áreas que ya no son suyas).
         /// </summary>
         public async Task BackfillAreaJefesDesdeLegacyAsync()
         {
@@ -573,13 +577,14 @@ namespace tiempo_libre.Services
             {
                 var faltantes = await _context.Areas
                     .Where(a => a.JefeId.HasValue &&
-                                !_context.AreaJefes.Any(aj => aj.AreaId == a.AreaId && aj.UserId == a.JefeId!.Value))
+                                !_context.AreaJefes.Any(aj => aj.AreaId == a.AreaId))
                     .Select(a => new { a.AreaId, UserId = a.JefeId!.Value })
                     .ToListAsync();
 
                 var faltantesSuplente = await _context.Areas
                     .Where(a => a.JefeSuplenteId.HasValue &&
-                                !_context.AreaJefes.Any(aj => aj.AreaId == a.AreaId && aj.UserId == a.JefeSuplenteId!.Value))
+                                a.JefeSuplenteId != a.JefeId &&
+                                !_context.AreaJefes.Any(aj => aj.AreaId == a.AreaId))
                     .Select(a => new { a.AreaId, UserId = a.JefeSuplenteId!.Value })
                     .ToListAsync();
 
