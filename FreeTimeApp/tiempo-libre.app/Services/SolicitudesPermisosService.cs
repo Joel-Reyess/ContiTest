@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.DTOs;
 
@@ -50,14 +51,7 @@ namespace tiempo_libre.Services
         {
             try
             {
-                var areaIdsVisibles = await _db.Areas
-                    .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
-                                a.Asignaciones.Any(aa => aa.UserId == jefeId) ||
-                                (!a.Jefes.Any() &&
-                                 (a.JefeId == jefeId ||
-                                  a.JefeSuplenteId == jefeId)))
-                    .Select(a => a.AreaId)
-                    .ToListAsync();
+                var areaIdsVisibles = await AreasVisiblesHelper.AreasVisiblesAsync(_db, jefeId);
 
                 var consultaRequest = new ConsultarSolicitudesRequest
                 {

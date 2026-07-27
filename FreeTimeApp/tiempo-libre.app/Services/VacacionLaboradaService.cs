@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 
 namespace tiempo_libre.Services
@@ -279,14 +280,7 @@ namespace tiempo_libre.Services
         public async Task<List<VacacionLaboradaDto>> ObtenerPorJefeAsync(int jefeId, string? estado = null)
         {
             // Incluye AreaJefes (Jefe de Área) y AreaAsignaciones (Gerente BT / RH).
-            var areasJefe = await _db.Areas
-                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
-                            a.Asignaciones.Any(aa => aa.UserId == jefeId) ||
-                            (!a.Jefes.Any() &&
-                             (a.JefeId == jefeId ||
-                              a.JefeSuplenteId == jefeId)))
-                .Select(a => a.AreaId)
-                .ToListAsync();
+            var areasJefe = await AreasVisiblesHelper.AreasVisiblesAsync(_db, jefeId);
             if (!areasJefe.Any())
                 return new List<VacacionLaboradaDto>();
 

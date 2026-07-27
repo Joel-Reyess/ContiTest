@@ -931,13 +931,7 @@ namespace tiempo_libre.app.Controllers
                 return Forbid();
             }
 
-            var areasComoJefe = await _dbContext.Areas
-                .Where(a => a.Jefes.Any(aj => aj.UserId == currentUser.Id) ||
-                            (!a.Jefes.Any() &&
-                             (a.JefeId == currentUser.Id ||
-                              a.JefeSuplenteId == currentUser.Id)))
-                .Select(a => a.AreaId)
-                .ToListAsync();
+            var areasComoJefe = await AreasVisiblesHelper.AreasVisiblesAsync(_dbContext, currentUser.Id);
 
             if (!areasComoJefe.Any())
             {

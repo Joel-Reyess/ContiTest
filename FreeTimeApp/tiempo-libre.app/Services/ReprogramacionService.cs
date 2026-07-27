@@ -517,14 +517,7 @@ namespace tiempo_libre.Services
                     // JefeId/JefeSuplenteId. NO se agrega user.AreaId: el AreaId
                     // propio del jefe lo escribe el sync SAP y puede apuntar a un
                     // área que NO tiene asignada (hacía que viera solicitudes ajenas).
-                    var areasJefe = await _db.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId) ||
-                                    a.Asignaciones.Any(aa => aa.UserId == usuarioConsultaId) ||
-                                    (!a.Jefes.Any() &&
-                                     (a.JefeId == usuarioConsultaId ||
-                                      a.JefeSuplenteId == usuarioConsultaId)))
-                        .Select(a => a.AreaId)
-                        .ToListAsync();
+                    var areasJefe = await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioConsultaId);
                     if (areasJefe.Count > 0)
                     {
                         // Área efectiva tolerante: Users.AreaId O el área del Grupo.
@@ -612,14 +605,7 @@ namespace tiempo_libre.Services
                     // cualquier usuario con visibilidad al área del empleado puede ver
                     // la solicitud, además del JefeAreaId "clavado" al crearla (compat).
                     var jefeIdConsulta = request.JefeAreaId.Value;
-                    var areasDelJefe = await _db.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == jefeIdConsulta) ||
-                                    a.Asignaciones.Any(aa => aa.UserId == jefeIdConsulta) ||
-                                    (!a.Jefes.Any() &&
-                                     (a.JefeId == jefeIdConsulta ||
-                                      a.JefeSuplenteId == jefeIdConsulta)))
-                        .Select(a => a.AreaId)
-                        .ToListAsync();
+                    var areasDelJefe = await AreasVisiblesHelper.AreasVisiblesAsync(_db, jefeIdConsulta);
 
                     query = query.Where(s =>
                         s.JefeAreaId == jefeIdConsulta ||

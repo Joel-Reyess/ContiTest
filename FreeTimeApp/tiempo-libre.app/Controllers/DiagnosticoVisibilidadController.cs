@@ -88,12 +88,19 @@ public class DiagnosticoVisibilidadController : ControllerBase
             })
             .ToListAsync();
 
-        // Mismo cálculo de áreas visibles que usan las vistas: AreaJefes, más
-        // legacy JefeId/JefeSuplenteId SOLO en áreas sin ninguna fila AreaJefes.
-        var areasVisibles = areasPorAreaJefes.Select(a => a.AreaId)
-            .Concat(areasPorLegacy.Where(a => !a.TieneFilasAreaJefes).Select(a => a.AreaId))
-            .Distinct()
-            .ToList();
+        var areasPorLiderazgo = await _db.Grupos
+            .Where(g => g.LiderId == user.Id)
+            .Select(g => new { g.GrupoId, g.AreaId, Area = g.Area.NombreGeneral })
+            .ToListAsync();
+
+        var areasPorIngenieria = await _db.AreaIngenieros
+            .Where(ai => ai.IngenieroId == user.Id && ai.Activo)
+            .Select(ai => new { ai.AreaId, Nombre = ai.Area.NombreGeneral })
+            .ToListAsync();
+
+        // Mismo cálculo que usan el selector de áreas y las consultas de
+        // solicitudes (AreasVisiblesHelper).
+        var areasVisibles = await AreasVisiblesHelper.AreasVisiblesAsync(_db, user.Id);
 
         // Todas las solicitudes Pendientes del sistema agrupadas por el área
         // efectiva del empleado (Grupo.AreaId si existe, si no Users.AreaId),
@@ -149,6 +156,8 @@ public class DiagnosticoVisibilidadController : ControllerBase
             },
             AreasPorAreaJefes = areasPorAreaJefes,
             AreasPorLegacyJefeId = areasPorLegacy,
+            AreasPorLiderDeGrupo = areasPorLiderazgo,
+            AreasPorIngenieria = areasPorIngenieria,
             AreasVisiblesEfectivas = areasVisibles
                 .Select(id => new { AreaId = id, Nombre = nombresAreas.GetValueOrDefault(id, "?") })
                 .ToList(),

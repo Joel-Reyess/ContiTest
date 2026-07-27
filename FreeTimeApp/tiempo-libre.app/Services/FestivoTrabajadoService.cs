@@ -427,14 +427,7 @@ namespace tiempo_libre.Services
                 // Áreas visibles para el usuario: AreaJefes (Jefe de Área) ∪
                 // AreaAsignaciones (Gerente BT / RH). SuperUsuario no aplica scope.
                 var areasJefeIds = (tieneAreaScope && !esSuperUsuario)
-                    ? await _db.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioConsultaId) ||
-                                    a.Asignaciones.Any(aa => aa.UserId == usuarioConsultaId) ||
-                                    (!a.Jefes.Any() &&
-                                     (a.JefeId == usuarioConsultaId ||
-                                      a.JefeSuplenteId == usuarioConsultaId)))
-                        .Select(a => a.AreaId)
-                        .ToListAsync()
+                    ? await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioConsultaId)
                     : new List<int>();
 
                 // Construir query base

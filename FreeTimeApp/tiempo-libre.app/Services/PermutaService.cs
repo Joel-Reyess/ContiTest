@@ -151,14 +151,7 @@ namespace tiempo_libre.Services
                 // ∪ AreaAsignaciones (Gerente BT / RH). Un mismo usuario puede tener
                 // varias áreas — todas cuentan.
                 var areasComoJefe = tieneAreaScope
-                    ? await _db.Areas
-                        .Where(a => a.Jefes.Any(aj => aj.UserId == usuarioId) ||
-                                    a.Asignaciones.Any(aa => aa.UserId == usuarioId) ||
-                                    (!a.Jefes.Any() &&
-                                     (a.JefeId == usuarioId ||
-                                      a.JefeSuplenteId == usuarioId)))
-                        .Select(a => a.AreaId)
-                        .ToListAsync()
+                    ? await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioId)
                     : new List<int>();
 
                 // Fallback: si no aparece como JefeId en ninguna área pero tiene rol jefe,

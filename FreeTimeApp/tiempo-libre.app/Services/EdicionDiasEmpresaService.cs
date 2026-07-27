@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 using tiempo_libre.Models.Enums;
 
@@ -298,14 +299,7 @@ namespace tiempo_libre.Services
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerSolicitudesPendientesJefeAsync(int jefeId)
         {
             // Áreas visibles: AreaJefes ∪ AreaAsignaciones (Gerente BT / RH).
-            var areasVisibles = await _db.Areas
-                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
-                            a.Asignaciones.Any(aa => aa.UserId == jefeId) ||
-                            (!a.Jefes.Any() &&
-                             (a.JefeId == jefeId ||
-                              a.JefeSuplenteId == jefeId)))
-                .Select(a => a.AreaId)
-                .ToListAsync();
+            var areasVisibles = await AreasVisiblesHelper.AreasVisiblesAsync(_db, jefeId);
             if (!areasVisibles.Any()) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa
@@ -326,14 +320,7 @@ namespace tiempo_libre.Services
 
         public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerTodasSolicitudesJefeAsync(int jefeId)
         {
-            var areasVisibles = await _db.Areas
-                .Where(a => a.Jefes.Any(aj => aj.UserId == jefeId) ||
-                            a.Asignaciones.Any(aa => aa.UserId == jefeId) ||
-                            (!a.Jefes.Any() &&
-                             (a.JefeId == jefeId ||
-                              a.JefeSuplenteId == jefeId)))
-                .Select(a => a.AreaId)
-                .ToListAsync();
+            var areasVisibles = await AreasVisiblesHelper.AreasVisiblesAsync(_db, jefeId);
             if (!areasVisibles.Any()) return new List<SolicitudEdicionDiaEmpresaDto>();
 
             var solicitudes = await _db.SolicitudesEdicionDiasEmpresa
