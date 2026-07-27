@@ -769,15 +769,24 @@ namespace tiempo_libre.Services
                     porcentajesDelDia[info.Id] = Math.Round(((decimal)totalAusentes / totalEmpleados) * 100m, 2);
                 }
 
+                // Áreas donde el consultante puede aprobar: mismas fuentes que el
+                // selector de áreas. Antes se comparaba contra usuarioConsulta.AreaId
+                // (lo escribe el sync SAP) y a jefes multi-área les ocultaba el botón.
+                var areasAprobador = esJefeArea
+                    ? await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioConsultaId)
+                    : new List<int>();
+
                 var solicitudesDto = solicitudes.Select(s => new SolicitudReprogramacionDto
                 {
                     Id = s.Id,
                     EmpleadoId = s.EmpleadoId,
                     NombreEmpleado = s.Empleado.FullName,
-                    NominaEmpleado = s.Empleado.Username ?? "",
-                    AreaEmpleado = s.Empleado.Area != null
-                        ? s.Empleado.Area.NombreGeneral ?? ""
-                        : "",
+                    // Nómina real; Username solo como último recurso (en prod el
+                    // username NO es la nómina y rompía el filtro por nómina).
+                    NominaEmpleado = s.Empleado.Nomina?.ToString() ?? s.Empleado.Username ?? "",
+                    AreaEmpleado = s.Empleado.Grupo?.Area?.NombreGeneral
+                        ?? s.Empleado.Area?.NombreGeneral
+                        ?? "",
                     GrupoEmpleado = s.Empleado.Grupo != null ? s.Empleado.Grupo.Rol ?? "" : "",
                     VacacionOriginalId = s.VacacionOriginalId,
                     FechaOriginal = s.FechaOriginalGuardada,
@@ -796,7 +805,9 @@ namespace tiempo_libre.Services
                     MotivoRechazo = s.MotivoRechazo,
                     PuedeAprobar = esJefeArea &&
                                    s.EstadoSolicitud == "Pendiente" &&
-                                   s.Empleado.Grupo?.Area?.AreaId == usuarioConsulta.AreaId
+                                   (s.JefeAreaId == usuarioConsultaId ||
+                                    (s.Empleado.AreaId.HasValue && areasAprobador.Contains(s.Empleado.AreaId.Value)) ||
+                                    (s.Empleado.Grupo != null && areasAprobador.Contains(s.Empleado.Grupo.AreaId)))
                 }).ToList();
 
                 var response = new ListaSolicitudesReprogramacionResponse

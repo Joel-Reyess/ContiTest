@@ -86,7 +86,8 @@ const mapFestivoToRequest = (
     const festivoData = solicitud as any;
     const status: RequestStatus =
         solicitud.estadoSolicitud === 'Aprobada' ? 'approved' :
-            solicitud.estadoSolicitud === 'Rechazada' ? 'rejected' : 'pending';
+            solicitud.estadoSolicitud === 'Rechazada' ? 'rejected' :
+                solicitud.estadoSolicitud === 'Cancelada' ? 'cancelled' : 'pending';
 
     return {
         id: solicitud.id.toString(),
@@ -134,7 +135,8 @@ const mapPostIncapacidadToRequest = (
 const mapPermisoToRequest = (solicitud: SolicitudPermisoDto): VacationRequest => {
     const status: RequestStatus =
         solicitud.estado === 'Aprobada' ? 'approved' :
-            solicitud.estado === 'Rechazada' ? 'rejected' : 'pending';
+            solicitud.estado === 'Rechazada' ? 'rejected' :
+                solicitud.estado === 'Cancelada' ? 'cancelled' : 'pending';
 
     return {
         id: solicitud.id.toString(),

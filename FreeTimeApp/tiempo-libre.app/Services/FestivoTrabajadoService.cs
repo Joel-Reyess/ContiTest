@@ -629,7 +629,9 @@ namespace tiempo_libre.Services
                     MotivoRechazo = s.MotivoRechazo,
                     PuedeAprobar = esJefeArea &&
                                   s.EstadoSolicitud == "Pendiente" &&
-                                  s.Empleado.Grupo?.Area?.AreaId == usuarioConsulta.AreaId
+                                  (s.JefeAreaId == usuarioConsultaId ||
+                                   (s.Empleado.AreaId.HasValue && areasJefeIds.Contains(s.Empleado.AreaId.Value)) ||
+                                   (s.Empleado.Grupo != null && areasJefeIds.Contains(s.Empleado.Grupo.AreaId)))
                 }).ToList();
 
                 var response = new ListaSolicitudesFestivoResponse
