@@ -468,6 +468,9 @@ namespace tiempo_libre.Services
                 _db.Database.SetCommandTimeout(60);
                 var usuarioConsulta = await _db.Users
                     .Include(u => u.Roles)
+                    .Include(u => u.Area)
+                    .Include(u => u.Grupo)
+                        .ThenInclude(g => g.Area)
                     .FirstOrDefaultAsync(u => u.Id == usuarioConsultaId);
 
                 if (usuarioConsulta == null)
@@ -477,7 +480,13 @@ namespace tiempo_libre.Services
 
                 var esSuperUsuario = RolesHelper.TieneRol(usuarioConsulta.Roles, "SuperUsuario", "Super Usuario");
                 var esJefeArea = RolesHelper.TieneRol(usuarioConsulta.Roles, "Jefe De Area");
-                var esDelegadoSindical = RolesHelper.TieneRol(usuarioConsulta.Roles, "Delegado Sindical");
+                // Mismo heurístico que CrearSolicitud: los integrantes del comité
+                // sindical no siempre tienen el rol Delegado en BD, pero su
+                // área es "Sindicato". Sin esto, crean solicitudes pero al
+                // consultarlas caen en la rama de sindicalizado y ven 0.
+                var esDelegadoSindical = RolesHelper.TieneRol(usuarioConsulta.Roles, "Delegado Sindical") ||
+                                         usuarioConsulta.Grupo?.Area?.NombreGeneral?.ToLower() == "sindicato" ||
+                                         usuarioConsulta.Area?.NombreGeneral?.ToLower() == "sindicato";
                 var esSindicalizado = RolesHelper.TieneRol(usuarioConsulta.Roles, "Empleado Sindicalizado");
                 var esIngenieroIndustrial = RolesHelper.TieneRol(usuarioConsulta.Roles, "Ingeniero Industrial");
                 var esGerentePlantaORH = RolesHelper.TieneRol(usuarioConsulta.Roles, "Gerente BT", "RH");
@@ -566,9 +575,11 @@ namespace tiempo_libre.Services
                 }
                 else
                 {
-                    // FIX privacidad: sindicalizado (u otro rol no privilegiado) SOLO ve sus propias solicitudes.
+                    // FIX privacidad: sindicalizado (u otro rol no privilegiado) SOLO ve sus propias solicitudes
+                    // (como empleado) o las que él mismo creó como solicitante.
                     // Antes esto caía en el bucket del delegado y veía las de sus compañeros de área.
-                    query = query.Where(s => s.EmpleadoId == usuarioConsultaId);
+                    query = query.Where(s => s.EmpleadoId == usuarioConsultaId ||
+                                             s.SolicitadoPorId == usuarioConsultaId);
                     _logger.LogInformation(
                         "Usuario {UserId} sin rol privilegiado (Sindicalizado={Sind}) - restringiendo a EmpleadoId = {UserId}",
                         usuarioConsultaId, esSindicalizado, usuarioConsultaId);
