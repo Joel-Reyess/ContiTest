@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { OvertimeIndicator } from '../Dashboard-Area/OvertimeIndicator';
 import type { ExcepcionPorcentaje } from '@/interfaces/Api.interface';
-import { getSAPEntry, SAP_NOMENCLATURA } from '@/utils/sapNomenclatura';
+import { getSAPEntry, SAP_NOMENCLATURA, type SAPEntry, type SAPCodigo } from '@/utils/sapNomenclatura';
 import NomenclaturaLegend from './NomenclaturaLegend';
 
 const localizer = dateFnsLocalizer({
@@ -86,66 +86,70 @@ const CustomDateCellWrapper = ({
   let className = "relative custom-date-cell-wrapper";
   let inlineStyle: React.CSSProperties | undefined;
   let title: string | undefined;
-  // Letra SAP a renderizar dentro de la celda (V, P, E, A, M, G, R, S, F, O, H, C, ...).
-  let sapChip: { codigo: string; bg: string; fg: string; label: string } | null = null;
+  // UN SOLO código SAP por día. Si el día tiene incidencia (V, F, C, E, A, M,
+  // P, G, H, O, R, S) manda la incidencia; si no, y estamos en Plantilla, se
+  // muestra el turno (1, 2, 3, D). Nunca los dos: encimar el círculo naranja
+  // del turno con la letra SAP era lo que hacía ver dos nomenclaturas juntas.
+  let sapChip: SAPEntry | null = null;
 
-  // Si está seleccionado para vacaciones, aplicar el estilo de holiday-day
-  if (isSelectedForVacation) {
-      //className += " holiday-boss-day";
-      className += " holiday-day";
-  } else if (eventData) {
+  if (eventData) {
     switch (eventData.eventType) {
-      case "work":
-        if (mostrarTurnos) className += " work-day";
+      case "holiday":
+      case "holiday-boss":
+        sapChip = getSAPEntry(eventData.tipoIncidencia) ?? SAP_NOMENCLATURA['V'];
+        break;
+      case "inability":
+        sapChip = getSAPEntry(eventData.tipoIncidencia);
+        // Incidencia que no pudimos clasificar: gris neutro para que el día
+        // no se vea disponible.
+        if (!sapChip) className += " inability-day";
         break;
       case "rest":
-        if (mostrarTurnos) className += " rest-day";
+        if (mostrarTurnos) sapChip = SAP_NOMENCLATURA['D'];
         break;
-      case "holiday":
-      case "holiday-boss": {
-        // Nomenclatura SAP única: la celda toma color y letra del código SAP
-        // (V vacación, F festivo trabajado, C reprogramación, ...). Antes la
-        // celda se pintaba con la paleta de programación anual (amarillo /
-        // azul continental) y encima llevaba el chip SAP morado — dos
-        // nomenclaturas revueltas en el mismo día.
-        const sap = getSAPEntry(eventData.tipoIncidencia) ?? SAP_NOMENCLATURA['V'];
-        sapChip = sap;
-        inlineStyle = { backgroundColor: sap.bg };
-        title = sap.label;
-        className += " sap-day";
-        break;
-      }
-      case "not-work":
-        if (mostrarTurnos) className += " not-work-day";
-        title = eventData.razon || "Día no laborable";
-        break;
-      case "inability": {
-        // Override del color por nomenclatura SAP cuando esté disponible.
-        // Ahora sí mostramos la letra en la celda (E, A, M, P, G, R, S, O, H).
-        const sap = getSAPEntry(eventData.tipoIncidencia);
-        if (sap) {
-          inlineStyle = { backgroundColor: sap.bg, cursor: 'not-allowed' };
-          title = sap.label;
-          className += " sap-day";
-          sapChip = sap;
-        } else {
-          className += " inability-day";
+      case "work":
+        if (mostrarTurnos && eventData.turno) {
+          const codigoTurno = String(eventData.turno) as SAPCodigo;
+          sapChip = SAP_NOMENCLATURA[codigoTurno] ?? null;
         }
         break;
-      }
+      case "not-work":
+        title = eventData.razon || "Día no laborable";
+        // Sin código SAP: gris muy claro solo en Plantilla, para insinuar que
+        // no es reservable sin el sombreado oscuro de antes.
+        if (mostrarTurnos) inlineStyle = { backgroundColor: '#f3f4f6' };
+        break;
       default:
         break;
     }
+
+    if (sapChip) {
+      // El fondo se pinta con el color SAP salvo en días de turno normal: si
+      // tiñéramos también los turnos, el mes entero quedaría de colores.
+      if (eventData.eventType !== 'work') {
+        inlineStyle = { backgroundColor: sapChip.bg };
+        className += " sap-day";
+        if (eventData.eventType === 'inability') inlineStyle.cursor = 'not-allowed';
+      }
+      title = title ?? sapChip.label;
+    }
+  }
+
+  // La selección manda sobre el fondo: es feedback de lo que el usuario acaba
+  // de marcar, no una nomenclatura.
+  if (isSelectedForVacation) {
+    className += " holiday-day";
+    inlineStyle = undefined;
   }
 
   return (
     <div className={className} style={inlineStyle} title={title}>
-      {/* Letra de nomenclatura SAP para incapacidades / permisos / suspensión / festivos.
-          Se muestra siempre que resolvemos un sapChip y NO es una vacación/festivo/holiday
-          (esos casos ya se renderizan con el Sun icon + turno bubble más abajo). */}
-      {sapChip && eventData?.eventType !== 'holiday' && eventData?.eventType !== 'holiday-boss' && (
+      {/* Chip de nomenclatura SAP — abajo a la derecha. El número del día lo
+          dibuja react-big-calendar arriba a la derecha: con el chip ahí se
+          encimaban y no se leía ni la letra ni el día. */}
+      {sapChip && (
         <span
-          className="absolute top-1 right-1 inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border"
+          className="absolute bottom-1 right-1 inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border"
           style={{ backgroundColor: sapChip.bg, color: sapChip.fg, borderColor: sapChip.fg + '55' }}
           title={sapChip.label}
         >
@@ -153,50 +157,21 @@ const CustomDateCellWrapper = ({
         </span>
       )}
 
-      {/* Turno bubble (hide if holiday or holiday-boss because we'll render next to the sun) */}
-      {mostrarTurnos && eventData?.turno && eventData.eventType !== 'holiday' && eventData.eventType !== 'holiday-boss' && (
-        <span className="text-center m-2 text-2xl border-2 border-continental-yellow rounded-full w-6 h-6 flex items-center justify-center font-bold p-3 text-continental-yellow">
-          {eventData.turno}
-        </span>
+      {/* Día marcado para vacaciones: el sol es el indicador de selección,
+          va abajo a la izquierda para no chocar con el chip ni con el día. */}
+      {isSelectedForVacation && (
+        <Sun className="absolute bottom-1 left-1 w-5 h-5 text-continental-black" />
       )}
 
-      {/* Descanso marker */}
-      {mostrarTurnos && eventData && eventData.eventType === "rest" && (
-        <span className="text-center m-2 text-xl border-2 border-continental-yellow rounded-full w-6 h-6 flex items-center justify-center font-bold p-3 text-continental-yellow">
-          D
-        </span>
-      )}
-
-      {/* Sun icon centered at top with turno badge when holiday or holiday-boss or when selected for vacation */}
-      {( (eventData && (eventData.eventType === "holiday" || eventData.eventType === "holiday-boss")) || isSelectedForVacation) && (
-        <div className="absolute top-1 left-1/4 transform -translate-x-1/2 flex items-center space-x-1">
-          {mostrarTurnos && eventData?.turno && (
-            <span className="ml-1 text-2xl  text-yellow-400 border-2 border-continental-yellow rounded-full w-7 h-7 flex items-center justify-center font-bold">
-              {eventData.turno}
-            </span>
-          )}
-          {/* Letra SAP (V, F, C) para distinguir tipo de vacación / festivo / reprogramación */}
-          {sapChip && (
-            <span
-              className="inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border"
-              style={{ backgroundColor: sapChip.bg, color: sapChip.fg, borderColor: sapChip.fg + '55' }}
-              title={sapChip.label}
-            >
-              {sapChip.codigo}
-            </span>
-          )}
-          {/* El sol toma el color del código SAP: sobre los fondos claros de
-              la paleta SAP el blanco no se veía. */}
-          <Sun style={{ color: sapChip?.fg ?? '#6b21a8' }} />
-                  {/* Indicador de tiempo extra */}
-                  {excepciones.length > 0 && (
-                      <OvertimeIndicator
-                          fecha={value.toISOString().split('T')[0]}
-                          excepciones={excepciones}
-                          grupoId={groupId}
-                      />
-                  )}
-        </div>
+      {/* Indicador de tiempo extra (se posiciona solo arriba a la izquierda y
+          se oculta si el día no tiene excepción). Antes vivía dentro del bloque
+          de vacaciones, así que solo aparecía en días de vacación. */}
+      {excepciones.length > 0 && (
+        <OvertimeIndicator
+          fecha={value.toISOString().split('T')[0]}
+          excepciones={excepciones}
+          grupoId={groupId}
+        />
       )}
 
       {children}
