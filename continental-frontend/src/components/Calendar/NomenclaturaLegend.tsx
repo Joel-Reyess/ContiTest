@@ -5,9 +5,12 @@ interface NomenclaturaLegendProps {
     // 'grouped' = grupos con títulos.
     variant?: 'compact' | 'grouped';
     className?: string;
+    // Los códigos de turno/descanso (1, 2, 3, D, CD) solo se pintan donde se
+    // muestra la rotación (Plantilla); en el calendario del empleado sobran.
+    incluirTurnos?: boolean;
 }
 
-export const NomenclaturaLegend = ({ variant = 'grouped', className = '' }: NomenclaturaLegendProps) => {
+export const NomenclaturaLegend = ({ variant = 'grouped', className = '', incluirTurnos = true }: NomenclaturaLegendProps) => {
     if (variant === 'compact') {
         return (
             <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${className}`}>
@@ -25,9 +28,13 @@ export const NomenclaturaLegend = ({ variant = 'grouped', className = '' }: Nome
         );
     }
 
+    const grupos = incluirTurnos
+        ? NOMENCLATURA_LEGEND_GROUPS
+        : NOMENCLATURA_LEGEND_GROUPS.filter((g) => g.titulo !== 'Turnos');
+
     return (
         <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 text-xs ${className}`}>
-            {NOMENCLATURA_LEGEND_GROUPS.map((g) => (
+            {grupos.map((g) => (
                 <div key={g.titulo}>
                     <div className="font-semibold text-gray-700 mb-1">{g.titulo}</div>
                     <div className="flex flex-wrap gap-1">

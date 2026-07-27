@@ -60,6 +60,7 @@ const CustomDateCellWrapper = ({
     selectedDays,
     excepciones, // ✅ AÑADIR
     groupId,
+    mostrarTurnos = false,
 }: {
   children: React.ReactNode;
   value: Date;
@@ -67,6 +68,11 @@ const CustomDateCellWrapper = ({
   selectedDays?: {date: string}[];
   excepciones?: ExcepcionPorcentaje[]; // ✅ AÑADIR
   groupId?: number;
+  // Rotación de turnos (números 1/2/3, marca D y grises de descanso / día no
+  // laborable): es la lectura de la programación anual y solo se usa en la
+  // vista de Plantilla. En el calendario del empleado se omite para dejar
+  // únicamente la nomenclatura SAP.
+  mostrarTurnos?: boolean;
 }) => {
   const eventData = schedule.find(
     (event) => datesEqual(event.day, value)
@@ -90,10 +96,10 @@ const CustomDateCellWrapper = ({
   } else if (eventData) {
     switch (eventData.eventType) {
       case "work":
-        className += " work-day";
+        if (mostrarTurnos) className += " work-day";
         break;
       case "rest":
-        className += " rest-day";
+        if (mostrarTurnos) className += " rest-day";
         break;
       case "holiday":
       case "holiday-boss": {
@@ -110,7 +116,7 @@ const CustomDateCellWrapper = ({
         break;
       }
       case "not-work":
-        className += " not-work-day";
+        if (mostrarTurnos) className += " not-work-day";
         title = eventData.razon || "Día no laborable";
         break;
       case "inability": {
@@ -148,14 +154,14 @@ const CustomDateCellWrapper = ({
       )}
 
       {/* Turno bubble (hide if holiday or holiday-boss because we'll render next to the sun) */}
-      {eventData?.turno && eventData.eventType !== 'holiday' && eventData.eventType !== 'holiday-boss' && (
+      {mostrarTurnos && eventData?.turno && eventData.eventType !== 'holiday' && eventData.eventType !== 'holiday-boss' && (
         <span className="text-center m-2 text-2xl border-2 border-continental-yellow rounded-full w-6 h-6 flex items-center justify-center font-bold p-3 text-continental-yellow">
           {eventData.turno}
         </span>
       )}
 
       {/* Descanso marker */}
-      {eventData && eventData.eventType === "rest" && (
+      {mostrarTurnos && eventData && eventData.eventType === "rest" && (
         <span className="text-center m-2 text-xl border-2 border-continental-yellow rounded-full w-6 h-6 flex items-center justify-center font-bold p-3 text-continental-yellow">
           D
         </span>
@@ -164,7 +170,7 @@ const CustomDateCellWrapper = ({
       {/* Sun icon centered at top with turno badge when holiday or holiday-boss or when selected for vacation */}
       {( (eventData && (eventData.eventType === "holiday" || eventData.eventType === "holiday-boss")) || isSelectedForVacation) && (
         <div className="absolute top-1 left-1/4 transform -translate-x-1/2 flex items-center space-x-1">
-          {eventData?.turno && (
+          {mostrarTurnos && eventData?.turno && (
             <span className="ml-1 text-2xl  text-yellow-400 border-2 border-continental-yellow rounded-full w-7 h-7 flex items-center justify-center font-bold">
               {eventData.turno}
             </span>
@@ -199,7 +205,7 @@ const CustomDateCellWrapper = ({
 };
  
 
-const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number }) => {
+const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean }) => {
   // Obtener configuración de vacaciones para determinar el año
   const { currentPeriod } = useVacationConfig();
   
@@ -393,7 +399,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
           dateCellWrapper: (props) =>
                 CustomDateCellWrapper({
                     ...props, schedule, selectedDays, excepciones, // ✅ AÑADIR
-                    groupId }),
+                    groupId, mostrarTurnos }),
           //   month: {
           //     dateHeader: (props) => CustomDateHeader({...props, schedule}),
           //   },
@@ -446,18 +452,18 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
               : format(date, "HH:mm"),
         }}
       />
-      <CalendarLegend />
+      <CalendarLegend incluirTurnos={mostrarTurnos} />
     </div>
   );
 };
 
 export default CalendarComponent;
 
-export const CalendarLegend = () => {
+export const CalendarLegend = ({ incluirTurnos = true }: { incluirTurnos?: boolean }) => {
   return (
     <div className="mt-6 p-4 bg-gray-50 rounded-lg">
       <h3 className="text-lg font-semibold mb-4 text-gray-800">Nomenclatura SAP</h3>
-      <NomenclaturaLegend variant="grouped" />
+      <NomenclaturaLegend variant="grouped" incluirTurnos={incluirTurnos} />
     </div>
   )
 }
