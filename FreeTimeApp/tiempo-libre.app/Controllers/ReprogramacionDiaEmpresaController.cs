@@ -95,7 +95,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Aprobar/rechazar (jefe del área).</summary>
         [HttpPost("aprobar")]
-        [Authorize(Roles = "Jefe De Area,JefeArea,JefeDeArea,SuperUsuario,Super Usuario,Gerente BT,GerenteBT")]
+        [Authorize(Roles = "Jefe De Area,JefeArea,JefeDeArea,SuperUsuario,Super Usuario")]
         public async Task<IActionResult> AprobarRechazar([FromBody] AprobarReprogramacionDiaEmpresaRequest request)
         {
             try

@@ -280,8 +280,13 @@ namespace tiempo_libre.Controllers
         /// <summary>
         /// Obtener excepciones de manning por área/año/mes
         /// </summary>
+        // Lectura abierta a jefes/gerentes/RH: sus vistas (roles semanales,
+        // calendario) necesitan el manning efectivo del mes. Sin esto reciben
+        // 403 silencioso y caen al manning base viejo, por lo que "mover el
+        // manning" desde Industrial no se refleja en sus pantallas.
+        // POST/PUT/DELETE siguen restringidos a SuperUsuario/Industrial.
         [HttpGet("excepciones-manning")]
-        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,Jefe De Area,Lider De Grupo,Gerente BT,RH")]
         public async Task<IActionResult> ObtenerExcepcionesManning([FromQuery] ConsultaExcepcionesManningRequest request)
         {
             try

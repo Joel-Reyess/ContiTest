@@ -161,7 +161,7 @@ namespace tiempo_libre.Controllers
 
         /// <summary>Aprobar o rechazar una solicitud</summary>
         [HttpPost("responder")]
-        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario,Gerente BT,GerenteBT")]
+        [Authorize(Roles = "Jefe De Area,JefeArea,SuperUsuario")]
         public async Task<IActionResult> ResponderSolicitud([FromBody] ResponderEdicionDiaEmpresaRequest request)
         {
             try

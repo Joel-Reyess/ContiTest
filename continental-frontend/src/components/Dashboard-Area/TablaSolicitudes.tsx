@@ -60,13 +60,16 @@ export function TablaSolicitudes() {
             console.log('User data for solicitudes:', userDetail)
             setUserData(userDetail)
 
-            // Solo establecer área por defecto si NO hay filtros guardados
+            // Solo establecer área por defecto si NO hay filtros guardados.
+            // Si el filtro guardado apunta a un área que ya no es visible para
+            // el usuario (se le reasignó el área), resetear a la primera: si
+            // no, la tabla pedía esa área vieja y se quedaba vacía para siempre.
             const savedFilters = (location.state as any)?.filters
-            if (!savedFilters?.selectedAreaId) {
-                if (userDetail?.areas && userDetail.areas.length > 0) {
-                    const firstArea = userDetail.areas[0]
-                    setSelectedAreaId(firstArea.areaId)
-                }
+            const areasVisibles = userDetail?.areas ?? []
+            const savedAreaSigueVisible = savedFilters?.selectedAreaId &&
+                areasVisibles.some(a => a.areaId === savedFilters.selectedAreaId)
+            if (!savedAreaSigueVisible && areasVisibles.length > 0) {
+                setSelectedAreaId(areasVisibles[0].areaId)
             }
         } catch (error) {
             console.error('Error fetching user data:', error)

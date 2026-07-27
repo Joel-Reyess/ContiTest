@@ -7,11 +7,13 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
 import { userService } from "@/services/userService";
-import { type User } from "@/interfaces/User.interface";
+import { UserRole, type User } from "@/interfaces/User.interface";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const TablaPermutas = () => {
-    const { user } = useAuth();
+    const { user, hasRole } = useAuth();
+    // Gerente BT / RH: solo lectura, sin aprobar/rechazar
+    const soloLectura = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH);
     const [permutas, setPermutas] = useState<PermutaListItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
@@ -349,7 +351,7 @@ export const TablaPermutas = () => {
                                                 {permuta.estadoSolicitud}
                                             </span>
 
-                                            {permuta.estadoSolicitud === 'Pendiente' && (
+                                            {!soloLectura && permuta.estadoSolicitud === 'Pendiente' && (
                                                 <>
                                                     <Button
                                                         size="sm"

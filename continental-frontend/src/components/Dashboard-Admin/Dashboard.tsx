@@ -9,6 +9,7 @@ import { areasService } from '@/services/areasService';
 import type { AusenciasPorGrupo, EmpleadoAusente, EmpleadoDisponible } from '@/interfaces/Ausencias.interface';
 import type { Area } from '@/interfaces/Areas.interface';
 import useAuth from '@/hooks/useAuth';
+import { userService } from '@/services/userService';
 import { UserRole } from '@/interfaces/User.interface';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -169,14 +170,26 @@ export const Dashboard: React.FC = () => {
     const [semanaSel,  setSemanaSel]  = useState<number | 'all'>('all');
     const [diaSel,     setDiaSel]     = useState<string>('');
 
-    // Áreas a las que el usuario tiene acceso (multi-área para Ing. Industrial / Jefe)
-    const areasUsuario = useMemo<number[]>(() => {
-        if (isAdmin) return [];
-        const ids = new Set<number>();
-        if (user?.area?.areaId) ids.add(user.area.areaId);
-        user?.areas?.forEach(a => { if (a.areaId) ids.add(a.areaId); });
-        return Array.from(ids);
-    }, [isAdmin, user?.area?.areaId, user?.areas]);
+    // Áreas a las que el usuario tiene acceso (multi-área para Ing. Industrial /
+    // Jefe / Gerente BT / RH). El objeto `user` del localStorage NO trae
+    // `areas` (el /api/User/profile no lo devuelve), así que hay que pedirlas
+    // a /api/User/detail/{id} como hacen las tablas de solicitudes; si no, el
+    // picker de áreas nunca se renderiza y el jefe ve todo combinado.
+    const [areasUsuario, setAreasUsuario] = useState<number[]>([]);
+    useEffect(() => {
+        if (isAdmin || !user?.id) return;
+        userService.getUserById(user.id)
+            .then(detail => {
+                const ids = new Set<number>();
+                detail?.areas?.forEach(a => { if (a.areaId) ids.add(a.areaId); });
+                if (ids.size === 0 && user?.area?.areaId) ids.add(user.area.areaId);
+                setAreasUsuario(Array.from(ids));
+            })
+            .catch(err => {
+                console.error('No se pudieron cargar las áreas del usuario', err);
+                if (user?.area?.areaId) setAreasUsuario([user.area.areaId]);
+            });
+    }, [isAdmin, user?.id, user?.area?.areaId]);
 
     // Multi-selección de áreas. Convención: array vacío = "todas las áreas
     // permitidas" (todas las del sistema si admin, todas las del jefe si no).

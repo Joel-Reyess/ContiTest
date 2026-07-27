@@ -7,9 +7,14 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ModalRechazoPermiso from './ModalRechazoPermiso'
+import { useAuth } from '@/hooks/useAuth';
+import { UserRole } from '@/interfaces/User.interface';
 
 export const SolicitudesPermisos = () => {
     const location = useLocation();
+    const { hasRole } = useAuth();
+    // Gerente BT / RH: solo lectura, sin aprobar/rechazar
+    const soloLectura = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH);
     const restoredFilters = (location.state as any)?.filters as { filtroEstado?: string } | undefined;
     const [solicitudes, setSolicitudes] = useState<SolicitudPermisoDto[]>([]);
     const [loading, setLoading] = useState(true);
@@ -204,7 +209,7 @@ export const SolicitudesPermisos = () => {
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
-                                        {solicitud.estado === 'Pendiente' && (
+                                        {!soloLectura && solicitud.estado === 'Pendiente' && (
                                             <div className="flex gap-2">
                                                 <Button
                                                     size="sm"

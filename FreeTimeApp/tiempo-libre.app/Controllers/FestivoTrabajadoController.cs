@@ -245,7 +245,7 @@ namespace tiempo_libre.Controllers
         /// <param name="request">Datos de aprobación/rechazo</param>
         /// <returns>Resultado de la aprobación</returns>
         [HttpPost("aprobar")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Gerente BT,GerenteBT")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
         public async Task<IActionResult> AprobarRechazarSolicitud([FromBody] AprobarFestivoTrabajadoRequest request)
         {
             try

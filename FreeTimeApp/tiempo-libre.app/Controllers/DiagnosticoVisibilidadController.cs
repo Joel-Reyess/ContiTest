@@ -102,6 +102,18 @@ public class DiagnosticoVisibilidadController : ControllerBase
         // solicitudes (AreasVisiblesHelper).
         var areasVisibles = await AreasVisiblesHelper.AreasVisiblesAsync(_db, user.Id);
 
+        // AreaAsignaciones (Gerente BT / RH): también cuenta como área visible.
+        // Si un jefe "ve áreas que no son suyas", puede venir de filas aquí.
+        var areasPorAsignacion = await _db.AreaAsignaciones
+            .Where(aa => aa.UserId == user.Id)
+            .Select(aa => new
+            {
+                aa.AreaId,
+                Nombre = aa.Area.NombreGeneral,
+                aa.RolId
+            })
+            .ToListAsync();
+
         // Todas las solicitudes Pendientes del sistema agrupadas por el área
         // efectiva del empleado (Grupo.AreaId si existe, si no Users.AreaId),
         // para localizar dónde están cayendo las de "Preparación de Materiales 2".
@@ -158,6 +170,7 @@ public class DiagnosticoVisibilidadController : ControllerBase
             AreasPorLegacyJefeId = areasPorLegacy,
             AreasPorLiderDeGrupo = areasPorLiderazgo,
             AreasPorIngenieria = areasPorIngenieria,
+            AreasPorAsignacion = areasPorAsignacion,
             AreasVisiblesEfectivas = areasVisibles
                 .Select(id => new { AreaId = id, Nombre = nombresAreas.GetValueOrDefault(id, "?") })
                 .ToList(),

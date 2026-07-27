@@ -16,7 +16,7 @@ import { UserRole } from "@/interfaces/User.interface";
 import { httpClient } from '@/services/httpClient'; 
 import { vacacionesService } from "@/services/vacacionesService";
 import { excepcionesManningService } from "@/services/excepcionesManningService";
-import { SAP_NOMENCLATURA, type SAPCodigo } from "@/utils/sapNomenclatura";
+import { SAP_NOMENCLATURA, getSAPEntry } from "@/utils/sapNomenclatura";
 
 const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
@@ -634,26 +634,12 @@ const WeeklyRoles = () => {
                     <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="font-semibold text-gray-700 mr-1">Leyenda:</span>
-                            {[
-                                { code: "D", label: "Descanso", color: "bg-gray-100 text-gray-700" },
-                                { code: "1", label: "Mañana", color: "bg-emerald-100 text-emerald-700" },
-                                { code: "2", label: "Tarde", color: "bg-yellow-100 text-yellow-700" },
-                                { code: "3", label: "Noche", color: "bg-blue-100 text-blue-700" },
-                                { code: "V", label: "Vacaciones", color: "bg-purple-100 text-purple-700" },
-                                { code: "P", label: "Perm. c/Goce", color: "bg-green-100 text-green-700" },
-                                { code: "E", label: "Inc. Enfermedad", color: "bg-red-100 text-red-700" },
-                                { code: "A", label: "Inc. Accidente", color: "bg-orange-100 text-orange-700" },
-                                { code: "M", label: "Inc. Maternidad", color: "bg-pink-100 text-pink-700" },
-                                { code: "G", label: "Perm. s/Goce", color: "bg-amber-100 text-amber-700" },
-                                { code: "R", label: "Inc. Riesgo", color: "bg-rose-100 text-rose-700" },
-                                { code: "S", label: "Suspensión", color: "bg-slate-100 text-slate-700" },
-                                { code: "O", label: "Perm. Paternidad", color: "bg-cyan-100 text-cyan-700" },
-                                { code: "H", label: "Perm. s/Goce Alt", color: "bg-indigo-100 text-indigo-700" },
-                                { code: "F", label: "Festivo Trabajado", color: "bg-teal-100 text-teal-700" },
-                                { code: "C", label: "Día empresa reprog.", color: "bg-amber-100 text-amber-800" },
-                            ].map(({ code, label, color }) => (
-                                <span key={code} className="flex items-center gap-1">
-                                    <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 font-semibold ${color}`}>{code}</span>
+                            {/* Derivada de SAP_NOMENCLATURA (fuente única): la copia
+                                manual anterior omitía códigos (CD, T) y podía divergir
+                                de los colores reales de los chips. */}
+                            {Object.values(SAP_NOMENCLATURA).map(({ codigo, label, chipBg, chipFg }) => (
+                                <span key={codigo} className="flex items-center gap-1">
+                                    <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 font-semibold ${chipBg} ${chipFg}`}>{codigo}</span>
                                     <span className="text-gray-500">{label}</span>
                                 </span>
                             ))}
@@ -804,7 +790,9 @@ const WeeklyRoles = () => {
                                         const shift = getShiftForDay(emp, day);
                                         // Nomenclatura compartida en @/utils/sapNomenclatura para
                                         // que WeeklyRoles y Calendar hablen los mismos colores.
-                                        const sapEntry = shift ? SAP_NOMENCLATURA[shift.toUpperCase() as SAPCodigo] : undefined;
+                                        // getSAPEntry resuelve también los alias del backend
+                                        // (VA→V, PD→P, PP→O) que el lookup directo dejaba en gris.
+                                        const sapEntry = shift ? getSAPEntry(shift) ?? undefined : undefined;
                                         const chipColor = sapEntry
                                             ? `${sapEntry.chipBg} ${sapEntry.chipFg}`
                                             : "bg-slate-100 text-slate-600";

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { OvertimeIndicator } from '../Dashboard-Area/OvertimeIndicator';
 import type { ExcepcionPorcentaje } from '@/interfaces/Api.interface';
-import { getSAPEntry } from '@/utils/sapNomenclatura';
+import { getSAPEntry, SAP_NOMENCLATURA } from '@/utils/sapNomenclatura';
 import NomenclaturaLegend from './NomenclaturaLegend';
 
 const localizer = dateFnsLocalizer({
@@ -95,17 +95,18 @@ const CustomDateCellWrapper = ({
       case "rest":
         className += " rest-day";
         break;
-      case "holiday": {
-        className += " holiday-day";
-        // Marcar con letra si sabemos el tipo (F = festivo trabajado, C = reprogramación, V = vacación).
-        const sap = getSAPEntry(eventData.tipoIncidencia);
-        if (sap) sapChip = sap;
-        else sapChip = { codigo: 'V', bg: '#f3e8ff', fg: '#6b21a8', label: 'Vacaciones' };
-        break;
-      }
+      case "holiday":
       case "holiday-boss": {
-        className += " holiday-boss-day";
-        sapChip = { codigo: 'V', bg: '#f3e8ff', fg: '#6b21a8', label: 'Vacaciones' };
+        // Nomenclatura SAP única: la celda toma color y letra del código SAP
+        // (V vacación, F festivo trabajado, C reprogramación, ...). Antes la
+        // celda se pintaba con la paleta de programación anual (amarillo /
+        // azul continental) y encima llevaba el chip SAP morado — dos
+        // nomenclaturas revueltas en el mismo día.
+        const sap = getSAPEntry(eventData.tipoIncidencia) ?? SAP_NOMENCLATURA['V'];
+        sapChip = sap;
+        inlineStyle = { backgroundColor: sap.bg };
+        title = sap.label;
+        className += " sap-day";
         break;
       }
       case "not-work":
@@ -178,7 +179,9 @@ const CustomDateCellWrapper = ({
               {sapChip.codigo}
             </span>
           )}
-          <Sun className="text-white" />
+          {/* El sol toma el color del código SAP: sobre los fondos claros de
+              la paleta SAP el blanco no se veía. */}
+          <Sun style={{ color: sapChip?.fg ?? '#6b21a8' }} />
                   {/* Indicador de tiempo extra */}
                   {excepciones.length > 0 && (
                       <OvertimeIndicator

@@ -54,6 +54,7 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import './Calendar.css';
 import { userService } from '@/services/userService';
+import { excepcionesManningService } from '@/services/excepcionesManningService';
 import { useDebounce } from '@/hooks/useDebounce';
 
 interface CalendarWidgetProps {
@@ -112,6 +113,30 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
         const selectedAreaData = areas.find(area => area.id === selectedArea);
         return selectedAreaData?.manning || manningRequerido;
     };
+
+    // Manning efectivo del mes mostrado: excepción activa (ExcepcionesManning)
+    // o, si no hay, el manning base del área. Antes este valor solo lo
+    // actualizaba el sidebar de Industrial (ManningExceptionConfiguration),
+    // que jefes/gerentes/RH no montan: para ellos quedaba el default 48 y
+    // "mover el manning" desde Industrial nunca se reflejaba en su vista.
+    useEffect(() => {
+        if (!selectedArea) return;
+        const areaIdNum = parseInt(selectedArea);
+        if (Number.isNaN(areaIdNum)) return;
+        const base = areas?.find(a => a.id === selectedArea)?.manning;
+        let cancelado = false;
+        excepcionesManningService
+            .getExcepcionActivaParaMes(areaIdNum, currentDate.getFullYear(), currentDate.getMonth() + 1)
+            .then(exc => {
+                if (cancelado) return;
+                const efectivo = exc?.manningRequeridoExcepcion ?? base;
+                if (typeof efectivo === 'number' && efectivo > 0) setManningRequerido(efectivo);
+            })
+            .catch(() => {
+                if (!cancelado && typeof base === 'number' && base > 0) setManningRequerido(base);
+            });
+        return () => { cancelado = true; };
+    }, [selectedArea, areas, currentDate.getFullYear(), currentDate.getMonth()]);
 
     // Sincronizar SIEMPRE todos los grupos del área actual como seleccionados
     // Cuando cambia el área (y por ende sus grupos), marcamos todos por defecto.

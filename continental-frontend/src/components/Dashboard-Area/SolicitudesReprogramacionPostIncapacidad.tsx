@@ -10,10 +10,15 @@ import {
 } from '@/services/reprogramacionPostIncapacidadService'
 import ApproveModal from './ApproveModal'
 import RejectModal from './RejectModal'
+import { useAuth } from '@/hooks/useAuth'
+import { UserRole } from '@/interfaces/User.interface'
 
 type Filtro = 'Todas' | 'Pendiente' | 'Aprobada' | 'Rechazada'
 
 export function SolicitudesReprogramacionPostIncapacidad() {
+    const { hasRole } = useAuth()
+    // Gerente BT / RH: solo lectura, sin aprobar/rechazar
+    const soloLectura = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH)
     const [solicitudes, setSolicitudes] = useState<SolicitudReprogramacionPostIncapacidad[]>([])
     const [loading, setLoading] = useState(true)
     const [procesando, setProcesando] = useState(false)
@@ -205,7 +210,7 @@ export function SolicitudesReprogramacionPostIncapacidad() {
                                     </td>
                                     <td className="py-2 px-3">{getEstadoBadge(s.estadoSolicitud)}</td>
                                     <td className="py-2 px-3">
-                                        {s.estadoSolicitud === 'Pendiente' ? (
+                                        {!soloLectura && s.estadoSolicitud === 'Pendiente' ? (
                                             <div className="flex gap-1">
                                                 <Button
                                                     variant="outline"

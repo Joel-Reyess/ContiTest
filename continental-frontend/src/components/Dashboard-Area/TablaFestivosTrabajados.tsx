@@ -7,12 +7,14 @@ import ApproveModal from './ApproveModal'
 import { festivosTrabajadosService, type SolicitudFestivoTrabajado } from '../../services/festivosTrabajadosService'
 import { useAuth } from '../../hooks/useAuth'
 import { userService } from '../../services/userService'
-import { type User } from '@/interfaces/User.interface'
+import { UserRole, type User } from '@/interfaces/User.interface'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
 export function TablaFestivosTrabajados() {
-    const { user } = useAuth()
+    const { user, hasRole } = useAuth()
+    // Gerente BT / RH: solo lectura, sin aprobar/rechazar
+    const soloLectura = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH)
     const [solicitudes, setSolicitudes] = useState<SolicitudFestivoTrabajado[]>([])
     const [loading, setLoading] = useState(true)
     const location = useLocation()
@@ -286,7 +288,7 @@ export function TablaFestivosTrabajados() {
                     >
                         Ver solicitud
                     </Link>
-                    {row.estadoSolicitud === 'Pendiente' && (
+                    {!soloLectura && row.estadoSolicitud === 'Pendiente' && (
                         <>
                             <button
                                 onClick={() => handleAprobar(row.id)}

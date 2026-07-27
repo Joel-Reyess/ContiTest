@@ -507,9 +507,30 @@ namespace tiempo_libre.Services
                     .AsQueryable();
 
                 // FILTROS DE ROL
-                if (esSuperUsuario || esGerentePlantaORH)
+                if (esSuperUsuario)
                 {
-                    _logger.LogInformation("SuperUsuario / Gerente BT / RH - sin filtros de rol");
+                    _logger.LogInformation("SuperUsuario - sin filtros de rol");
+                }
+                else if (esGerentePlantaORH)
+                {
+                    // Gerente BT / RH: solo VEN (no aprueban) las solicitudes de
+                    // sus áreas asignadas (AreaAsignaciones, vía el mismo helper
+                    // que arma el selector de áreas). Sin asignaciones en BD se
+                    // queda sin filtro para no dejarlos en ceros.
+                    var areasAsignadas = await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioConsultaId);
+                    if (areasAsignadas.Count > 0)
+                    {
+                        query = query.Where(s =>
+                            (s.Empleado.AreaId.HasValue && areasAsignadas.Contains(s.Empleado.AreaId.Value)) ||
+                            (s.Empleado.GrupoId.HasValue && areasAsignadas.Contains(s.Empleado.Grupo.AreaId)));
+                        _logger.LogInformation(
+                            "Gerente BT / RH {UserId} - filtrando por áreas asignadas [{Areas}]",
+                            usuarioConsultaId, string.Join(",", areasAsignadas));
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Gerente BT / RH {UserId} - sin áreas asignadas, sin filtro", usuarioConsultaId);
+                    }
                 }
                 else if (esJefeArea)
                 {

@@ -308,7 +308,7 @@ namespace tiempo_libre.Controllers
         /// Aprueba o rechaza una solicitud de permiso (solo jefes de área)
         /// </summary>
         [HttpPost("responder")]
-        [Authorize(Roles = "Jefe De Area,SuperUsuario,Gerente BT,GerenteBT")]
+        [Authorize(Roles = "Jefe De Area,SuperUsuario")]
         public async Task<IActionResult> ResponderSolicitud([FromBody] ResponderSolicitudPermisoRequest request)
         {
             try

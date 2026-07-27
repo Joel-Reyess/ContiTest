@@ -295,9 +295,11 @@ namespace tiempo_libre.app.Controllers
                 return NotFound(new ApiResponse<object>(false, null, "Usuario no encontrado"));
             }
 
-            // Verificar si tiene roles de liderazgo para incluir áreas consolidadas
+            // Verificar si tiene roles de liderazgo para incluir áreas consolidadas.
+            // Gerente BT y RH también: sus áreas vienen de AreaAsignaciones y el
+            // frontend necesita la lista para el filtro por área (solo lectura).
             var hasLeadershipRole = RolesHelper.TieneRolNombres(baseUser.Roles.Select(r => r.Name),
-                "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial");
+                "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial", "Gerente BT", "RH");
 
             _logger.LogInformation("Usuario {UserId} tiene rol de liderazgo: {HasLeadershipRole}. Roles: {Roles}",
                 baseUser.Id, hasLeadershipRole, string.Join(", ", baseUser.Roles.Select(r => r.Name)));
@@ -1269,6 +1271,39 @@ namespace tiempo_libre.app.Controllers
                         AreaId = area.AreaId,
                         NombreGeneral = area.NombreGeneral,
                         UserRole = "Ingeniero",
+                        Grupos = area.Grupos
+                    });
+                }
+            }
+
+            // 4. Áreas asignadas vía AreaAsignaciones (Gerente BT / RH).
+            // DEBE estar aquí: AreasVisiblesHelper ya cuenta estas áreas para
+            // las consultas de solicitudes; si no aparecen también en el
+            // selector, el usuario ve solicitudes de áreas que "no existen"
+            // en su filtro (o al revés, no puede filtrar por sus áreas).
+            var areasAsignadas = await _dbContext.Areas
+                .Where(a => a.Asignaciones.Any(aa => aa.UserId == userId))
+                .Select(a => new
+                {
+                    a.AreaId,
+                    a.NombreGeneral,
+                    Grupos = a.Grupos.Select(g => new GrupoBasicDto
+                    {
+                        GrupoId = g.GrupoId,
+                        Rol = g.Rol
+                    }).ToList()
+                })
+                .ToListAsync();
+
+            foreach (var area in areasAsignadas)
+            {
+                if (!consolidatedAreas.Any(ca => ca.AreaId == area.AreaId))
+                {
+                    consolidatedAreas.Add(new AreaWithRoleDto
+                    {
+                        AreaId = area.AreaId,
+                        NombreGeneral = area.NombreGeneral,
+                        UserRole = "Asignado",
                         Grupos = area.Grupos
                     });
                 }

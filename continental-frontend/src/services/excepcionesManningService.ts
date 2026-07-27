@@ -52,8 +52,9 @@ export const excepcionesManningService = {
 
             return excepcionesData as unknown as ExcepcionManning[];
         } catch (error: any) {
-            // Si es error 403, significa que el usuario no tiene permisos
-            if (error.response?.status === 403) {
+            // Si es error 403, significa que el usuario no tiene permisos.
+            // httpClient lanza el status en error.status (no error.response).
+            if (error.status === 403 || error.response?.status === 403) {
                 console.warn("User does not have permission to view manning exceptions");
                 return [];
             }

@@ -56,31 +56,14 @@ namespace tiempo_libre.Controllers
             var userId = GetUserId();
             if (userId == null) return new List<int>();
 
-            var jefeAreaIds = await _db.Areas
-                .Where(a => a.Jefes.Any(aj => aj.UserId == userId) ||
-                            (!a.Jefes.Any() &&
-                             (a.JefeId == userId ||
-                              a.JefeSuplenteId == userId)))
-                .Select(a => a.AreaId)
-                .ToListAsync();
-
-            var ingenieroAreaIds = await _db.Areas
-                .Where(a => a.Ingenieros.Any(u => u.Id == userId))
-                .Select(a => a.AreaId)
-                .ToListAsync();
-
-            // Gerente BT (RolId=7) y RH (RolId=8) ahora se filtran igual que
-            // el resto: solo ven sus áreas asignadas.
-            var asignacionAreaIds = await _db.AreaAsignaciones
-                .Where(aa => aa.UserId == userId)
-                .Select(aa => aa.AreaId)
-                .ToListAsync();
-
-            return jefeAreaIds
-                .Union(ingenieroAreaIds)
-                .Union(asignacionAreaIds)
-                .Distinct()
-                .ToList();
+            // Mismo cálculo que el selector de áreas del frontend
+            // (BuildConsolidatedAreas) y que las consultas de solicitudes:
+            // AreaJefes ∪ legacy (solo áreas sin filas AreaJefes) ∪
+            // AreaAsignaciones ∪ líder de grupo ∪ AreaIngenieros activos.
+            // Antes esta lista omitía líder de grupo y el flag Activo de
+            // ingenieros, y el dashboard devolvía vacío para áreas que el
+            // selector sí mostraba.
+            return await AreasVisiblesHelper.AreasVisiblesAsync(_db, userId.Value);
         }
 
         /// <summary>

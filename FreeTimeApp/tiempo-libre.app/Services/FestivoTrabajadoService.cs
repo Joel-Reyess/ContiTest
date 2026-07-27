@@ -473,11 +473,15 @@ namespace tiempo_libre.Services
                     query = query.Where(s => s.FechaSolicitud < fechaHastaFinal);
                 }
 
-                if (request.AreaId.HasValue)
+                if (request.AreaId.HasValue &&
+                    (esSuperUsuario || !tieneAreaScope || areasJefeIds.Contains(request.AreaId.Value)))
                 {
                     // Defensivo: para jefes de área, también incluir solicitudes donde
                     // ellos quedaron asignados como JefeAreaId al momento de crearla,
                     // por si el empleado se movió de área después.
+                    // El areaId pedido debe estar dentro de las áreas visibles del
+                    // usuario con scope; si no, cae a la rama del scope completo
+                    // (antes esta rama ganaba y dejaba ver cualquier área).
                     var jefeIdParaFiltro = usuarioConsultaId;
                     query = query.Where(s =>
                         s.Empleado.AreaId == request.AreaId.Value ||

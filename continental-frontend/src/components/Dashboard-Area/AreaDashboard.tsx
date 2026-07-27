@@ -78,8 +78,9 @@ const AreaDashboard = (): JSX.Element => {
         { to: "/area/calendario-anual", label: "Calendario anual", icon: <CalendarRange /> },
         // Dashboard de gráficos: LEADER no puede verlo. Gerente BT / RH sí (planta completa).
         ...(!isLeader ? [{ to: "/area/dashboard", label: "Dashboard", icon: <BarChart3 /> }] : []),
-        // Solicitudes: LEADER e INDUSTRIAL no las ven. Gerente BT tampoco. RH sí, pero en modo lectura.
-        ...(!isLeader && !isIndustrial && !isGerenteBT
+        // Solicitudes: LEADER e INDUSTRIAL no las ven. Gerente BT y RH sí,
+        // en modo solo lectura (sus áreas asignadas, sin aprobar/rechazar).
+        ...(!isLeader && !isIndustrial
             ? [{ to: "/area/solicitudes", label: "Solicitudes", icon: <File /> }]
             : []),
         { to: "/area/plantilla", label: "Plantilla", icon: <Users /> },
@@ -126,8 +127,8 @@ const AreaDashboard = (): JSX.Element => {
                     <Route path="roles-semanales" element={<WeeklyRoles />} />
                     <Route path="calendario-anual" element={<CalendarioAnualReglas />} />
 
-                    {/* Solicitudes: LEADER, INDUSTRIAL y Gerente BT no las ven. RH sí (solo lectura). */}
-                    {!isLeader && !isIndustrial && !isGerenteBT && (
+                    {/* Solicitudes: LEADER e INDUSTRIAL no las ven. Gerente BT y RH sí (solo lectura). */}
+                    {!isLeader && !isIndustrial && (
                         <>
                             <Route path="solicitudes" element={<SolicitudesComponent />} />
                             <Route path="solicitudes/:id" element={<SolicitudDetallePage />} />

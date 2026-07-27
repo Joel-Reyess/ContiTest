@@ -19,7 +19,8 @@ export default function FestivoDetallePage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const { user, hasRole } = useAuth()
-    const isReadOnly = hasRole(UserRole.RH)
+    // Gerente BT / RH: solo lectura, sin aprobar/rechazar
+    const soloLectura = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH)
     const [solicitud, setSolicitud] = useState<SolicitudFestivoTrabajado | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -238,7 +239,7 @@ export default function FestivoDetallePage() {
                 </div>
 
                 <div className="bg-white rounded-lg shadow-sm border p-6">
-                    {solicitud.estadoSolicitud === 'Pendiente' && !isReadOnly && (
+                    {solicitud.estadoSolicitud === 'Pendiente' && !soloLectura && (
                         <div className="mb-6 pb-6 border-b flex gap-4">
                             <Button
                                 onClick={() => { setSelectedSolicitudForApprove(solicitud); setShowApproveModal(true) }}
@@ -259,10 +260,10 @@ export default function FestivoDetallePage() {
                             </Button>
                         </div>
                     )}
-                    {solicitud.estadoSolicitud === 'Pendiente' && isReadOnly && (
+                    {solicitud.estadoSolicitud === 'Pendiente' && soloLectura && (
                         <div className="mb-6 pb-6 border-b">
                             <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2">
-                                Modo lectura: RH solo puede consultar la solicitud.
+                                Modo lectura: solo puede consultar la solicitud.
                             </div>
                         </div>
                     )}

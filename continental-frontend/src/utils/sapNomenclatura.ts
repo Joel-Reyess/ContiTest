@@ -45,6 +45,13 @@ export const codigoFromTipoIncidencia = (tipoIncidencia?: string | null): SAPCod
     const upper = t.toUpperCase();
     if (upper in SAP_NOMENCLATURA) return upper as SAPCodigo;
 
+    // Alias que emite el backend (CalendariosEmpleadosService.MapTipoActividad)
+    // y que no existen como código SAP: VA = vacaciones auto-asignadas,
+    // PD = permiso por defunción, PP = permiso por paternidad.
+    if (upper === 'VA') return 'V';
+    if (upper === 'PD') return 'P';
+    if (upper === 'PP') return 'O';
+
     // Match por texto largo — orden importa (más específico primero).
     const lower = t.toLowerCase();
     if (lower.includes('maternidad')) return 'M';
@@ -60,6 +67,10 @@ export const codigoFromTipoIncidencia = (tipoIncidencia?: string | null): SAPCod
     if (lower.includes('sin goce')) return 'G';
     if (lower.includes('reprog')) return 'C';
     if (lower.includes('vacacion')) return 'V';
+    // Vocabulario de programación anual (tipoVacacion del backend): estas
+    // vacaciones también deben pintarse con la nomenclatura SAP 'V' para que
+    // el calendario del empleado no mezcle dos sistemas de colores.
+    if (lower === 'anual' || lower.includes('automatic') || lower.includes('automátic')) return 'V';
     return null;
 };
 

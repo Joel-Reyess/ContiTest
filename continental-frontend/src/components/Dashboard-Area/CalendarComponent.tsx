@@ -37,6 +37,7 @@ import { Link } from 'react-router-dom';
 import CalendarWidget from './CalendarWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { areasService } from '@/services/areasService';
+import { userService } from '@/services/userService';
 import { UserRole } from '@/interfaces/User.interface';
 import type { AreaByIngenieroItem, AreaByLiderItem } from '@/interfaces/Areas.interface';
 import { logger } from '@/utils/logger';
@@ -70,11 +71,13 @@ const CalendarComponent: React.FC = () => {
             let areasData: AreaOption[] = [];
 
             if (hasRole(UserRole.AREA_ADMIN)) {
-                // Jefe de Área: obtener todas las áreas y filtrar por jefeId
-                const allAreas = await areasService.getAreas();
-                console.log({ allAreas })
-                console.log(user.id)
-                const userAreas = allAreas.filter(area => area.jefeId === user.id);
+                // Jefe de Área: usar las áreas consolidadas del detail
+                // (AreaJefes + legacy + líder + ingeniería + asignaciones).
+                // Filtrar getAreas() por la columna legacy jefeId ignoraba
+                // AreaJefes: un jefe registrado solo ahí no veía su área, y
+                // uno con legacy desactualizado veía áreas ajenas.
+                const userDetail = await userService.getUserById(user.id);
+                const userAreas = userDetail?.areas ?? [];
 
                 // Obtener detalles completos de cada área incluyendo grupos
                 areasData = await Promise.all(
