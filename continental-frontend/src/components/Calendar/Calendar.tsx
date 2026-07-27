@@ -86,13 +86,25 @@ const CustomDateCellWrapper = ({
   let className = "relative custom-date-cell-wrapper";
   let inlineStyle: React.CSSProperties | undefined;
   let title: string | undefined;
-  // UN SOLO código SAP por día. Si el día tiene incidencia (V, F, C, E, A, M,
-  // P, G, H, O, R, S) manda la incidencia; si no, y estamos en Plantilla, se
-  // muestra el turno (1, 2, 3, D). Nunca los dos: encimar el círculo naranja
-  // del turno con la letra SAP era lo que hacía ver dos nomenclaturas juntas.
+  // Dos marcas con roles distintos, ambas en nomenclatura SAP y cada una en
+  // su esquina para que no se encimen:
+  //   sapChip   → qué pasó ese día (V, F, C, E, A, M, P, G, H, O, R, S).
+  //   turnoChip → a qué turno pertenece el día (1, 2, 3, D). Solo Plantilla.
+  // El turno se muestra también en días con incidencia: si no, no hay forma
+  // de saber en qué turno está la persona cuando tiene vacaciones o permiso.
   let sapChip: SAPEntry | null = null;
+  let turnoChip: SAPEntry | null = null;
 
   if (eventData) {
+    if (mostrarTurnos) {
+      if (eventData.eventType === 'rest') {
+        turnoChip = SAP_NOMENCLATURA['D'];
+      } else if (eventData.turno) {
+        const codigoTurno = String(eventData.turno) as SAPCodigo;
+        turnoChip = SAP_NOMENCLATURA[codigoTurno] ?? null;
+      }
+    }
+
     switch (eventData.eventType) {
       case "holiday":
       case "holiday-boss":
@@ -104,15 +116,6 @@ const CustomDateCellWrapper = ({
         // no se vea disponible.
         if (!sapChip) className += " inability-day";
         break;
-      case "rest":
-        if (mostrarTurnos) sapChip = SAP_NOMENCLATURA['D'];
-        break;
-      case "work":
-        if (mostrarTurnos && eventData.turno) {
-          const codigoTurno = String(eventData.turno) as SAPCodigo;
-          sapChip = SAP_NOMENCLATURA[codigoTurno] ?? null;
-        }
-        break;
       case "not-work":
         title = eventData.razon || "Día no laborable";
         // Sin código SAP: gris muy claro solo en Plantilla, para insinuar que
@@ -123,15 +126,17 @@ const CustomDateCellWrapper = ({
         break;
     }
 
+    // El fondo lo pinta la incidencia; el descanso usa su gris SAP. Los días
+    // de turno normal quedan blancos: si se tiñeran, el mes entero sería de
+    // colores y volveríamos a competir con la letra.
     if (sapChip) {
-      // El fondo se pinta con el color SAP salvo en días de turno normal: si
-      // tiñéramos también los turnos, el mes entero quedaría de colores.
-      if (eventData.eventType !== 'work') {
-        inlineStyle = { backgroundColor: sapChip.bg };
-        className += " sap-day";
-        if (eventData.eventType === 'inability') inlineStyle.cursor = 'not-allowed';
-      }
+      inlineStyle = { backgroundColor: sapChip.bg };
+      className += " sap-day";
+      if (eventData.eventType === 'inability') inlineStyle.cursor = 'not-allowed';
       title = title ?? sapChip.label;
+    } else if (eventData.eventType === 'rest' && turnoChip) {
+      inlineStyle = { backgroundColor: turnoChip.bg };
+      title = title ?? turnoChip.label;
     }
   }
 
@@ -149,18 +154,32 @@ const CustomDateCellWrapper = ({
           encimaban y no se leía ni la letra ni el día. */}
       {sapChip && (
         <span
-          className="absolute bottom-1 right-1 inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border"
-          style={{ backgroundColor: sapChip.bg, color: sapChip.fg, borderColor: sapChip.fg + '55' }}
+          // Fondo blanco: la celda ya está teñida con ese mismo color SAP, y
+          // un chip del mismo tono encima se perdía.
+          className="absolute bottom-1 right-1 inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border bg-white"
+          style={{ color: sapChip.fg, borderColor: sapChip.fg }}
           title={sapChip.label}
         >
           {sapChip.codigo}
         </span>
       )}
 
-      {/* Día marcado para vacaciones: el sol es el indicador de selección,
-          va abajo a la izquierda para no chocar con el chip ni con el día. */}
+      {/* Turno del día (1, 2, 3, D) — abajo a la izquierda, en su propia
+          esquina para que se lea aunque el día tenga incidencia. */}
+      {turnoChip && (
+        <span
+          className="absolute bottom-1 left-1 inline-flex items-center justify-center rounded-full w-5 h-5 text-[10px] font-bold border bg-white"
+          style={{ color: turnoChip.fg, borderColor: turnoChip.fg }}
+          title={turnoChip.label}
+        >
+          {turnoChip.codigo}
+        </span>
+      )}
+
+      {/* Día marcado para vacaciones: el sol es el indicador de selección.
+          Va arriba al centro, entre el reloj de tiempo extra y el número. */}
       {isSelectedForVacation && (
-        <Sun className="absolute bottom-1 left-1 w-5 h-5 text-continental-black" />
+        <Sun className="absolute top-1 left-1/2 -translate-x-1/2 w-5 h-5 text-continental-black" />
       )}
 
       {/* Indicador de tiempo extra (se posiciona solo arriba a la izquierda y
