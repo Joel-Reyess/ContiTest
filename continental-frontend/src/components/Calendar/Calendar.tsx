@@ -88,8 +88,8 @@ const CustomDateCellWrapper = ({
   let title: string | undefined;
   // Dos marcas con roles distintos, ambas en nomenclatura SAP y cada una en
   // su esquina para que no se encimen:
+  //   turnoChip → a qué turno pertenece el día (1, 2, 3, D). Arriba-izquierda.
   //   sapChip   → qué pasó ese día (V, F, C, E, A, M, P, G, H, O, R, S).
-  //   turnoChip → a qué turno pertenece el día (1, 2, 3, D). Solo Plantilla.
   // El turno se muestra también en días con incidencia: si no, no hay forma
   // de saber en qué turno está la persona cuando tiene vacaciones o permiso.
   let sapChip: SAPEntry | null = null;
@@ -117,25 +117,23 @@ const CustomDateCellWrapper = ({
         if (!sapChip) className += " inability-day";
         break;
       case "not-work":
+        // Sin código SAP y sin sombreado: el gris se confundía con una
+        // incidencia. Queda el tooltip con la razón.
         title = eventData.razon || "Día no laborable";
-        // Sin código SAP: gris muy claro solo en Plantilla, para insinuar que
-        // no es reservable sin el sombreado oscuro de antes.
-        if (mostrarTurnos) inlineStyle = { backgroundColor: '#f3f4f6' };
         break;
       default:
         break;
     }
 
-    // El fondo lo pinta la incidencia; el descanso usa su gris SAP. Los días
-    // de turno normal quedan blancos: si se tiñeran, el mes entero sería de
-    // colores y volveríamos a competir con la letra.
+    // Solo la incidencia pinta el fondo. El descanso ya no se sombrea de gris:
+    // lo dice la "D" de la esquina, y el gris se leía como si algo hubiera
+    // pasado ese día.
     if (sapChip) {
       inlineStyle = { backgroundColor: sapChip.bg };
       className += " sap-day";
       if (eventData.eventType === 'inability') inlineStyle.cursor = 'not-allowed';
       title = title ?? sapChip.label;
     } else if (eventData.eventType === 'rest' && turnoChip) {
-      inlineStyle = { backgroundColor: turnoChip.bg };
       title = title ?? turnoChip.label;
     }
   }
@@ -149,6 +147,20 @@ const CustomDateCellWrapper = ({
 
   return (
     <div className={className} style={inlineStyle} title={title}>
+      {/* Turno del día (1, 2, 3, D) — arriba a la izquierda, del mismo tamaño
+          que el chip de nomenclatura para que ambos se lean igual de fácil.
+          Va en su propia esquina para que se vea aunque el día tenga
+          incidencia. */}
+      {turnoChip && (
+        <span
+          className="absolute top-1 left-1 inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold border bg-white z-10"
+          style={{ color: turnoChip.fg, borderColor: turnoChip.fg }}
+          title={turnoChip.label}
+        >
+          {turnoChip.codigo}
+        </span>
+      )}
+
       {/* Chip de nomenclatura SAP — abajo a la derecha. El número del día lo
           dibuja react-big-calendar arriba a la derecha: con el chip ahí se
           encimaban y no se leía ni la letra ni el día. */}
@@ -164,32 +176,21 @@ const CustomDateCellWrapper = ({
         </span>
       )}
 
-      {/* Turno del día (1, 2, 3, D) — abajo a la izquierda, en su propia
-          esquina para que se lea aunque el día tenga incidencia. */}
-      {turnoChip && (
-        <span
-          className="absolute bottom-1 left-1 inline-flex items-center justify-center rounded-full w-5 h-5 text-[10px] font-bold border bg-white"
-          style={{ color: turnoChip.fg, borderColor: turnoChip.fg }}
-          title={turnoChip.label}
-        >
-          {turnoChip.codigo}
-        </span>
-      )}
-
       {/* Día marcado para vacaciones: el sol es el indicador de selección.
           Va arriba al centro, entre el reloj de tiempo extra y el número. */}
       {isSelectedForVacation && (
         <Sun className="absolute top-1 left-1/2 -translate-x-1/2 w-5 h-5 text-continental-black" />
       )}
 
-      {/* Indicador de tiempo extra (se posiciona solo arriba a la izquierda y
-          se oculta si el día no tiene excepción). Antes vivía dentro del bloque
-          de vacaciones, así que solo aparecía en días de vacación. */}
+      {/* Indicador de tiempo extra (se oculta si el día no tiene excepción).
+          Baja a la esquina inferior izquierda: la superior izquierda ahora es
+          del número de turno. */}
       {excepciones.length > 0 && (
         <OvertimeIndicator
           fecha={value.toISOString().split('T')[0]}
           excepciones={excepciones}
           grupoId={groupId}
+          posicionClassName="bottom-1 left-1"
         />
       )}
 
