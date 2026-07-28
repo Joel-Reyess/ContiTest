@@ -44,7 +44,7 @@ export function SolicitarReprogramacionDiaEmpresaModal({
         if (!show || !empleadoId) return
         let cancel = false
         setLoadingData(true)
-        reprogramacionDiaEmpresaService.getVacacionesAsignadasNoConsumidas(empleadoId)
+        reprogramacionDiaEmpresaService.getVacacionesAsignadasReprogramables(empleadoId)
             .then(vacs => {
                 if (cancel) return
                 // Defensa cliente: aún si el backend regresa otros tipos (cache/legacy),

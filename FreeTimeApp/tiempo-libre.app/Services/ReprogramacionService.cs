@@ -118,7 +118,11 @@ namespace tiempo_libre.Services
 
                 // 5. Validar fechas
                 var hoy = DateOnly.FromDateTime(DateTime.Today);
-                if (vacacionOriginal.FechaVacacion < hoy)
+                // Días ya transcurridos: el jefe y el delegado siguen sin poder moverlos
+                // (para eso está 'Reprogramación post-incapacidad' o el permiso), pero el
+                // SuperUsuario sí, porque es la vía de corrección cuando el día se perdió
+                // y el motivo se conoce después. La fecha nueva sigue obligada a futuro.
+                if (vacacionOriginal.FechaVacacion < hoy && !esSuperUsuario)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
                         "No se pueden reprogramar vacaciones de fechas pasadas. " +

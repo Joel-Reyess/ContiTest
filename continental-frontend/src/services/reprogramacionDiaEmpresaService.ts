@@ -76,7 +76,9 @@ export const reprogramacionDiaEmpresaService = {
     getMotivos: () =>
         unwrap<MotivoTipo[]>(httpClient.get(`${BASE}/motivos`)),
 
-    getVacacionesAsignadasNoConsumidas: (empleadoId: number) =>
+    // Incluye los días ya transcurridos del año en curso: el SuperUsuario sí
+    // puede reprogramarlos (el motivo se conoce después de que el día pasó).
+    getVacacionesAsignadasReprogramables: (empleadoId: number) =>
         unwrap<VacacionAsignada[]>(httpClient.get(`${BASE}/vacaciones-asignadas/${empleadoId}`)),
 
     solicitar: (req: SolicitarReprogramacionDiaEmpresaRequest) =>
