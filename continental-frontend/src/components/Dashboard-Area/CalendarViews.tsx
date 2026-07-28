@@ -31,10 +31,50 @@
  * =============================================================================
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { CalendarData } from '../../interfaces/Calendar.interface';
 import type { AusenciasPorFecha } from '../../interfaces/Ausencias.interface';
 import type { Grupo } from '@/interfaces/Areas.interface';
+import { useAuth } from '@/hooks/useAuth';
+import { UserRole } from '@/interfaces/User.interface';
+
+// ─── Cobertura de operadores ausentes ────────────────────────────────────────
+// En la vista diaria el jefe de área marca qué operador disponible cubre a cada
+// ausente. Se guarda en el navegador del jefe: todavía no existe tabla en la
+// base para esto, así que la asignación es local a quien la captura.
+const COBERTURA_STORAGE_KEY = 'contitest.coberturas.v1';
+
+interface CoberturaAsignada {
+    id: string;
+    nombre: string;
+}
+
+// Clave por fecha + grupo + operador ausente.
+type CoberturaMap = Record<string, CoberturaAsignada>;
+
+const claveCobertura = (fecha: string, grupoId: string, ausenteId: string) =>
+    `${fecha}|${grupoId}|${ausenteId}`;
+
+const leerCoberturas = (): CoberturaMap => {
+    try {
+        const raw = localStorage.getItem(COBERTURA_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        // Validar la forma antes de confiar: un JSON viejo o corrupto no debe
+        // tumbar la vista completa del calendario.
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        return parsed as CoberturaMap;
+    } catch {
+        return {};
+    }
+};
+
+const guardarCoberturas = (map: CoberturaMap) => {
+    try {
+        localStorage.setItem(COBERTURA_STORAGE_KEY, JSON.stringify(map));
+    } catch {
+        /* almacenamiento lleno o bloqueado: la asignación sigue viva en memoria */
+    }
+};
 
 interface ViewProps {
     calendarData: CalendarData | null;
@@ -321,6 +361,13 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
 };
 
 export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, selectedGroups, currentAreaGroups, ausenciasData }) => {
+    // Los hooks van antes de cualquier return condicional.
+    const { hasRole } = useAuth();
+    // Asignar cobertura es del jefe de área (el SuperUsuario también, porque
+    // opera en nombre de ellos). Los demás roles solo la ven.
+    const puedeAsignarCobertura = hasRole(UserRole.AREA_ADMIN) || hasRole(UserRole.SUPER_ADMIN);
+    const [coberturas, setCoberturas] = useState<CoberturaMap>(() => leerCoberturas());
+
     if (!calendarData) return <div>No hay datos disponibles</div>;
 
 
@@ -340,6 +387,22 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
     const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
     const dateString = dayDate.toISOString().split('T')[0];
     const ausenciasDelDia = ausenciasData.find(a => a.fecha === dateString);
+
+    // Guarda (o limpia, si llega null) quién cubre a un operador ausente ese día.
+    const asignarCobertura = (
+        grupoId: string,
+        ausenteId: string,
+        cobertura: CoberturaAsignada | null
+    ) => {
+        setCoberturas(prev => {
+            const siguiente = { ...prev };
+            const clave = claveCobertura(dateString, grupoId, ausenteId);
+            if (cobertura) siguiente[clave] = cobertura;
+            else delete siguiente[clave];
+            guardarCoberturas(siguiente);
+            return siguiente;
+        });
+    };
 
     // Función para obtener el personal de cada grupo usando datos reales
     const getPersonalData = (groupId: string) => {
@@ -421,6 +484,13 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                         const groupName = labelFor(groupId);
                         const personalData = getPersonalData(groupId);
                         const stats = personalData.stats;
+                        // Índice inverso para etiquetar del otro lado a quién
+                        // está cubriendo cada operador disponible.
+                        const cubriendoA = new Map<string, string>();
+                        personalData.noDisponible.forEach(ausente => {
+                            const asignado = coberturas[claveCobertura(dateString, groupId, ausente.id)];
+                            if (asignado) cubriendoA.set(asignado.id, ausente.nombre);
+                        });
 
                         return (
                             <div key={groupId} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -487,6 +557,11 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                                                                     {persona.rol}
                                                                 </div>
                                                             )}
+                                                            {cubriendoA.has(persona.id) && (
+                                                                <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded mt-1 inline-block">
+                                                                    Cubre a {cubriendoA.get(persona.id)}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         <div className="text-green-500 text-xl">✓</div>
                                                     </div>
@@ -524,21 +599,80 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                                         </h4>
                                         <div className="space-y-2">
                                             {personalData.noDisponible.length > 0 ? (
-                                                personalData.noDisponible.map(persona => (
+                                                personalData.noDisponible.map(persona => {
+                                                    const cubre = coberturas[claveCobertura(dateString, groupId, persona.id)];
+                                                    // Un mismo operador disponible no puede cubrir a dos
+                                                    // ausentes del mismo grupo: se le quita de las otras listas.
+                                                    const yaOcupados = new Set(
+                                                        personalData.noDisponible
+                                                            .filter(otro => otro.id !== persona.id)
+                                                            .map(otro => coberturas[claveCobertura(dateString, groupId, otro.id)]?.id)
+                                                            .filter(Boolean) as string[]
+                                                    );
+                                                    const opciones = personalData.disponible.filter(d => !yaOcupados.has(d.id));
+
+                                                    return (
                                                     <div key={persona.id} className="flex items-start gap-3 p-3 bg-red-50 rounded border border-red-200">
                                                         <div className="flex-1">
                                                             <div className="font-medium text-gray-900">
                                                                 {persona.nombre}
                                                                 {persona.maquina && <span className="ml-1 text-blue-600 font-medium">({persona.maquina})</span>}
+                                                                {cubre && (
+                                                                    <span className="ml-2 text-sm font-semibold text-green-700">
+                                                                        → cubre: {cubre.nombre}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                             <div className="font-semibold text-gray-800 leading-tight">{persona.nomina}</div>
                                                             <div className="text-sm text-gray-600">ID: {persona.id}</div>
                                                             <div className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded mt-1 inline-block">
                                                                 {persona.motivo}
                                                             </div>
+
+                                                            {/* Quién lo cubre: solo el jefe de área lo asigna. */}
+                                                            {puedeAsignarCobertura ? (
+                                                                <div className="mt-2">
+                                                                    <label className="block text-xs text-gray-600 mb-1">
+                                                                        Cubre su máquina
+                                                                    </label>
+                                                                    <select
+                                                                        value={cubre?.id ?? ''}
+                                                                        onChange={e => {
+                                                                            const elegido = personalData.disponible.find(d => d.id === e.target.value);
+                                                                            asignarCobertura(groupId, persona.id, elegido
+                                                                                ? { id: elegido.id, nombre: elegido.nombre }
+                                                                                : null);
+                                                                        }}
+                                                                        disabled={personalData.disponible.length === 0}
+                                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white"
+                                                                    >
+                                                                        <option value="">
+                                                                            {personalData.disponible.length === 0
+                                                                                ? 'Sin operadores disponibles'
+                                                                                : '— Sin asignar —'}
+                                                                        </option>
+                                                                        {/* Si el asignado ya no aparece como disponible
+                                                                            (cambió el día o su estatus), se conserva la
+                                                                            opción para no perder la captura. */}
+                                                                        {cubre && !opciones.some(d => d.id === cubre.id) && (
+                                                                            <option value={cubre.id}>{cubre.nombre} (ya no disponible)</option>
+                                                                        )}
+                                                                        {opciones.map(d => (
+                                                                            <option key={d.id} value={d.id}>
+                                                                                {d.nombre}{d.nomina !== 'N/A' ? ` · ${d.nomina}` : ''}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            ) : cubre ? (
+                                                                <div className="mt-2 text-xs text-gray-600">
+                                                                    Cubre: <span className="font-medium text-green-700">{cubre.nombre}</span>
+                                                                </div>
+                                                            ) : null}
                                                         </div>
                                                     </div>
-                                                ))
+                                                    );
+                                                })
                                             ) : (
                                                 <div className="text-center text-gray-500 py-4">
                                                     <p className="text-sm">✅ No hay empleados ausentes</p>

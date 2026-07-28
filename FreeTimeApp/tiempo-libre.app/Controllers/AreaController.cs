@@ -121,6 +121,11 @@ public class AreaController : ControllerBase
                 .ThenInclude(g => g.Lider)
             .Include(a => a.Jefe)
             .Include(a => a.JefeSuplente)
+            // AreaJefes: sin esto el listado solo exponía las dos columnas legacy
+            // y un jefe adicional (3.º en adelante, o registrado solo en la tabla)
+            // quedaba invisible en las vistas que filtran sobre este endpoint
+            // — Plantilla y Roles Semanales entre ellas.
+            .Include(a => a.Jefes).ThenInclude(aj => aj.User)
             .AsNoTracking()
             .ToListAsync();
 
@@ -144,6 +149,16 @@ public class AreaController : ControllerBase
                 FullName = area.JefeSuplente.FullName,
                 Username = area.JefeSuplente.Username
             } : null,
+            Jefes = area.Jefes
+                .Where(aj => aj.User != null)
+                .Select(aj => new UserBasicDto
+                {
+                    Id = aj.User!.Id,
+                    FullName = aj.User.FullName,
+                    Username = aj.User.Username
+                })
+                .OrderBy(u => u.FullName)
+                .ToList(),
             Grupos = area.Grupos.Select(g => new GrupoBasicDto
             {
                 GrupoId = g.GrupoId,

@@ -17,6 +17,7 @@ import { httpClient } from '@/services/httpClient';
 import { vacacionesService } from "@/services/vacacionesService";
 import { excepcionesManningService } from "@/services/excepcionesManningService";
 import { SAP_NOMENCLATURA, getSAPEntry } from "@/utils/sapNomenclatura";
+import { esJefeDelArea } from "@/utils/areaJefes";
 
 const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
@@ -93,7 +94,9 @@ const WeeklyRoles = () => {
                 } else if (isBoss) {
                     allowedAreas = allAreas.filter(
                         (a) =>
-                            (a.jefe?.id != null && jefeId != null && a.jefe.id === jefeId) ||
+                            // AreaJefes + columnas legacy: un jefe adicional del
+                            // área solo figura en la tabla, no en a.jefe.
+                            esJefeDelArea(a, jefeId) ||
                             (user?.area?.areaId != null && a.areaId === user.area.areaId)
                     );
                     if (allowedAreas.length === 0 && user?.area?.areaId) {

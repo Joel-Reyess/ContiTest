@@ -17,6 +17,7 @@ import { UserRole } from '@/interfaces/User.interface';
 import type { UsuarioInfoDto } from '@/interfaces/Api.interface';
 import { areasService } from '@/services/areasService';
 import { debugEmpleados } from '@/utils/empleadosDebugger';
+import { esJefeDelArea } from '@/utils/areaJefes';
 import { userService } from '@/services/userService';
 import { empleadosService } from '@/services/empleadosService';
 
@@ -161,7 +162,9 @@ export const Plantilla = () => {
                 if (hasRole(UserRole.AREA_ADMIN)) {
                     try {
                         const all = await areasService.getAreas();
-                        const mine = all.filter((a: any) => a.jefeId === user?.id || a.jefeSuplenteId === user?.id);
+                        // Incluye AreaJefes: filtrar solo por las columnas legacy
+                        // dejaba fuera a los jefes adicionales del área.
+                        const mine = all.filter((a: any) => esJefeDelArea(a, user?.id));
                         list.push(
                             ...mine.map((a: any) => ({
                                 areaId: a.areaId,
