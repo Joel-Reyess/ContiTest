@@ -100,12 +100,19 @@ interface FilaSubGrupo {
     nombre: string;
 }
 
+// Clave estable para el filtro de sub-grupo. Va por (regla, índice) y no por
+// nombre para que dos reglas distintas nunca colisionen.
+function claveSubGrupo(codigoRegla: string, subGrupo: number): string {
+    return `${codigoRegla}#${subGrupo}`;
+}
+
 export const CalendarioAnualReglas = () => {
     const [reglas, setReglas] = useState<ReglaTurno[]>([]);
     const [arranques, setArranques] = useState<RotacionProgramada[]>([]);
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState<number>(new Date().getFullYear());
     const [filtroRegla, setFiltroRegla] = useState<string>("__todas__");
+    const [filtroSubGrupo, setFiltroSubGrupo] = useState<string>("__todos__");
 
     const cargar = async () => {
         setLoading(true);
@@ -131,7 +138,9 @@ export const CalendarioAnualReglas = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [anio]);
 
-    const filas: FilaSubGrupo[] = useMemo(() => {
+    // Sub-grupos disponibles según la regla elegida. Alimenta el segundo select
+    // y también es la lista completa cuando no se filtra por sub-grupo.
+    const filasDisponibles: FilaSubGrupo[] = useMemo(() => {
         const reglasFiltradas = filtroRegla === "__todas__"
             ? reglas
             : reglas.filter(r => r.codigo === filtroRegla);
@@ -148,6 +157,23 @@ export const CalendarioAnualReglas = () => {
         }
         return out;
     }, [reglas, filtroRegla]);
+
+    // Si el sub-grupo seleccionado deja de existir (cambió la regla o se
+    // recargaron las reglas), volvemos a "todos" en vez de dejar la tabla vacía.
+    useEffect(() => {
+        if (filtroSubGrupo === "__todos__") return;
+        const sigueDisponible = filasDisponibles.some(
+            f => claveSubGrupo(f.regla.codigo, f.subGrupo) === filtroSubGrupo
+        );
+        if (!sigueDisponible) setFiltroSubGrupo("__todos__");
+    }, [filasDisponibles, filtroSubGrupo]);
+
+    const filas: FilaSubGrupo[] = useMemo(() => {
+        if (filtroSubGrupo === "__todos__") return filasDisponibles;
+        return filasDisponibles.filter(
+            f => claveSubGrupo(f.regla.codigo, f.subGrupo) === filtroSubGrupo
+        );
+    }, [filasDisponibles, filtroSubGrupo]);
 
     const hoyIso = toIsoDate(new Date());
 
@@ -194,7 +220,11 @@ export const CalendarioAnualReglas = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        const filtro = filtroRegla === "__todas__" ? "todas" : filtroRegla;
+        // El nombre refleja lo que se está viendo: si hay un sub-grupo elegido
+        // manda ese, si no la regla, si no "todas".
+        const filtro = filtroSubGrupo !== "__todos__"
+            ? (filas[0]?.nombre ?? filtroSubGrupo.replace("#", "_"))
+            : filtroRegla === "__todas__" ? "todas" : filtroRegla;
         link.download = `calendario-anual-reglas_${anio}_${filtro}.csv`;
         document.body.appendChild(link);
         link.click();
@@ -244,13 +274,39 @@ export const CalendarioAnualReglas = () => {
                     </Label>
                     <select
                         value={filtroRegla}
-                        onChange={(e) => setFiltroRegla(e.target.value)}
+                        onChange={(e) => {
+                            setFiltroRegla(e.target.value);
+                            setFiltroSubGrupo("__todos__");
+                        }}
                         className="w-full border rounded px-2 py-1.5 text-sm mt-1"
                     >
                         <option value="__todas__">Todas las reglas</option>
                         {reglas.map(r => (
                             <option key={r.codigo} value={r.codigo}>{r.codigo}</option>
                         ))}
+                    </select>
+                </div>
+                <div className="min-w-[200px]">
+                    <Label className="text-xs flex items-center gap-1">
+                        <Filter className="size-3" /> Filtrar por sub-grupo
+                    </Label>
+                    <select
+                        value={filtroSubGrupo}
+                        onChange={(e) => setFiltroSubGrupo(e.target.value)}
+                        className="w-full border rounded px-2 py-1.5 text-sm mt-1"
+                        disabled={filasDisponibles.length === 0}
+                    >
+                        <option value="__todos__">
+                            {filtroRegla === "__todas__"
+                                ? "Todos los sub-grupos"
+                                : `Todos los sub-grupos de ${filtroRegla}`}
+                        </option>
+                        {filasDisponibles.map(f => {
+                            const clave = claveSubGrupo(f.regla.codigo, f.subGrupo);
+                            return (
+                                <option key={clave} value={clave}>{f.nombre}</option>
+                            );
+                        })}
                     </select>
                 </div>
                 <div className="text-[11px] text-continental-gray-1 pb-1">
