@@ -34,17 +34,24 @@ namespace tiempo_libre.Services
 
         /// <summary>
         /// Vacaciones ASIGNADAS por la empresa (TipoVacacion 'Automatica' o
-        /// 'AsignadaAutomaticamente') que aún no han sido consumidas. Punto 9: el
+        /// 'AsignadaAutomaticamente') que pueden reprogramarse. Punto 9: el
         /// SuperUsuario solo puede reprogramar este tipo de vacaciones, no las
         /// que el empleado eligió ('Anual').
+        ///
+        /// Se incluyen los días YA TRANSCURRIDOS del año en curso: los motivos de
+        /// catálogo (incapacidad, defunción, maternidad, paternidad) casi siempre
+        /// se conocen después de que el día pasó, y es justo cuando hay que
+        /// devolverlo. La fecha nueva sí sigue obligada a ser hoy o posterior.
         /// </summary>
-        public async Task<List<VacacionDisponibleDto>> ObtenerVacacionesAsignadasNoConsumidasAsync(int empleadoId)
+        public async Task<List<VacacionDisponibleDto>> ObtenerVacacionesAsignadasReprogramablesAsync(int empleadoId)
         {
-            var hoy = DateOnly.FromDateTime(DateTime.Today);
+            // Límite inferior: el 1 de enero del año en curso. Los días asignados
+            // pertenecen al programa anual, así que no se cruzan entre ejercicios.
+            var inicioAnio = new DateOnly(DateTime.Today.Year, 1, 1);
             return await _db.VacacionesProgramadas
                 .Where(v => v.EmpleadoId == empleadoId &&
                             v.EstadoVacacion == "Activa" &&
-                            v.FechaVacacion >= hoy &&
+                            v.FechaVacacion >= inicioAnio &&
                             (v.TipoVacacion == "Automatica" ||
                              v.TipoVacacion == "AsignadaAutomaticamente"))
                 .OrderBy(v => v.FechaVacacion)

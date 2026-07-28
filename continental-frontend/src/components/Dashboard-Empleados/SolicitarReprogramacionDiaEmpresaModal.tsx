@@ -35,6 +35,11 @@ export function SolicitarReprogramacionDiaEmpresaModal({
 
     const vacacionSel = vacacionId ? vacaciones.find(v => v.id === vacacionId) : null
 
+    // El backend ya lista los días asignados que ya pasaron (los motivos del
+    // catálogo se conocen después del hecho). Aquí solo los etiquetamos.
+    const hoyIso = format(new Date(), 'yyyy-MM-dd')
+    const yaTranscurrio = (fecha: string) => fecha.slice(0, 10) < hoyIso
+
     useEffect(() => {
         if (!show || !empleadoId) return
         let cancel = false
@@ -53,7 +58,7 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                         vacs.map(v => v.tipoVacacion))
                 }
                 setVacaciones(soloAsignadas)
-                if (!soloAsignadas.length) toast.info('El empleado no tiene días asignados por la empresa pendientes.')
+                if (!soloAsignadas.length) toast.info('El empleado no tiene días asignados por la empresa en el año en curso.')
             })
             .catch((e: any) => {
                 if (!cancel) toast.error(e?.message || 'Error al cargar vacaciones asignadas')
@@ -147,6 +152,7 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                         {vacaciones.map(v => (
                                             <option key={v.id} value={v.id}>
                                                 {format(parseISO(v.fecha), 'EEEE dd/MM/yyyy', { locale: es })} · Asignada por empresa
+                                                {yaTranscurrio(v.fecha) ? ' · ya transcurrido' : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -155,6 +161,13 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                             Día original: <span className="font-medium text-red-600">
                                                 {format(parseISO(vacacionSel.fecha), 'dd/MM/yyyy')}
                                             </span>
+                                        </p>
+                                    )}
+                                    {vacacionSel && yaTranscurrio(vacacionSel.fecha) && (
+                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                                            Este día ya transcurrió. Se puede reprogramar (el motivo suele
+                                            conocerse después), pero la <span className="font-semibold">fecha nueva</span> debe
+                                            ser hoy o posterior.
                                         </p>
                                     )}
                                 </div>

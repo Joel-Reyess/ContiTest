@@ -48,7 +48,8 @@ namespace tiempo_libre.Controllers
 
         /// <summary>
         /// Vacaciones asignadas por la empresa (Automatica/AsignadaAutomaticamente)
-        /// no consumidas del empleado. Punto 9: candidatas a reprogramación.
+        /// del año en curso, incluidas las de días ya transcurridos. Punto 9:
+        /// candidatas a reprogramación.
         /// </summary>
         [HttpGet("vacaciones-asignadas/{empleadoId:int}")]
         [Authorize(Roles = "SuperUsuario,Super Usuario")]
@@ -56,12 +57,12 @@ namespace tiempo_libre.Controllers
         {
             try
             {
-                var data = await _service.ObtenerVacacionesAsignadasNoConsumidasAsync(empleadoId);
+                var data = await _service.ObtenerVacacionesAsignadasReprogramablesAsync(empleadoId);
                 return Ok(new ApiResponse<object>(true, data));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error obteniendo vacaciones asignadas no consumidas para {EmpleadoId}", empleadoId);
+                _logger.LogError(ex, "Error obteniendo vacaciones asignadas reprogramables para {EmpleadoId}", empleadoId);
                 return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
             }
         }
