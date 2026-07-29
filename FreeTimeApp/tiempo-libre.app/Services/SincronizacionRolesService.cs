@@ -92,17 +92,17 @@ namespace tiempo_libre.Services
 
             foreach (var rolSAP in rolesEmpleadosSAP)
             {
-                // Si la regla está PendienteConfiguracion, aún no la propagamos
-                // a Empleados.Rol ni a Users.GrupoId: el empleado se queda con
-                // su regla y grupo previos hasta que el SuperUsuario capture
-                // patrón y asigne la regla a un área.
-                if (!string.IsNullOrEmpty(rolSAP.Regla) && setPendientes.Contains(rolSAP.Regla))
-                {
-                    _logger.LogWarning(
-                        "⏸️  Nómina {Nomina}: regla '{Regla}' está PendienteConfiguracion; no se propaga.",
-                        rolSAP.Nomina, rolSAP.Regla);
-                    continue;
-                }
+                // Una regla PendienteConfiguracion frena la asignación de grupo y
+                // área —eso sí necesita que el SuperUsuario capture el patrón y
+                // ligue la regla a un área—, pero NO frena el espejo de SAP.
+                //
+                // Antes este 'continue' estaba aquí arriba y se saltaba la nómina
+                // completa, así que Empleados.Rol, UnidadOrganizativa y
+                // EncargadoRegistro tampoco se actualizaban: la carga de SAP se
+                // veía como si no hubiera entrado. Esos tres campos solo copian
+                // lo que dice SAP, no deciden nada, y se propagan siempre.
+                var reglaPendiente = !string.IsNullOrEmpty(rolSAP.Regla)
+                    && setPendientes.Contains(rolSAP.Regla);
 
                 // ✅ ACTUALIZAR EMPLEADOS
                 var empleado = await _context.Empleados
@@ -134,6 +134,17 @@ namespace tiempo_libre.Services
                         cambios = true;
                     }
                     if (cambios) registrosActualizados++;
+                }
+
+                // Aquí sí se detiene: sin regla configurada no hay a qué grupo ni
+                // a qué área mandarlo, así que conserva los que ya tenía.
+                if (reglaPendiente)
+                {
+                    _logger.LogWarning(
+                        "⏸️  Nómina {Nomina}: regla '{Regla}' está PendienteConfiguracion; " +
+                        "se actualizó Empleados pero no se asigna grupo/área.",
+                        rolSAP.Nomina, rolSAP.Regla);
+                    continue;
                 }
 
                 // ✅ ACTUALIZAR USERS - LÓGICA COMPLETA CON MÚLTIPLES FALLBACKS
