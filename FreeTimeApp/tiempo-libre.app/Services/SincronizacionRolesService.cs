@@ -84,11 +84,29 @@ namespace tiempo_libre.Services
                 .AsSplitQuery()
                 .ToListAsync();
 
-            // Índice nombre-sin-acentos → usuario, para resolver EncargadoRegistro
-            // cuando no viene como nómina. Se arma a lo más una vez y solo si
-            // alguna nómina llega a necesitar ese desempate; antes se traía la
-            // tabla Users completa a memoria dentro del ciclo.
+            // Índices para resolver el EncargadoRegistro que reporta SAP, que
+            // puede venir como nómina o como nombre. Se arman a lo más una vez y
+            // solo si alguna nómina llega a necesitarlos; antes se consultaba
+            // Users dentro del ciclo, una vez por empleado.
+            Dictionary<int, int>? jefeIdPorNomina = null;
             Dictionary<string, User>? usuariosPorNombre = null;
+
+            async Task CargarIndicesUsuariosAsync()
+            {
+                if (usuariosPorNombre != null) return;
+
+                var usuarios = await _context.Users.ToListAsync();
+
+                jefeIdPorNomina = usuarios
+                    .Where(u => u.Nomina.HasValue)
+                    .GroupBy(u => u.Nomina!.Value)
+                    .ToDictionary(g => g.Key, g => g.First().Id);
+
+                usuariosPorNombre = usuarios
+                    .Where(u => !string.IsNullOrEmpty(u.FullName))
+                    .GroupBy(u => RemoverAcentos(u.FullName.Trim()).ToLower())
+                    .ToDictionary(g => g.Key, g => g.First());
+            }
 
             foreach (var rolSAP in rolesEmpleadosSAP)
             {
@@ -174,96 +192,98 @@ namespace tiempo_libre.Services
                         continue;
                     }
 
-                    Grupo? grupoCorrect = null;
-
-                    if (gruposPosibles.Count > 1 && !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
+                    // Jefe que SAP reporta para este empleado (EncargadoRegistro,
+                    // que viene como nómina o como nombre). Se resuelve una vez
+                    // y pesa en TODAS las ramas de selección.
+                    //
+                    // Antes solo se consultaba cuando dos grupos compartían regla
+                    // Y unidad organizativa. En el resto de los casos —unidad
+                    // vacía, o unidad que no casa con ningún área— se tomaba
+                    // gruposPosibles.First(), un grupo arbitrario, sin mirar quién
+                    // es el jefe. Por eso un empleado que cambiaba de jefe se
+                    // quedaba en su área anterior.
+                    int? jefeIdBuscado = null;
+                    if (!string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
                     {
-                        var gruposMismaUnidad = gruposPosibles
-                            .Where(g => g.Area.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa)
-                            .ToList();
+                        await CargarIndicesUsuariosAsync();
+                        var encargado = rolSAP.EncargadoRegistro.Trim();
 
-                        if (gruposMismaUnidad.Count == 1)
+                        if (int.TryParse(encargado, out int nominaJefe)
+                            && jefeIdPorNomina!.TryGetValue(nominaJefe, out var idPorNomina))
                         {
-                            grupoCorrect = gruposMismaUnidad.First();
+                            jefeIdBuscado = idPorNomina;
                         }
-                        else if (gruposMismaUnidad.Count > 1 && !string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
+                        else if (usuariosPorNombre!.TryGetValue(RemoverAcentos(encargado).ToLower(), out var userEncontrado))
                         {
-                            int? jefeIdBuscado = null;
-
-                            if (int.TryParse(rolSAP.EncargadoRegistro.Trim(), out int nominaJefe))
-                            {
-                                jefeIdBuscado = await _context.Users
-                                    .Where(u => u.Nomina == nominaJefe)
-                                    .Select(u => (int?)u.Id)
-                                    .FirstOrDefaultAsync();
-                            }
-
-                            if (!jefeIdBuscado.HasValue)
-                            {
-                                var nombreEncargadoSAP = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
-
-                                usuariosPorNombre ??= (await _context.Users
-                                        .Where(u => !string.IsNullOrEmpty(u.FullName))
-                                        .ToListAsync())
-                                    .GroupBy(u => RemoverAcentos(u.FullName.Trim()).ToLower())
-                                    .ToDictionary(g => g.Key, g => g.First());
-
-                                if (usuariosPorNombre.TryGetValue(nombreEncargadoSAP, out var userEncontrado))
-                                    jefeIdBuscado = userEncontrado.Id;
-                            }
-
-                            if (jefeIdBuscado.HasValue)
-                            {
-                                var gruposConJefeCorrecto = gruposMismaUnidad
-                                    .Where(g => g.Area.JefeId == jefeIdBuscado.Value
-                                                || g.Area.JefeSuplenteId == jefeIdBuscado.Value
-                                                || (g.Area.Jefes != null && g.Area.Jefes.Any(aj => aj.UserId == jefeIdBuscado.Value)))
-                                    .ToList();
-
-                                if (gruposConJefeCorrecto.Count == 1)
-                                {
-                                    grupoCorrect = gruposConJefeCorrecto.First();
-                                }
-                                else if (gruposConJefeCorrecto.Count > 1)
-                                {
-                                    var encargadoNormalizado = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
-
-                                    grupoCorrect = gruposConJefeCorrecto.FirstOrDefault(g =>
-                                        RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim() == encargadoNormalizado);
-
-                                    if (grupoCorrect != null)
-                                        _logger.LogInformation($"✅ Grupo encontrado por JefeId + EncargadoRegistro: GrupoId={grupoCorrect.GrupoId}");
-                                    else
-                                    {
-                                        grupoCorrect = gruposConJefeCorrecto.First();
-                                        _logger.LogWarning($"⚠️ No coincide EncargadoRegistro, usando primer grupo con JefeId correcto: GrupoId={grupoCorrect.GrupoId}");
-                                    }
-                                }
-                                else
-                                {
-                                    _logger.LogWarning($"⚠️ No se encontró grupo con JefeId={jefeIdBuscado.Value} en esta UnidadOrg");
-                                }
-                            }
-
-                            if (grupoCorrect == null)
-                            {
-                                grupoCorrect = gruposMismaUnidad.First();
-                                _logger.LogWarning($"⚠️ FALLBACK: usando primer grupo: GrupoId={grupoCorrect.GrupoId}");
-                            }
-                        }
-                        else if (gruposMismaUnidad.Any())
-                        {
-                            grupoCorrect = gruposMismaUnidad.First();
+                            jefeIdBuscado = userEncontrado.Id;
                         }
                         else
                         {
-                            grupoCorrect = gruposPosibles.First();
-                            _logger.LogWarning($"⚠️ UnidadOrg no coincide, usando primer grupo: GrupoId={grupoCorrect.GrupoId}");
+                            _logger.LogWarning(
+                                "⚠️ Nómina {Nomina}: EncargadoRegistro '{Encargado}' no corresponde a ningún usuario; no se puede elegir área por jefe.",
+                                rolSAP.Nomina, encargado);
                         }
+                    }
+
+                    // La unidad organizativa manda; si no acota a nada, se
+                    // consideran todos los grupos de la regla.
+                    var gruposMismaUnidad = !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa)
+                        ? gruposPosibles.Where(g => g.Area.UnidadOrganizativaSap == rolSAP.UnidadOrganizativa).ToList()
+                        : new List<Grupo>();
+
+                    if (!gruposMismaUnidad.Any() && !string.IsNullOrEmpty(rolSAP.UnidadOrganizativa))
+                    {
+                        _logger.LogWarning(
+                            "⚠️ Nómina {Nomina}: UnidadOrg '{UnidadOrg}' no coincide con ningún área de la regla; se elige entre todos los grupos.",
+                            rolSAP.Nomina, rolSAP.UnidadOrganizativa);
+                    }
+
+                    var candidatos = gruposMismaUnidad.Any() ? gruposMismaUnidad : gruposPosibles;
+
+                    Grupo? grupoCorrect;
+
+                    if (candidatos.Count == 1)
+                    {
+                        // Un solo grupo posible: no hay nada que elegir.
+                        grupoCorrect = candidatos[0];
                     }
                     else
                     {
-                        grupoCorrect = gruposPosibles.First();
+                        var conJefe = jefeIdBuscado.HasValue
+                            ? candidatos.Where(g => g.Area.JefeId == jefeIdBuscado.Value
+                                                 || g.Area.JefeSuplenteId == jefeIdBuscado.Value
+                                                 || (g.Area.Jefes != null && g.Area.Jefes.Any(aj => aj.UserId == jefeIdBuscado.Value)))
+                                        .ToList()
+                            : new List<Grupo>();
+
+                        if (conJefe.Count == 1)
+                        {
+                            grupoCorrect = conJefe[0];
+                        }
+                        else if (conJefe.Count > 1)
+                        {
+                            // Varias áreas del mismo jefe: desempata el nombre del
+                            // encargado tal como está capturado en el área.
+                            var encargadoNormalizado = RemoverAcentos(rolSAP.EncargadoRegistro?.Trim() ?? "").ToLower();
+
+                            grupoCorrect = conJefe.FirstOrDefault(g =>
+                                RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim() == encargadoNormalizado);
+
+                            if (grupoCorrect != null)
+                                _logger.LogInformation($"✅ Grupo encontrado por JefeId + EncargadoRegistro: GrupoId={grupoCorrect.GrupoId}");
+                            else
+                            {
+                                grupoCorrect = conJefe[0];
+                                _logger.LogWarning($"⚠️ No coincide EncargadoRegistro, usando primer grupo con JefeId correcto: GrupoId={grupoCorrect.GrupoId}");
+                            }
+                        }
+                        else
+                        {
+                            grupoCorrect = candidatos[0];
+                            _logger.LogWarning(
+                                "⚠️ Nómina {Nomina}: ningún área candidata tiene al jefe reportado por SAP; FALLBACK a GrupoId={GrupoId}.",
+                                rolSAP.Nomina, grupoCorrect.GrupoId);
+                        }
                     }
 
                     if (grupoCorrect != null)
