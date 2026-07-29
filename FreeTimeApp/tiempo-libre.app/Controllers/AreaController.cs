@@ -120,7 +120,7 @@ public class AreaController : ControllerBase
     [Authorize]
     public async Task<IActionResult> List(CancellationToken ct)
     {
-        // Proyección directa al DTO en lugar de Include + Select en memoria.
+        // Proyección en el servidor en lugar de Include de entidades completas.
         //
         // Con Include de DOS colecciones (Grupos y Jefes) EF arma un solo query
         // con producto cartesiano — areas × grupos × jefes — y trae la fila
@@ -133,22 +133,25 @@ public class AreaController : ControllerBase
         // ct: si el cliente abandona la petición, el query se cancela en lugar
         // de seguir ocupando una conexión — sin esto cada reintento del
         // frontend acumulaba otra copia del query encima de la anterior.
-        var areaDetailList = await _db.Areas
+        // Manning es decimal y el DTO lo expone como int: el cast se queda en
+        // memoria, igual que antes. Traducirlo a SQL no aporta nada y dependería
+        // de cómo redondee el servidor.
+        var proyeccion = await _db.Areas
             .AsNoTracking()
-            .Select(area => new AreaDetailDto
+            .Select(area => new
             {
-                AreaId = area.AreaId,
-                UnidadOrganizativaSap = area.UnidadOrganizativaSap,
-                NombreGeneral = area.NombreGeneral,
-                Manning = (int)area.Manning,
-                JefeId = area.JefeId,
+                area.AreaId,
+                area.UnidadOrganizativaSap,
+                area.NombreGeneral,
+                area.Manning,
+                area.JefeId,
                 Jefe = area.Jefe == null ? null : new UserBasicDto
                 {
                     Id = area.Jefe.Id,
                     FullName = area.Jefe.FullName,
                     Username = area.Jefe.Username
                 },
-                JefeSuplenteId = area.JefeSuplenteId,
+                area.JefeSuplenteId,
                 JefeSuplente = area.JefeSuplente == null ? null : new UserBasicDto
                 {
                     Id = area.JefeSuplente.Id,
@@ -187,6 +190,20 @@ public class AreaController : ControllerBase
             })
             .AsSplitQuery()
             .ToListAsync(ct);
+
+        var areaDetailList = proyeccion.Select(area => new AreaDetailDto
+        {
+            AreaId = area.AreaId,
+            UnidadOrganizativaSap = area.UnidadOrganizativaSap,
+            NombreGeneral = area.NombreGeneral,
+            Manning = (int)area.Manning,
+            JefeId = area.JefeId,
+            Jefe = area.Jefe,
+            JefeSuplenteId = area.JefeSuplenteId,
+            JefeSuplente = area.JefeSuplente,
+            Jefes = area.Jefes,
+            Grupos = area.Grupos
+        }).ToList();
 
         return Ok(new ApiResponse<List<AreaDetailDto>>(true, areaDetailList));
     }
