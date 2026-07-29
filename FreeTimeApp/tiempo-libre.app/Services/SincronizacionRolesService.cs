@@ -63,6 +63,33 @@ namespace tiempo_libre.Services
                 .Where(r => !string.IsNullOrEmpty(r.Regla))
                 .ToListAsync();
 
+            // Catálogo de grupos: se carga UNA vez, no una por nómina.
+            //
+            // Estaba dentro del ciclo, y como además incluye dos colecciones
+            // (Area.Jefes junto a la propia lista de grupos) EF armaba un query
+            // con producto cartesiano. Con ~1000 nóminas eso eran ~1000
+            // ejecuciones de esa consulta: la sincronización tardaba más de diez
+            // minutos —unos 25 segundos por nómina— y durante todo ese rato
+            // saturaba SQL Server, así que cualquier pantalla que consultara
+            // áreas o grupos se pasaba del timeout del cliente y quedaba vacía.
+            //
+            // No depende de rolSAP: en cada vuelta cargaba exactamente lo mismo.
+            // Solo se lee (el SaveChangesAsync va al final), así que sacarlo no
+            // cambia el resultado.
+            var todosGrupos = await _context.Grupos
+                .Include(g => g.Area)
+                    .ThenInclude(a => a.Jefe)
+                .Include(g => g.Area)
+                    .ThenInclude(a => a.Jefes)
+                .AsSplitQuery()
+                .ToListAsync();
+
+            // Índice nombre-sin-acentos → usuario, para resolver EncargadoRegistro
+            // cuando no viene como nómina. Se arma a lo más una vez y solo si
+            // alguna nómina llega a necesitar ese desempate; antes se traía la
+            // tabla Users completa a memoria dentro del ciclo.
+            Dictionary<string, User>? usuariosPorNombre = null;
+
             foreach (var rolSAP in rolesEmpleadosSAP)
             {
                 // Si la regla está PendienteConfiguracion, aún no la propagamos
@@ -124,13 +151,6 @@ namespace tiempo_libre.Services
                 {
                     var reglaLimpia = rolSAP.Regla.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper();
 
-                    var todosGrupos = await _context.Grupos
-                        .Include(g => g.Area)
-                            .ThenInclude(a => a.Jefe)
-                        .Include(g => g.Area)
-                            .ThenInclude(a => a.Jefes)
-                        .ToListAsync();
-
                     var gruposPosibles = todosGrupos
                         .Where(g => g.Rol.Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper() == reglaLimpia)
                         .ToList();
@@ -171,13 +191,13 @@ namespace tiempo_libre.Services
                             {
                                 var nombreEncargadoSAP = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
 
-                                var userEncontrado = _context.Users
-                                    .Where(u => !string.IsNullOrEmpty(u.FullName))
-                                    .AsEnumerable()
-                                    .Where(u => RemoverAcentos(u.FullName.Trim()).ToLower() == nombreEncargadoSAP)
-                                    .FirstOrDefault();
+                                usuariosPorNombre ??= (await _context.Users
+                                        .Where(u => !string.IsNullOrEmpty(u.FullName))
+                                        .ToListAsync())
+                                    .GroupBy(u => RemoverAcentos(u.FullName.Trim()).ToLower())
+                                    .ToDictionary(g => g.Key, g => g.First());
 
-                                if (userEncontrado != null)
+                                if (usuariosPorNombre.TryGetValue(nombreEncargadoSAP, out var userEncontrado))
                                     jefeIdBuscado = userEncontrado.Id;
                             }
 
