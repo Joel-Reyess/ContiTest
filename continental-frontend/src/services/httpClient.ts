@@ -26,6 +26,12 @@ class HttpClient {
   private defaultHeaders: Record<string, string>;
   private isRefreshing = false;
   private failedQueue: QueuedRequest[] = [];
+  // GET idénticos que están en vuelo al mismo tiempo comparten una sola
+  // petición. En producción cada GET salía duplicado (dos componentes montados
+  // sobre el mismo dato), y con un endpoint lento eso duplicaba la carga sobre
+  // la base justo cuando peor estaba: la primera copia no alcanzaba a
+  // responder, el cliente abortaba a los 10 s y el reintento sumaba dos más.
+  private getsEnVuelo = new Map<string, Promise<any>>();
 
   constructor() {
     this.baseURL = env.API_BASE_URL;
@@ -218,12 +224,35 @@ class HttpClient {
 
   // Public methods
   async get<T>(url: string, params?: Record<string, any>, config?: Partial<RequestConfig>): Promise<ApiResponse<T>> {
-    return this.makeRequest<T>({
+    const clave = this.buildURL(url, params);
+    const enVuelo = this.getsEnVuelo.get(clave);
+    // Cada quien recibe su propia copia: antes de compartir la petición cada
+    // llamada tenía su objeto, y hay vistas que ordenan la respuesta en sitio.
+    if (enVuelo) {
+      return this.copiar(await enVuelo);
+    }
+
+    const peticion = this.makeRequest<T>({
       method: 'GET',
       url,
       params,
       ...config,
     });
+    this.getsEnVuelo.set(clave, peticion);
+
+    try {
+      return this.copiar(await peticion);
+    } finally {
+      this.getsEnVuelo.delete(clave);
+    }
+  }
+
+  private copiar<T>(valor: T): T {
+    try {
+      return typeof structuredClone === 'function' ? structuredClone(valor) : valor;
+    } catch {
+      return valor;
+    }
   }
 
   async post<T>(url: string, data?: any, config?: Partial<RequestConfig>): Promise<ApiResponse<T>> {

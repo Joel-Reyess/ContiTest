@@ -43,6 +43,10 @@ public class AreaController : ControllerBase
             .Include(a => a.JefeSuplente)
             .Include(a => a.Jefes).ThenInclude(aj => aj.User)
             .Include(a => a.Asignaciones).ThenInclude(aa => aa.User)
+            // Dos colecciones (Jefes y Asignaciones) en un solo query cruzan
+            // sus filas entre sí. Es un área sola, pero el calendario pide este
+            // endpoint una vez por área del jefe.
+            .AsSplitQuery()
             .FirstOrDefaultAsync(a => a.AreaId == id);
 
         if (area == null)
@@ -114,67 +118,75 @@ public class AreaController : ControllerBase
     // GET: api/Area
     [HttpGet]
     [Authorize]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List(CancellationToken ct)
     {
-        var areas = await _db.Areas
-            .Include(a => a.Grupos)
-                .ThenInclude(g => g.Lider)
-            .Include(a => a.Jefe)
-            .Include(a => a.JefeSuplente)
-            // AreaJefes: sin esto el listado solo exponía las dos columnas legacy
-            // y un jefe adicional (3.º en adelante, o registrado solo en la tabla)
-            // quedaba invisible en las vistas que filtran sobre este endpoint
-            // — Plantilla y Roles Semanales entre ellas.
-            .Include(a => a.Jefes).ThenInclude(aj => aj.User)
+        // Proyección directa al DTO en lugar de Include + Select en memoria.
+        //
+        // Con Include de DOS colecciones (Grupos y Jefes) EF arma un solo query
+        // con producto cartesiano — areas × grupos × jefes — y trae la fila
+        // completa de Area, Grupo, User y AreaJefe repetida en cada combinación.
+        // El propio EF lo advierte (MultipleCollectionIncludeWarning) y en prod
+        // el endpoint llegó a tardar 25 s, más de lo que el cliente espera
+        // (10 s), así que todas las vistas que lo consumen quedaban vacías.
+        //
+        // AsSplitQuery: una consulta por colección, sin duplicar filas.
+        // ct: si el cliente abandona la petición, el query se cancela en lugar
+        // de seguir ocupando una conexión — sin esto cada reintento del
+        // frontend acumulaba otra copia del query encima de la anterior.
+        var areaDetailList = await _db.Areas
             .AsNoTracking()
-            .ToListAsync();
-
-        var areaDetailList = areas.Select(area => new AreaDetailDto
-        {
-            AreaId = area.AreaId,
-            UnidadOrganizativaSap = area.UnidadOrganizativaSap,
-            NombreGeneral = area.NombreGeneral,
-            Manning = (int)area.Manning,
-            JefeId = area.JefeId,
-            Jefe = area.Jefe != null ? new UserBasicDto
+            .Select(area => new AreaDetailDto
             {
-                Id = area.Jefe.Id,
-                FullName = area.Jefe.FullName,
-                Username = area.Jefe.Username
-            } : null,
-            JefeSuplenteId = area.JefeSuplenteId,
-            JefeSuplente = area.JefeSuplente != null ? new UserBasicDto
-            {
-                Id = area.JefeSuplente.Id,
-                FullName = area.JefeSuplente.FullName,
-                Username = area.JefeSuplente.Username
-            } : null,
-            Jefes = area.Jefes
-                .Where(aj => aj.User != null)
-                .Select(aj => new UserBasicDto
+                AreaId = area.AreaId,
+                UnidadOrganizativaSap = area.UnidadOrganizativaSap,
+                NombreGeneral = area.NombreGeneral,
+                Manning = (int)area.Manning,
+                JefeId = area.JefeId,
+                Jefe = area.Jefe == null ? null : new UserBasicDto
                 {
-                    Id = aj.User!.Id,
-                    FullName = aj.User.FullName,
-                    Username = aj.User.Username
-                })
-                .OrderBy(u => u.FullName)
-                .ToList(),
-            Grupos = area.Grupos.Select(g => new GrupoBasicDto
-            {
-                GrupoId = g.GrupoId,
-                Rol = g.Rol,
-                IdentificadorSAP = g.IdentificadorSAP,
-                PersonasPorTurno = g.PersonasPorTurno,
-                DuracionDeturno = g.DuracionDeturno,
-                LiderId = g.LiderId,
-                Lider = g.Lider != null ? new UserBasicDto
+                    Id = area.Jefe.Id,
+                    FullName = area.Jefe.FullName,
+                    Username = area.Jefe.Username
+                },
+                JefeSuplenteId = area.JefeSuplenteId,
+                JefeSuplente = area.JefeSuplente == null ? null : new UserBasicDto
                 {
-                    Id = g.Lider.Id,
-                    FullName = g.Lider.FullName,
-                    Username = g.Lider.Username
-                } : null
-            }).ToList()
-        }).ToList();
+                    Id = area.JefeSuplente.Id,
+                    FullName = area.JefeSuplente.FullName,
+                    Username = area.JefeSuplente.Username
+                },
+                // AreaJefes: sin esto el listado solo exponía las dos columnas
+                // legacy y un jefe adicional (3.º en adelante, o registrado solo
+                // en la tabla) quedaba invisible en las vistas que filtran sobre
+                // este endpoint — Plantilla y Roles Semanales entre ellas.
+                Jefes = area.Jefes
+                    .Where(aj => aj.User != null)
+                    .OrderBy(aj => aj.User!.FullName)
+                    .Select(aj => new UserBasicDto
+                    {
+                        Id = aj.User!.Id,
+                        FullName = aj.User.FullName,
+                        Username = aj.User.Username
+                    })
+                    .ToList(),
+                Grupos = area.Grupos.Select(g => new GrupoBasicDto
+                {
+                    GrupoId = g.GrupoId,
+                    Rol = g.Rol,
+                    IdentificadorSAP = g.IdentificadorSAP,
+                    PersonasPorTurno = g.PersonasPorTurno,
+                    DuracionDeturno = g.DuracionDeturno,
+                    LiderId = g.LiderId,
+                    Lider = g.Lider == null ? null : new UserBasicDto
+                    {
+                        Id = g.Lider.Id,
+                        FullName = g.Lider.FullName,
+                        Username = g.Lider.Username
+                    }
+                }).ToList()
+            })
+            .AsSplitQuery()
+            .ToListAsync(ct);
 
         return Ok(new ApiResponse<List<AreaDetailDto>>(true, areaDetailList));
     }
