@@ -4,6 +4,19 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { VacationRequest } from '@/components/Dashboard-Empleados/MyRequests';
 
+// El tipo se resolvía con un ternario de dos ramas, así que todo lo que no fuera
+// intercambio de día salía etiquetado como "Festivo trabajado" — incluidos los
+// permisos y ahora las ediciones de días empresa.
+const etiquetaTipo = (tipo: VacationRequest['type']): string => {
+    switch (tipo) {
+        case 'day_exchange': return 'Intercambio de dia';
+        case 'holiday_worked': return 'Festivo trabajado';
+        case 'permission_request': return 'Permiso/Incapacidad';
+        case 'company_day_edit': return 'Edicion dias empresa';
+        default: return String(tipo);
+    }
+};
+
 interface ExcelSolicitudRow {
     'ID': string;
     'Empleado': string;
@@ -59,7 +72,7 @@ export const exportarSolicitudesExcel = (
             Empleado: solicitud.employeeName || empleadoNombre,
             Area: solicitud.employeeArea || meta?.empleadoArea || '',
             Grupo: solicitud.employeeGroup || meta?.empleadoGrupo || '',
-            Tipo: solicitud.type === 'day_exchange' ? 'Intercambio de dia' : 'Festivo trabajado',
+            Tipo: etiquetaTipo(solicitud.type),
             Estado:
                 solicitud.status === 'approved' ? 'Aprobada' :
                     solicitud.status === 'rejected' ? 'Rechazada' : 'Pendiente',
@@ -158,7 +171,7 @@ export const exportarSolicitudesCSV = (
             solicitud.employeeName || empleadoNombre,
             solicitud.employeeArea || meta?.empleadoArea || '',
             solicitud.employeeGroup || meta?.empleadoGrupo || '',
-            solicitud.type === 'day_exchange' ? 'Intercambio de dia' : 'Festivo trabajado',
+            etiquetaTipo(solicitud.type),
             solicitud.status === 'approved' ? 'Aprobada' :
                 solicitud.status === 'rejected' ? 'Rechazada' : 'Pendiente',
             formatDate(solicitud.requestDate),

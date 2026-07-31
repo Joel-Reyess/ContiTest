@@ -26,6 +26,12 @@ export interface VacacionAsignada {
     fecha: string
     tipoVacacion: string
     estadoVacacion: string
+    /** El día ya cambió de fecha por edición de días empresa: no se puede volver a mover. */
+    yaModificado?: boolean
+    /** "Edición empresa" o "Superusuario". */
+    origenModificacion?: string
+    /** Fecha que tenía antes del último cambio. */
+    fechaAntesDelCambio?: string
 }
 
 export interface SolicitarReprogramacionDiaEmpresaRequest {

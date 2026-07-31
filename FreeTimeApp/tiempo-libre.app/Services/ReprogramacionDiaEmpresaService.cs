@@ -48,7 +48,7 @@ namespace tiempo_libre.Services
             // Límite inferior: el 1 de enero del año en curso. Los días asignados
             // pertenecen al programa anual, así que no se cruzan entre ejercicios.
             var inicioAnio = new DateOnly(DateTime.Today.Year, 1, 1);
-            return await _db.VacacionesProgramadas
+            var vacaciones = await _db.VacacionesProgramadas
                 .Where(v => v.EmpleadoId == empleadoId &&
                             v.EstadoVacacion == "Activa" &&
                             v.FechaVacacion >= inicioAnio &&
@@ -63,6 +63,49 @@ namespace tiempo_libre.Services
                     EstadoVacacion = v.EstadoVacacion,
                 })
                 .ToListAsync();
+
+            await MarcarDiasYaModificadosAsync(vacaciones);
+            return vacaciones;
+        }
+
+        /// <summary>
+        /// Marca los días que ya cambiaron de fecha por la edición de días empresa
+        /// (pestaña de Vacaciones). Esos días siguen con TipoVacacion "Automatica",
+        /// así que sin esto se veían idénticos a un día intacto y el SuperUsuario
+        /// podía moverlos otra vez, dejando el mismo día reprogramado dos veces a
+        /// fechas distintas y sin rastro de cuál era la buena.
+        ///
+        /// El flujo del propio SuperUsuario no necesita marcarse aquí: al aprobar
+        /// cambia TipoVacacion a "DiaEmpresaReprogramado" y la consulta de arriba
+        /// ya lo deja fuera.
+        /// </summary>
+        private async Task MarcarDiasYaModificadosAsync(List<VacacionDisponibleDto> vacaciones)
+        {
+            if (vacaciones.Count == 0) return;
+
+            var ids = vacaciones.Select(v => v.Id).ToList();
+
+            var ediciones = await _db.SolicitudesEdicionDiasEmpresa
+                .Where(s => ids.Contains(s.VacacionOriginalId) && s.EstadoSolicitud == "Aprobada")
+                .OrderByDescending(s => s.FechaSolicitud)
+                .Select(s => new { s.VacacionOriginalId, s.FechaOriginal })
+                .ToListAsync();
+
+            if (ediciones.Count == 0) return;
+
+            // Si hubo varias ediciones del mismo día, la primera del orden es la
+            // más reciente: esa es la que interesa mostrar.
+            var porVacacion = ediciones
+                .GroupBy(e => e.VacacionOriginalId)
+                .ToDictionary(g => g.Key, g => g.First().FechaOriginal);
+
+            foreach (var vac in vacaciones)
+            {
+                if (!porVacacion.TryGetValue(vac.Id, out var fechaAnterior)) continue;
+                vac.YaModificado = true;
+                vac.OrigenModificacion = "Edición empresa";
+                vac.FechaAntesDelCambio = fechaAnterior;
+            }
         }
 
         public async Task<ApiResponse<SolicitudReprogramacionDiaEmpresaDto>> SolicitarAsync(
@@ -101,6 +144,23 @@ namespace tiempo_libre.Services
             if (vacacion.TipoVacacion != "Automatica" && vacacion.TipoVacacion != "AsignadaAutomaticamente")
                 return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,
                     "Solo días asignados por la empresa pueden reprogramarse desde aquí.");
+
+            // Candado contra la doble reprogramación: si el día ya se movió desde la
+            // pestaña de Vacaciones (edición de días empresa), no se puede volver a
+            // mover desde aquí. Sin esto el mismo día terminaba reprogramado dos
+            // veces a fechas distintas y no había forma de saber cuál valía.
+            var edicionPrevia = await _db.SolicitudesEdicionDiasEmpresa
+                .Where(s => s.VacacionOriginalId == request.VacacionOriginalId &&
+                            s.EstadoSolicitud == "Aprobada")
+                .OrderByDescending(s => s.FechaSolicitud)
+                .FirstOrDefaultAsync();
+            if (edicionPrevia != null)
+            {
+                return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,
+                    $"Este día ya fue reprogramado por edición de días empresa " +
+                    $"({edicionPrevia.FechaOriginal:dd/MM/yyyy} → {edicionPrevia.FechaNueva:dd/MM/yyyy}). " +
+                    "No puede reprogramarse una segunda vez desde aquí.");
+            }
 
             var hoy = DateOnly.FromDateTime(DateTime.Today);
             if (fechaNueva < hoy)

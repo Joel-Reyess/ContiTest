@@ -342,11 +342,21 @@ namespace tiempo_libre.Controllers
         [Authorize(Roles = "SuperUsuario,Super Usuario,JefeDeArea,Jefe De Area,JefeArea,IngenieroIndustrial,Ingeniero Industrial")]
         public async Task<IActionResult> ReporteDiasReprogramadosEmpresa(
             [FromQuery] int? anio = null,
-            [FromQuery] int? areaId = null)
+            [FromQuery] int? areaId = null,
+            [FromQuery] string? fechaDesde = null,
+            [FromQuery] string? fechaHasta = null,
+            [FromQuery] string? horaDesde = null,
+            [FromQuery] string? horaHasta = null)
         {
             try
             {
-                var datos = await _edicionDiasEmpresaService.GenerarReporteAsync(anio, areaId);
+                // El rango se arma combinando fecha + hora opcional. Sin hora, el
+                // límite inferior es 00:00 y el superior 23:59:59, para que un
+                // rango de un solo día incluya todo ese día.
+                var desde = CombinarFechaHora(fechaDesde, horaDesde, esInicio: true);
+                var hasta = CombinarFechaHora(fechaHasta, horaHasta, esInicio: false);
+
+                var datos = await _edicionDiasEmpresaService.GenerarReporteAsync(anio, areaId, desde, hasta);
                 return Ok(new ApiResponse<object>(true, datos));
             }
             catch (Exception ex)
@@ -354,6 +364,25 @@ namespace tiempo_libre.Controllers
                 _logger.LogError(ex, "Error al generar reporte días reprogramados empresa");
                 return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
             }
+        }
+
+        /// <summary>
+        /// Une "yyyy-MM-dd" con "HH:mm" opcional. Devuelve null si no hay fecha,
+        /// para que el filtro simplemente no se aplique.
+        /// </summary>
+        private static DateTime? CombinarFechaHora(string? fecha, string? hora, bool esInicio)
+        {
+            if (string.IsNullOrWhiteSpace(fecha)) return null;
+
+            if (!DateTime.TryParse(fecha, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var dia))
+                return null;
+
+            if (!string.IsNullOrWhiteSpace(hora) &&
+                TimeSpan.TryParse(hora, System.Globalization.CultureInfo.InvariantCulture, out var h))
+                return dia.Date.Add(h);
+
+            return esInicio ? dia.Date : dia.Date.AddDays(1).AddTicks(-1);
         }
     }
 }

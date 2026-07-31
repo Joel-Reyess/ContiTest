@@ -7,6 +7,8 @@ import type { ReporteDiasReprogramadosEmpresa } from '@/interfaces/Api.interface
 interface EdicionDiasEmpresaExcelMeta {
     area?: string;
     anio?: number;
+    /** Rango aplicado sobre la fecha de solicitud, si el usuario filtró por fechas. */
+    rangoFechas?: string;
 }
 
 const parseDateToLocal = (value: string): Date => {
@@ -41,7 +43,10 @@ export const exportarEdicionDiasEmpresaExcel = (
         { Concepto: 'Título', Valor: 'Reprogramación de días asignados por la empresa' },
         { Concepto: 'Área', Valor: meta.area || 'Todas' },
         { Concepto: 'Año', Valor: meta.anio ?? 'Todos' },
+        { Concepto: 'Rango (fecha de solicitud)', Valor: meta.rangoFechas ?? 'Sin filtro' },
         { Concepto: 'Total registros', Valor: datos.length },
+        { Concepto: 'Desde pestaña Vacaciones', Valor: datos.filter(d => d.origen !== 'Superusuario').length },
+        { Concepto: 'Desde superusuario', Valor: datos.filter(d => d.origen === 'Superusuario').length },
         { Concepto: 'Aprobadas', Valor: datos.filter(d => d.estadoSolicitud === 'Aprobada').length },
         { Concepto: 'Rechazadas', Valor: datos.filter(d => d.estadoSolicitud === 'Rechazada').length },
         { Concepto: 'Pendientes', Valor: datos.filter(d => d.estadoSolicitud === 'Pendiente').length },
@@ -54,11 +59,13 @@ export const exportarEdicionDiasEmpresaExcel = (
 
     const detailRows = datos.map(d => ({
         'ID': d.id,
+        'Origen': d.origen ?? 'Edición empresa',
         'Nómina': d.nomina ?? '',
         'Empleado': d.nombreEmpleado,
         'Área': d.area ?? '',
         'Grupo': d.grupo ?? '',
         'Estado': d.estadoSolicitud,
+        'Motivo (superusuario)': d.motivoTipo ?? '',
         'Fecha solicitud': formatDateTime(d.fechaSolicitud),
         'Día original': formatDate(d.fechaOriginal),
         'Nueva fecha': formatDate(d.fechaNueva),
@@ -72,11 +79,13 @@ export const exportarEdicionDiasEmpresaExcel = (
     const detailSheet = XLSX.utils.json_to_sheet(detailRows);
     detailSheet['!cols'] = [
         { wch: 8 },
+        { wch: 18 },
         { wch: 12 },
         { wch: 32 },
         { wch: 22 },
         { wch: 18 },
         { wch: 14 },
+        { wch: 22 },
         { wch: 18 },
         { wch: 16 },
         { wch: 16 },

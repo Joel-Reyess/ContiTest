@@ -44,6 +44,14 @@ export const edicionDiasEmpresaService = {
         return (resp as any)?.data ?? [];
     },
 
+    /** Historial completo (delegado sindical / superusuario / jefe). */
+    async obtenerTodas(anio?: number): Promise<SolicitudEdicionDiaEmpresa[]> {
+        const params: Record<string, string> = {};
+        if (anio) params['anio'] = String(anio);
+        const resp = await httpClient.get<ApiResponse<SolicitudEdicionDiaEmpresa[]>>(`${BASE}/todas`, params);
+        return (resp as any)?.data ?? [];
+    },
+
     async obtenerPendientes(): Promise<SolicitudEdicionDiaEmpresa[]> {
         const resp = await httpClient.get<ApiResponse<SolicitudEdicionDiaEmpresa[]>>(`${BASE}/pendientes`);
         return (resp as any)?.data ?? [];
@@ -61,10 +69,21 @@ export const edicionDiasEmpresaService = {
         return (resp as any).data;
     },
 
-    async obtenerReporte(anio?: number, areaId?: number): Promise<ReporteDiasReprogramadosEmpresa[]> {
+    async obtenerReporte(
+        anio?: number,
+        areaId?: number,
+        // Rango opcional sobre la FECHA DE SOLICITUD. La pantalla de Reportes ya
+        // dejaba capturarlo, pero nunca se enviaba: el reporte salía siempre con
+        // el año completo aunque el filtro dijera "esta semana".
+        filtros?: { fechaDesde?: string; fechaHasta?: string; horaDesde?: string; horaHasta?: string },
+    ): Promise<ReporteDiasReprogramadosEmpresa[]> {
         const params: Record<string, string> = {};
         if (anio) params['anio'] = String(anio);
         if (areaId) params['areaId'] = String(areaId);
+        if (filtros?.fechaDesde) params['fechaDesde'] = filtros.fechaDesde;
+        if (filtros?.fechaHasta) params['fechaHasta'] = filtros.fechaHasta;
+        if (filtros?.horaDesde) params['horaDesde'] = filtros.horaDesde;
+        if (filtros?.horaHasta) params['horaHasta'] = filtros.horaHasta;
         const resp = await httpClient.get<ApiResponse<ReporteDiasReprogramadosEmpresa[]>>(
             '/api/reportes/dias-reprogramados-empresa', params);
         return (resp as any)?.data ?? [];

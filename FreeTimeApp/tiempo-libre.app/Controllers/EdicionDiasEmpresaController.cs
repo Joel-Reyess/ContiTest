@@ -121,6 +121,28 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>
+        /// Historial completo de ediciones de días empresa. Lo consume la vista
+        /// "Reprogramaciones que solicitaste" del delegado sindical, donde estas
+        /// solicitudes no aparecían por ningún lado: el delegado las capturaba y
+        /// después no tenía forma de consultarlas.
+        /// </summary>
+        [HttpGet("todas")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,DelegadoSindical,Delegado Sindical,Jefe De Area,JefeArea,Gerente BT,GerenteBT,RH")]
+        public async Task<IActionResult> ObtenerTodas([FromQuery] int? anio = null)
+        {
+            try
+            {
+                var solicitudes = await _service.ObtenerTodasAsync(anio);
+                return Ok(new ApiResponse<object>(true, solicitudes));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener todas las solicitudes de edición días empresa");
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+            }
+        }
+
         // ─── Aprobación (jefe de área) ──────────────────────────────────────────
 
         /// <summary>Solicitudes pendientes de aprobación del área del jefe autenticado</summary>

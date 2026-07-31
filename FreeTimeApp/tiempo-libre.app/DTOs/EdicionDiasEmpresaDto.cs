@@ -99,5 +99,20 @@ namespace tiempo_libre.DTOs
         public string? NombreSolicitadoPor { get; set; }
         public string? ObservacionesEmpleado { get; set; }
         public string? MotivoRechazo { get; set; }
+
+        /// <summary>
+        /// De qué proceso salió el movimiento. El reporte junta los dos flujos
+        /// que mueven un día asignado por la empresa, porque para control da
+        /// igual quién lo movió: el día ya no está donde lo puso el programa.
+        ///   "Edición empresa"          → pestaña Vacaciones (empleado/delegado)
+        ///   "Superusuario"             → Reprogramación día empresa
+        /// </summary>
+        public string Origen { get; set; } = OrigenEdicionEmpresa;
+
+        /// <summary>Motivo de catálogo. Solo lo llena el flujo del superusuario.</summary>
+        public string? MotivoTipo { get; set; }
+
+        public const string OrigenEdicionEmpresa = "Edición empresa";
+        public const string OrigenSuperusuario = "Superusuario";
     }
 }

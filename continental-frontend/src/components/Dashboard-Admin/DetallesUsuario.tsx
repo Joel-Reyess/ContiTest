@@ -10,6 +10,7 @@ import { userService } from "@/services/userService";
 import type { User as ApiUser, UserAreaWithGroups } from "@/interfaces/User.interface";
 import { UserStatus } from "@/interfaces/User.interface";
 import { useAreas } from "@/hooks/useAreas";
+import { useRoles } from "@/hooks/useRoles";
 import { ChangePasswordModal } from "@/components/Empleado/ChangePasswordModal";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,6 +34,16 @@ export const DetallesUsuario = () => {
     const currentData = editedData ?? userData;
     const currentAreaId = currentData?.areaId ?? null;
     const { areas, loading: areasLoading } = useAreas();
+    // Catálogo de roles del backend. Antes las opciones estaban escritas a mano
+    // en el JSX, así que Gerente BT y RH nunca aparecían al editar un usuario
+    // existente —solo al crearlo, porque Register sí usa este hook— y los Ids
+    // hardcodeados quedaban desfasados en cuanto se agregaba un rol nuevo.
+    const { roles: rolesCatalogo, loading: rolesLoading } = useRoles();
+    const nombreDeRol = (rol: any): string => {
+        if (rol && typeof rol === "object") return rol.name ?? String(rol.id ?? "");
+        const encontrado = rolesCatalogo.find(r => String(r.id) === String(rol));
+        return encontrado?.name ?? String(rol);
+    };
 
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     // Fetch user data from API
@@ -348,16 +359,14 @@ export const DetallesUsuario = () => {
                     );
                   }}
                 >
-                  <option value={7}>SuperUsuario</option>
-                  <option value={3}>Jefe De Area</option>
-                  <option value={4}>Lider De Grupo</option>
-                  <option value={5}>Ingeniero Industrial</option>
-                  <option value={2}>Empleado Sindicalizado</option>
-                  <option value={6}>Delegado Sindical</option>
-
+                  {rolesCatalogo.map((rol) => (
+                    <option key={rol.id} value={rol.id}>{rol.name}</option>
+                  ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  Mantén presionado Ctrl o Cmd para seleccionar varios.
+                  {rolesLoading
+                    ? "Cargando roles..."
+                    : "Mantén presionado Ctrl o Cmd para seleccionar varios."}
                 </p>
               </div>
             ) : (
@@ -365,13 +374,7 @@ export const DetallesUsuario = () => {
                 {currentData?.roles?.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {currentData.roles.map((role: any, index) => {
-                      const roleName = typeof role === "object" ? role.name : 
-                                     role === 7 ? "SuperUsuario" :
-                                     role === 3 ? "Jefe De Area" :
-                                     role === 4 ? "Lider De Grupo" :
-                                     role === 5 ? "Ingeniero Industrial" :
-                                     role === 2 ? "Empleado Sindicalizado" :
-                                     role === 6 ? "Delegado Sindical" : role;
+                      const roleName = nombreDeRol(role);
                       return (
                         <Badge key={index} variant="secondary">
                           {roleName}

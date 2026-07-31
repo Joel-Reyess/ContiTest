@@ -150,8 +150,9 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                     >
                                         <option value="">— Selecciona —</option>
                                         {vacaciones.map(v => (
-                                            <option key={v.id} value={v.id}>
+                                            <option key={v.id} value={v.id} disabled={v.yaModificado}>
                                                 {format(parseISO(v.fecha), 'EEEE dd/MM/yyyy', { locale: es })} · Asignada por empresa
+                                                {v.yaModificado ? ` · YA MODIFICADO (${v.origenModificacion ?? 'edición empresa'})` : ''}
                                                 {yaTranscurrio(v.fecha) ? ' · ya transcurrido' : ''}
                                             </option>
                                         ))}
@@ -161,6 +162,13 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                             Día original: <span className="font-medium text-red-600">
                                                 {format(parseISO(vacacionSel.fecha), 'dd/MM/yyyy')}
                                             </span>
+                                        </p>
+                                    )}
+                                    {vacaciones.some(v => v.yaModificado) && (
+                                        <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mt-2">
+                                            Los días marcados como <span className="font-semibold">YA MODIFICADO</span> se
+                                            movieron desde la pestaña de Vacaciones (edición de días empresa) y no pueden
+                                            reprogramarse otra vez, para que un mismo día no termine en dos fechas distintas.
                                         </p>
                                     )}
                                     {vacacionSel && yaTranscurrio(vacacionSel.fecha) && (

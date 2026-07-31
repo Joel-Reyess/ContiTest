@@ -183,7 +183,10 @@ const SolicitudesDocument: React.FC<{
             <View key={solicitud.id} style={[styles.tableRow, { backgroundColor: index % 2 === 0 ? '#ffffff' : '#f9f9f9' }]}>
               <Text style={[styles.tableCell, styles.tableCellID]}>{solicitud.id}</Text>
               <Text style={[styles.tableCell, styles.tableCellTipo]}>
-                {solicitud.type === 'day_exchange' ? 'Intercambio' : 'Festivo'}
+                {solicitud.type === 'day_exchange' ? 'Intercambio'
+                    : solicitud.type === 'permission_request' ? 'Permiso'
+                        : solicitud.type === 'company_day_edit' ? 'Dia empresa'
+                            : 'Festivo'}
               </Text>
               <Text style={[styles.tableCell, styles.tableCellFecha]}>
                 {format(new Date(solicitud.requestDate), "dd/MM/yy", { locale: es })}

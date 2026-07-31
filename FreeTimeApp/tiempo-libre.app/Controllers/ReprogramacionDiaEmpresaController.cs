@@ -152,9 +152,13 @@ namespace tiempo_libre.Controllers
             }
         }
 
-        /// <summary>Todas las solicitudes (SuperUsuario).</summary>
+        /// <summary>
+        /// Todas las solicitudes. Además del SuperUsuario la consulta el delegado
+        /// sindical, que necesita ver en su historial los movimientos de días
+        /// empresa aunque no los haya generado él.
+        /// </summary>
         [HttpGet("todas")]
-        [Authorize(Roles = "SuperUsuario,Super Usuario")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,DelegadoSindical,Delegado Sindical")]
         public async Task<IActionResult> ObtenerTodas([FromQuery] string? estado = null)
         {
             try

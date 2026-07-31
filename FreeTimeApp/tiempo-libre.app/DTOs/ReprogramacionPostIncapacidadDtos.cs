@@ -36,6 +36,19 @@ namespace tiempo_libre.DTOs
         public DateOnly Fecha { get; set; }
         public string TipoVacacion { get; set; } = string.Empty;
         public string EstadoVacacion { get; set; } = string.Empty;
+
+        /// <summary>
+        /// True si este día YA fue movido de su fecha original por alguno de los
+        /// dos flujos de edición. Sirve para que el SuperUsuario no lo reprograme
+        /// una segunda vez a otra fecha sin darse cuenta.
+        /// </summary>
+        public bool YaModificado { get; set; }
+
+        /// <summary>"Edición empresa" o "Superusuario". Null si nunca se movió.</summary>
+        public string? OrigenModificacion { get; set; }
+
+        /// <summary>Fecha que tenía el día antes del último cambio.</summary>
+        public DateOnly? FechaAntesDelCambio { get; set; }
     }
 
     /// <summary>Incapacidad/permiso ya consumido del empleado (motivo posible).</summary>

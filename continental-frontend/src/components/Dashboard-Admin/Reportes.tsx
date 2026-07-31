@@ -971,8 +971,19 @@ export const Reportes = () => {
                     ? areas.find(a => a.areaId.toString() === selectedArea)?.nombreGeneral ?? 'Sin área'
                     : 'Todas';
 
+                // Mismo criterio que los reportes SAP: el rango captura la fecha en
+                // que se hizo el movimiento. Antes estos cuatro campos no se
+                // enviaban y el reporte ignoraba por completo el filtro de fechas.
+                const fechaDesde = dateRangeFrom || singleDate || undefined;
+                const fechaHasta = dateRangeTo || singleDate || undefined;
+
                 const loadingToast = toast.loading("Generando reporte de reprogramación de días asignados por la empresa...");
-                const datos = await edicionDiasEmpresaService.obtenerReporte(anio, areaIdFilter);
+                const datos = await edicionDiasEmpresaService.obtenerReporte(anio, areaIdFilter, {
+                    fechaDesde,
+                    fechaHasta,
+                    horaDesde: timeFrom || undefined,
+                    horaHasta: timeTo || undefined,
+                });
                 toast.dismiss(loadingToast);
 
                 if (!datos.length) {
@@ -981,7 +992,13 @@ export const Reportes = () => {
                 }
 
                 const { exportarEdicionDiasEmpresaExcel } = await import("@/utils/edicionDiasEmpresaExcel");
-                exportarEdicionDiasEmpresaExcel(datos, { area: areaName, anio });
+                exportarEdicionDiasEmpresaExcel(datos, {
+                    area: areaName,
+                    anio,
+                    rangoFechas: fechaDesde || fechaHasta
+                        ? `${fechaDesde ?? 'inicio'} — ${fechaHasta ?? 'fin'}`
+                        : undefined,
+                });
                 toast.success(`Reporte descargado (${datos.length} registro(s)).`);
             } catch (error) {
                 toast.dismiss();

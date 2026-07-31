@@ -26,6 +26,7 @@ import { excepcionesService } from '@/services/excepcionesService';
 import { OvertimeIndicator } from '../Dashboard-Area/OvertimeIndicator';
 import { OvertimeExceptionsList } from '../Dashboard-Area/OvertimeExceptionsList';
 import { CalendarService } from '@/services/calendarService';
+import { edicionDiasEmpresaService } from '@/services/edicionDiasEmpresaService';
 import { OvertimeCalendar } from '../Dashboard-Area/OvertimeCalendar';
 import useAuth from '@/hooks/useAuth';
 import { RegistrarPermisoModal } from "@/components/Empleado/RegistrarPermisoModal";
@@ -61,7 +62,9 @@ export const DetallesEmpleado = ({
   const [error, setError] = useState<string | null>(null);
   const [_, setAssignedDays] = useState<{ date: string }[]>([]);
   const [vacacionesData, setVacacionesData] = useState<VacacionesAsignadasResponse | null>(null);
-  const [realAssignedDays, setRealAssignedDays] = useState<{ date: string }[]>([]);
+  const [realAssignedDays, setRealAssignedDays] = useState<
+    { date: string; origen?: string; fechaAnterior?: string }[]
+  >([]);
   const [workedHoliday, setWorkedHoliday] = useState<{ date: string }[]>([]);
   const [selectedDays, setSelectedDays] = useState<{ date: string }[]>([]);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -175,9 +178,30 @@ export const DetallesEmpleado = ({
           // IMPORTANTE: filtrar también por estadoVacacion="Activa" — sin esto
           // aparecen tanto la fecha original (Cancelada tras aprobar reprogramación)
           // como la nueva (Activa), duplicando días en la vista del empleado.
+          // Días asignados que YA cambiaron de fecha por edición de días empresa.
+          // Se marcan en la lista para que quede constancia de que ese día fue
+          // alterado: antes solo se veía la fecha nueva, indistinguible de un día
+          // que nunca se tocó, y no había forma de llevar ese control.
+          let edicionesPorFecha = new Map<string, string>();
+          try {
+            const solicitudesEdicion = await edicionDiasEmpresaService.obtenerMisSolicitudes(empId);
+            edicionesPorFecha = new Map(
+              (solicitudesEdicion ?? [])
+                .filter(s => s.estadoSolicitud === "Aprobada")
+                .map(s => [String(s.fechaNueva).slice(0, 10), String(s.fechaOriginal).slice(0, 10)])
+            );
+          } catch (err) {
+            console.warn('No se pudieron cargar las ediciones de días empresa:', err);
+          }
+
           const automaticas = vacs
             .filter(v => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
-            .map(v => ({ date: v.fechaVacacion }));
+            .map(v => {
+              const fechaAnterior = edicionesPorFecha.get(String(v.fechaVacacion).slice(0, 10));
+              return fechaAnterior
+                ? { date: v.fechaVacacion, origen: "Edición empresa", fechaAnterior }
+                : { date: v.fechaVacacion };
+            });
           const festivosTrabajados = vacs
             .filter(v => v.tipoVacacion === "FestivoTrabajado" && v.estadoVacacion === "Activa")
             .map(v => ({ date: v.fechaVacacion }));

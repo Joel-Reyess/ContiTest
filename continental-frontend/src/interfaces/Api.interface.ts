@@ -1113,6 +1113,10 @@ export interface ReporteDiasReprogramadosEmpresa {
     nombreSolicitadoPor?: string;
     observacionesEmpleado?: string;
     motivoRechazo?: string;
+    /** "Edición empresa" (pestaña Vacaciones) o "Superusuario" (reprogramación día empresa). */
+    origen?: string;
+    /** Motivo de catálogo. Solo lo trae el flujo del superusuario. */
+    motivoTipo?: string;
 }
 
 export interface SolicitarEdicionDiaEmpresaRequest {

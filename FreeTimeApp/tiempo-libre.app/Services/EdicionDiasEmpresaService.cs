@@ -338,10 +338,50 @@ namespace tiempo_libre.Services
             return solicitudes.Select(MapearSolicitud).ToList();
         }
 
+        /// <summary>
+        /// Todas las solicitudes de edición de días empresa, opcionalmente de un
+        /// año. La usa el historial del delegado sindical, que no está acotado a
+        /// un área: el delegado captura para compañeros de varias.
+        /// </summary>
+        public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerTodasAsync(int? anio = null)
+        {
+            var query = _db.SolicitudesEdicionDiasEmpresa
+                .Include(s => s.Empleado)
+                    .ThenInclude(e => e.Area)
+                .Include(s => s.Empleado)
+                    .ThenInclude(e => e.Grupo)
+                .Include(s => s.JefeArea)
+                .Include(s => s.SolicitadoPor)
+                .AsQueryable();
+
+            if (anio.HasValue)
+                query = query.Where(s => s.FechaSolicitud.Year == anio.Value);
+
+            var solicitudes = await query
+                .OrderByDescending(s => s.FechaSolicitud)
+                .ToListAsync();
+
+            return solicitudes.Select(MapearSolicitud).ToList();
+        }
+
         // ─── Reporte ────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Reporte de días asignados por la empresa que cambiaron de fecha.
+        ///
+        /// Junta LOS DOS flujos que pueden moverlos: la edición desde la pestaña
+        /// de Vacaciones (empleado/delegado) y la reprogramación del SuperUsuario.
+        /// Antes solo traía el primero, así que los movimientos del SuperUsuario
+        /// no aparecían en ningún reporte.
+        ///
+        /// El rango [fechaDesde, fechaHasta] filtra por FECHA DE SOLICITUD, que es
+        /// cuando se hizo el movimiento — es lo que se busca al pedir "lo de esta
+        /// semana". Antes el endpoint ni siquiera recibía el rango: la pantalla lo
+        /// dejaba capturar y el backend lo ignoraba, devolviendo el año completo.
+        /// </summary>
         public async Task<List<ReporteDiasReprogramadosEmpresaDto>> GenerarReporteAsync(
-            int? anio = null, int? areaId = null)
+            int? anio = null, int? areaId = null,
+            DateTime? fechaDesde = null, DateTime? fechaHasta = null)
         {
             var query = _db.SolicitudesEdicionDiasEmpresa
                 .Include(s => s.Empleado)
@@ -358,12 +398,15 @@ namespace tiempo_libre.Services
             if (areaId.HasValue)
                 query = query.Where(s => s.Empleado.AreaId == areaId.Value);
 
-            var solicitudes = await query
-                .OrderBy(s => s.Empleado.FullName)
-                .ThenBy(s => s.FechaOriginal)
-                .ToListAsync();
+            if (fechaDesde.HasValue)
+                query = query.Where(s => s.FechaSolicitud >= fechaDesde.Value);
 
-            return solicitudes.Select(s => new ReporteDiasReprogramadosEmpresaDto
+            if (fechaHasta.HasValue)
+                query = query.Where(s => s.FechaSolicitud <= fechaHasta.Value);
+
+            var solicitudes = await query.ToListAsync();
+
+            var resultado = solicitudes.Select(s => new ReporteDiasReprogramadosEmpresaDto
             {
                 Id = s.Id,
                 EmpleadoId = s.EmpleadoId,
@@ -379,8 +422,59 @@ namespace tiempo_libre.Services
                 NombreJefeArea = s.JefeArea?.FullName,
                 NombreSolicitadoPor = s.SolicitadoPor?.FullName,
                 ObservacionesEmpleado = s.ObservacionesEmpleado,
-                MotivoRechazo = s.MotivoRechazo
+                MotivoRechazo = s.MotivoRechazo,
+                Origen = ReporteDiasReprogramadosEmpresaDto.OrigenEdicionEmpresa
             }).ToList();
+
+            // Segundo flujo: reprogramación de día empresa del SuperUsuario.
+            var querySuper = _db.SolicitudesReprogramacionDiaEmpresa
+                .Include(s => s.Empleado)
+                    .ThenInclude(e => e.Area)
+                .Include(s => s.Empleado)
+                    .ThenInclude(e => e.Grupo)
+                .Include(s => s.SolicitadoPor)
+                .Include(s => s.AprobadoPor)
+                .AsQueryable();
+
+            if (anio.HasValue)
+                querySuper = querySuper.Where(s => s.FechaOriginal.Year == anio.Value);
+
+            if (areaId.HasValue)
+                querySuper = querySuper.Where(s => s.Empleado.AreaId == areaId.Value);
+
+            if (fechaDesde.HasValue)
+                querySuper = querySuper.Where(s => s.FechaSolicitud >= fechaDesde.Value);
+
+            if (fechaHasta.HasValue)
+                querySuper = querySuper.Where(s => s.FechaSolicitud <= fechaHasta.Value);
+
+            var solicitudesSuper = await querySuper.ToListAsync();
+
+            resultado.AddRange(solicitudesSuper.Select(s => new ReporteDiasReprogramadosEmpresaDto
+            {
+                Id = s.Id,
+                EmpleadoId = s.EmpleadoId,
+                Nomina = s.Empleado?.Nomina,
+                NombreEmpleado = s.Empleado?.FullName ?? string.Empty,
+                Area = s.Empleado?.Area?.NombreGeneral,
+                Grupo = s.Empleado?.Grupo?.Rol,
+                FechaOriginal = s.FechaOriginal,
+                FechaNueva = s.FechaNueva,
+                EstadoSolicitud = s.EstadoSolicitud,
+                FechaSolicitud = s.FechaSolicitud,
+                FechaRespuesta = s.FechaRespuesta,
+                NombreJefeArea = s.AprobadoPor?.FullName,
+                NombreSolicitadoPor = s.SolicitadoPor?.FullName,
+                ObservacionesEmpleado = s.Justificacion,
+                MotivoRechazo = s.MotivoRechazo,
+                MotivoTipo = s.MotivoTipo,
+                Origen = ReporteDiasReprogramadosEmpresaDto.OrigenSuperusuario
+            }));
+
+            return resultado
+                .OrderBy(r => r.NombreEmpleado)
+                .ThenBy(r => r.FechaOriginal)
+                .ToList();
         }
 
         // ─── Helpers ────────────────────────────────────────────────────────────

@@ -40,7 +40,10 @@ export const Summary = ({
     period,
     isDelegadoSindicato, // ✅ Agregar este parámetro
 }: {
-    assignedDays: { date: string }[];
+    // origen/fechaAnterior vienen llenos solo cuando el día ya cambió de fecha
+    // por edición de días empresa o por el superusuario. Sirven para dejar
+    // constancia visible de que ese día fue alterado.
+    assignedDays: { date: string; origen?: string; fechaAnterior?: string }[];
     availableDays: number;
     workedHoliday?: { date: string }[];
     vacaciones?: any[];
@@ -72,13 +75,31 @@ export const Summary = ({
                         {assignedDays.map((day) => (
                             <div
                                 key={day.date}
-                                className="flex items-center justify-center p-2 border border-continental-gray-4"
+                                className="flex flex-col items-center justify-center gap-1 p-2 border border-continental-gray-4"
                             >
                                 <p>
                                     {format(parseDateToLocal(day.date), "EEE, d 'de' MMMM 'de' yyyy", {
                                         locale: es,
                                     })}
                                 </p>
+                                {day.origen && (
+                                    <span
+                                        className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                                        title={
+                                            day.fechaAnterior
+                                                ? `Originalmente ${format(parseDateToLocal(day.fechaAnterior), "d 'de' MMMM 'de' yyyy", { locale: es })}`
+                                                : undefined
+                                        }
+                                    >
+                                        {day.origen}
+                                        {day.fechaAnterior && (
+                                            <>
+                                                {' · antes '}
+                                                {format(parseDateToLocal(day.fechaAnterior), 'dd/MM/yyyy')}
+                                            </>
+                                        )}
+                                    </span>
+                                )}
                             </div>
                         ))}
                     </div>

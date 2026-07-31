@@ -28,9 +28,19 @@ import {
     reprogramacionPostIncapacidadService,
     type SolicitudReprogramacionPostIncapacidad,
 } from "@/services/reprogramacionPostIncapacidadService";
+import { edicionDiasEmpresaService } from "@/services/edicionDiasEmpresaService";
+import {
+    reprogramacionDiaEmpresaService,
+    type SolicitudReprogramacionDiaEmpresa,
+} from "@/services/reprogramacionDiaEmpresaService";
+import type { SolicitudEdicionDiaEmpresa } from "@/interfaces/Api.interface";
 
 export type RequestStatus = "approved" | "rejected" | "pending" | "cancelled";
-export type RequestType = "day_exchange" | "holiday_worked" | "permission_request";
+// "company_day_edit" agrupa los DOS flujos que mueven un día asignado por la
+// empresa: la edición desde la pestaña de Vacaciones y la reprogramación del
+// superusuario. Antes ninguno de los dos aparecía en este historial, así que el
+// delegado capturaba la solicitud y después no había forma de consultarla.
+export type RequestType = "day_exchange" | "holiday_worked" | "permission_request" | "company_day_edit";
 
 export interface VacationRequest {
     id: string;
@@ -50,6 +60,8 @@ export interface VacationRequest {
     employeeNomina?: string; // 🆕 Agregado
     requester?: string | null;
     reviewer?: string | null;
+    // Solo para company_day_edit: de cuál de los dos flujos salió el movimiento.
+    origenDiaEmpresa?: 'Edición empresa' | 'Superusuario';
 }
 
 // Función para mapear SolicitudReprogramacion a VacationRequest
@@ -129,6 +141,51 @@ const mapPostIncapacidadToRequest = (
         employeeNomina: s.nomina ? s.nomina.toString() : undefined,
         requester: s.nombreSolicitadoPor || null,
         reviewer: s.nombreAprobadoPor || null,
+    };
+};
+
+const mapEdicionDiaEmpresaToRequest = (s: SolicitudEdicionDiaEmpresa): VacationRequest => {
+    const status: RequestStatus =
+        s.estadoSolicitud === 'Aprobada' ? 'approved' :
+            s.estadoSolicitud === 'Rechazada' ? 'rejected' : 'pending';
+    return {
+        id: `ede-${s.id}`,
+        type: "company_day_edit",
+        requestDate: s.fechaSolicitud,
+        responseDate: s.fechaRespuesta || undefined,
+        status,
+        rejectionReason: s.motivoRechazo || undefined,
+        requestedDay: s.fechaNueva,
+        dayToGive: s.fechaOriginal,
+        employeeName: s.nombreEmpleado,
+        employeeNomina: s.nominaEmpleado ? s.nominaEmpleado.toString() : undefined,
+        requester: s.nombreSolicitadoPor || null,
+        reviewer: s.nombreJefeArea || null,
+        origenDiaEmpresa: 'Edición empresa',
+    };
+};
+
+const mapReprogDiaEmpresaToRequest = (s: SolicitudReprogramacionDiaEmpresa): VacationRequest => {
+    const status: RequestStatus =
+        s.estadoSolicitud === 'Aprobada' ? 'approved' :
+            s.estadoSolicitud === 'Rechazada' ? 'rejected' :
+                s.estadoSolicitud === 'Cancelada' ? 'cancelled' : 'pending';
+    return {
+        id: `rde-${s.id}`,
+        type: "company_day_edit",
+        requestDate: s.fechaSolicitud,
+        responseDate: s.fechaRespuesta || undefined,
+        status,
+        rejectionReason: s.motivoRechazo || undefined,
+        requestedDay: s.fechaNueva,
+        dayToGive: s.fechaOriginal,
+        employeeName: s.nombreEmpleado || undefined,
+        employeeArea: s.areaEmpleado || undefined,
+        employeeGroup: s.grupoEmpleado || undefined,
+        employeeNomina: s.nomina ? s.nomina.toString() : undefined,
+        requester: s.nombreSolicitadoPor || null,
+        reviewer: s.nombreAprobadoPor || null,
+        origenDiaEmpresa: 'Superusuario',
     };
 };
 
@@ -343,7 +400,31 @@ const MyRequests = () => {
                     console.error('Error al cargar historial de permisos:', err);
                 }
 
-                const allRequests = [...reprogramacionesRequests, ...festivosRequests, ...permisosRequests, ...postIncapacidadRequests];
+                // Días asignados por la empresa que cambiaron de fecha. Son dos
+                // tablas distintas —edición desde Vacaciones y reprogramación del
+                // superusuario— pero para quien consulta es el mismo movimiento,
+                // así que se muestran bajo un solo tipo.
+                let diaEmpresaRequests: VacationRequest[] = [];
+                try {
+                    const ediciones = await edicionDiasEmpresaService.obtenerTodas(yearFilter);
+                    diaEmpresaRequests = (ediciones ?? []).map(mapEdicionDiaEmpresaToRequest);
+                } catch (err) {
+                    console.error('Error al cargar ediciones de días empresa:', err);
+                }
+                try {
+                    const reprogSuper = await reprogramacionDiaEmpresaService.getTodas();
+                    diaEmpresaRequests = diaEmpresaRequests.concat(
+                        (reprogSuper ?? [])
+                            .filter(s => new Date(s.fechaSolicitud).getFullYear() === yearFilter)
+                            .map(mapReprogDiaEmpresaToRequest)
+                    );
+                } catch (err) {
+                    // El empleado sindicalizado raso no tiene permiso sobre este
+                    // endpoint; no es un error que deba romper la pantalla.
+                    console.warn('No se pudieron cargar las reprogramaciones de día empresa:', err);
+                }
+
+                const allRequests = [...reprogramacionesRequests, ...festivosRequests, ...permisosRequests, ...postIncapacidadRequests, ...diaEmpresaRequests];
                 allRequests.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
                 console.log('✅ Total solicitudes cargadas:', allRequests.length);
@@ -497,6 +578,7 @@ const MyRequests = () => {
                                         <option value="day_exchange">Reprogramación de Vacaciones</option>
                                         <option value="holiday_worked">Festivo Trabajado</option>
                                         <option value="permission_request">Permiso/Incapacidad</option>
+                                        <option value="company_day_edit">Edición días empresa</option>
                                     </select>
                                 </div>
 
@@ -631,6 +713,14 @@ const MyRequests = () => {
                                             <span className="text-sm font-medium text-gray-700">
                                                 {getRequestTypeText(request.type)}
                                             </span>
+                                            {/* De cuál de los dos flujos salió el movimiento de día empresa */}
+                                            {request.origenDiaEmpresa && (
+                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                                    {request.origenDiaEmpresa === 'Superusuario'
+                                                        ? 'Editado por superusuario'
+                                                        : 'Edición empresa'}
+                                                </span>
+                                            )}
                                             {/* 🆕 Badge para Sistema/Delegado */}
                                             {isDelegadoSindical && (
                                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${!request.requester || request.requester.toLowerCase().includes("sistema")
@@ -935,5 +1025,7 @@ export const getRequestTypeText = (type: RequestType) => {
             return "Festivo Trabajado";
         case "permission_request":
             return "Permiso/Incapacidad";
+        case "company_day_edit":
+            return "Edición días empresa";
     }
 };
