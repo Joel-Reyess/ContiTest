@@ -61,11 +61,16 @@ export const codigoFromTipoIncidencia = (tipoIncidencia?: string | null): SAPCod
     if (lower.includes('enfermedad')) return 'E';
     if (lower.includes('incapacidad')) return 'E';
     if (lower.includes('suspensi')) return 'S';
-    if (lower.includes('festivo')) return 'F';
-    if (lower.includes('defunci') || lower.includes('con goce')) return 'P';
-    if (lower.includes('paternidad')) return 'O';
+    // 'sin goce' antes que 'con goce': "con goce" no es subcadena de "sin goce",
+    // pero el orden deja explícito cuál gana si el texto de SAP trae ambos.
     if (lower.includes('sin goce')) return 'G';
+    if (lower.includes('defunci') || lower.includes('con goce')) return 'P';
     if (lower.includes('reprog')) return 'C';
+    // 'festivo' va al final a propósito: es la señal más débil de todas y
+    // aparece de pasada en descripciones de permisos e incapacidades ("permiso
+    // sin goce en día festivo"). Si se evalúa antes, se traga esos casos y el
+    // día se pinta como festivo trabajado.
+    if (lower.includes('festivo')) return 'F';
     if (lower.includes('vacacion')) return 'V';
     // Vocabulario de programación anual (tipoVacacion del backend): estas
     // vacaciones también deben pintarse con la nomenclatura SAP 'V' para que

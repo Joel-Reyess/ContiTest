@@ -102,6 +102,21 @@ namespace tiempo_libre.Services
                             (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                 .ToListAsync();
 
+            // Cuando un empleado tiene varios registros traslapados el mismo día
+            // (SAP reexportó el permiso con otro Hasta, o coinciden vacación y
+            // ausencia) más abajo gana el PRIMERO que se recorra. Sin ORDER BY,
+            // "el primero" es el que SQL Server decida devolver, así que la misma
+            // pantalla podía mostrar una cosa hoy y otra mañana.
+            //
+            // Orden explícito: una ausencia real (incapacidad/permiso) manda sobre
+            // la vacación 1100, y entre iguales gana el registro más reciente, que
+            // es el que refleja la última carga de SAP.
+            permisosIncapacidades = permisosIncapacidades
+                .OrderBy(p => p.ClAbPre == 1100 ? 1 : 0)
+                .ThenByDescending(p => p.FechaRegistro)
+                .ThenByDescending(p => p.Id)
+                .ToList();
+
             var permisosPorEmpleadoYFecha = new Dictionary<string, Dictionary<int, string>>();
             foreach (var permiso in permisosIncapacidades)
             {
@@ -285,7 +300,26 @@ namespace tiempo_libre.Services
             if (clAbPre == "2381")
                 return claseAbsentismo?.ToLower().Contains("permiso") == true ? "H" : "A";
 
-            return mapeo.TryGetValue(clAbPre, out var clave) ? clave : clAbPre;
+            if (mapeo.TryGetValue(clAbPre, out var clave))
+                return clave;
+
+            // Código SAP fuera del catálogo de nueve. Antes se devolvía el número
+            // crudo ("2320") y ni el calendario ni la leyenda saben pintarlo: el
+            // día salía en blanco, como si el empleado hubiera trabajado normal.
+            // Se deduce por el texto de la clase de absentismo antes de rendirse.
+            var texto = (claseAbsentismo ?? string.Empty).ToLowerInvariant();
+            if (texto.Contains("maternidad")) return "M";
+            if (texto.Contains("paternidad")) return "O";
+            if (texto.Contains("riesgo")) return "R";
+            if (texto.Contains("accidente")) return "A";
+            if (texto.Contains("enfermedad")) return "E";
+            if (texto.Contains("incapacidad")) return "E";
+            if (texto.Contains("suspensi")) return "S";
+            if (texto.Contains("sin goce")) return "G";
+            if (texto.Contains("con goce") || texto.Contains("defunci")) return "P";
+            if (texto.Contains("vacac")) return "V";
+
+            return clAbPre;
         }
     }
 }

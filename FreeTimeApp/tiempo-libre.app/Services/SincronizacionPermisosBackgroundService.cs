@@ -72,8 +72,17 @@ namespace tiempo_libre.Services
                 try
                 {
                     int registrosInsertados = 0;
+                    int registrosActualizados = 0;
                     int registrosOmitidos = 0;
                     int erroresConversion = 0;
+                    int muestraParseo = 0;
+
+                    // La tabla de staging se TRUNCA al terminar, asi que una fila
+                    // descartada aqui se pierde para siempre: no vuelve a llegar en
+                    // el siguiente Excel si RH solo sube los movimientos nuevos.
+                    // Antes solo se contaban; ahora se deja constancia de cada una
+                    // con su motivo para poder recapturarlas.
+                    var rechazados = new List<string>();
 
                     // Obtener registros con READ UNCOMMITTED para evitar bloqueos
                     var registrosActualizar = await context.PermisosEIncapacidadesSAPActualizar
@@ -103,6 +112,9 @@ namespace tiempo_libre.Services
                                     string.IsNullOrWhiteSpace(registro.Hasta) ||
                                     string.IsNullOrWhiteSpace(registro.ClAbPre))
                                 {
+                                    rechazados.Add(
+                                        $"Fila incompleta: Nomina='{registro.Nomina}' Desde='{registro.Desde}' " +
+                                        $"Hasta='{registro.Hasta}' ClAbPre='{registro.ClAbPre}'");
                                     erroresConversion++;
                                     continue;
                                 }
@@ -110,72 +122,77 @@ namespace tiempo_libre.Services
                                 // Conversiones
                                 if (!int.TryParse(registro.Nomina.Trim(), out int nomina))
                                 {
+                                    rechazados.Add($"Nomina '{registro.Nomina}' no es numerica");
                                     _logger.LogWarning($"N�mina inv�lida: {registro.Nomina}");
                                     erroresConversion++;
                                     continue;
                                 }
 
-                                DateOnly desde;
-                                if (!DateOnly.TryParseExact(registro.Desde.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out desde))
+                                if (!TryParsearFecha(registro.Desde, out DateOnly desde))
                                 {
-                                    if (!DateOnly.TryParse(registro.Desde.Trim(), out desde))
-                                    {
-                                        erroresConversion++;
-                                        continue;
-                                    }
-                                }
-
-                                DateOnly hasta;
-                                if (!DateOnly.TryParseExact(registro.Hasta.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out hasta))
-                                {
-                                    if (!DateOnly.TryParse(registro.Hasta.Trim(), out hasta))
-                                    {
-                                        erroresConversion++;
-                                        continue;
-                                    }
-                                }
-
-                                if (!int.TryParse(registro.ClAbPre.Trim(), out int clAbPre))
-                                {
+                                    rechazados.Add($"Nomina={registro.Nomina} ClAbPre={registro.ClAbPre}: fecha Desde '{registro.Desde}' no se pudo interpretar");
                                     erroresConversion++;
                                     continue;
                                 }
 
-                                // Verificar duplicado
-                                var existente = await context.PermisosEIncapacidadesSAP
-                                    .AsNoTracking()
-                                    .AnyAsync(p =>
+                                if (!TryParsearFecha(registro.Hasta, out DateOnly hasta))
+                                {
+                                    rechazados.Add($"Nomina={registro.Nomina} ClAbPre={registro.ClAbPre}: fecha Hasta '{registro.Hasta}' no se pudo interpretar");
+                                    erroresConversion++;
+                                    continue;
+                                }
+
+                                if (!int.TryParse(registro.ClAbPre.Trim(), out int clAbPre))
+                                {
+                                    rechazados.Add($"Nomina={registro.Nomina}: ClAbPre '{registro.ClAbPre}' no es numerico");
+                                    erroresConversion++;
+                                    continue;
+                                }
+
+                                // Muestra de control: permite cotejar contra el Excel
+                                // que el texto de SAP se esta interpretando con el
+                                // orden dia-mes correcto, sin abrir la base de datos.
+                                if (muestraParseo < 3)
+                                {
+                                    muestraParseo++;
+                                    _logger.LogInformation(
+                                        "Muestra de parseo #{N}: Nomina={Nomina} Desde '{DesdeRaw}' -> {Desde:yyyy-MM-dd} | Hasta '{HastaRaw}' -> {Hasta:yyyy-MM-dd}",
+                                        muestraParseo, nomina, registro.Desde, desde, registro.Hasta, hasta);
+                                }
+
+                                // Registro previo del MISMO permiso. La identidad de un
+                                // permiso es (Nomina, Desde, ClAbPre): un empleado no
+                                // puede tener dos ausencias del mismo tipo empezando el
+                                // mismo dia. Hasta NO forma parte de la llave porque es
+                                // justo lo que cambia cuando SAP prolonga una incapacidad.
+                                //
+                                // Antes la comparacion incluia Hasta: al reexportar una
+                                // incapacidad prolongada no encontraba coincidencia e
+                                // insertaba una SEGUNDA fila. El calendario se queda con
+                                // la primera que devuelve la consulta, asi que la app podia
+                                // seguir mostrando el periodo corto indefinidamente.
+                                var previo = await context.PermisosEIncapacidadesSAP
+                                    .Where(p =>
                                         p.Nomina == nomina &&
                                         p.Desde == desde &&
-                                        p.Hasta == hasta &&
                                         p.ClAbPre == clAbPre &&
-                                        p.EsRegistroManual == false);
+                                        p.EsRegistroManual == false)
+                                    .OrderByDescending(p => p.Hasta)
+                                    .FirstOrDefaultAsync();
 
-                                if (existente)
+                                // Punto 6: si el jefe ya extendio este permiso desde la
+                                // app, el Excel no lo pisa.
+                                if (previo != null && previo.ProtegidoPorExtension)
                                 {
+                                    _logger.LogInformation(
+                                        "Omitido por proteccion de extension: Nomina={Nomina} Desde={Desde} ClAbPre={ClAbPre}",
+                                        nomina, desde, clAbPre);
                                     registrosOmitidos++;
                                     continue;
                                 }
 
-                                // Punto 6: si ya existe un registro protegido por
-                                // extensión del jefe (mismo Nomina+Desde+ClAbPre),
-                                // no insertar nada del Excel para no pisar lo que
-                                // el jefe extendió. Compara solo por (Nomina,
-                                // Desde, ClAbPre) — Hasta puede haber cambiado
-                                // si la versión Excel original difiere.
-                                var protegido = await context.PermisosEIncapacidadesSAP
-                                    .AsNoTracking()
-                                    .AnyAsync(p =>
-                                        p.Nomina == nomina &&
-                                        p.Desde == desde &&
-                                        p.ClAbPre == clAbPre &&
-                                        p.ProtegidoPorExtension);
-
-                                if (protegido)
+                                if (previo != null && previo.Hasta == hasta)
                                 {
-                                    _logger.LogInformation(
-                                        "Omitido por protección de extensión: Nomina={Nomina} Desde={Desde} ClAbPre={ClAbPre}",
-                                        nomina, desde, clAbPre);
                                     registrosOmitidos++;
                                     continue;
                                 }
@@ -187,7 +204,9 @@ namespace tiempo_libre.Services
 
                                 if (!empleadoExiste)
                                 {
-                                    _logger.LogWarning($"Empleado con n�mina {nomina} no encontrado en Users");
+                                    rechazados.Add(
+                                        $"Nomina={nomina} ClAbPre={clAbPre} {desde:yyyy-MM-dd}..{hasta:yyyy-MM-dd}: " +
+                                        "el empleado no existe en Users");
                                     erroresConversion++;
                                     continue;
                                 }
@@ -213,6 +232,25 @@ namespace tiempo_libre.Services
                                     }
                                 }
 
+                                // Mismo permiso con distinto Hasta: SAP lo prolongo (o lo
+                                // acorto). Se ACTUALIZA la fila existente en vez de crear
+                                // una paralela que competiria con ella en el calendario.
+                                if (previo != null)
+                                {
+                                    _logger.LogInformation(
+                                        "Permiso actualizado desde SAP: Nomina={Nomina} ClAbPre={ClAbPre} Desde={Desde} Hasta {HastaAnterior} -> {HastaNuevo}",
+                                        nomina, clAbPre, desde, previo.Hasta, hasta);
+
+                                    previo.Hasta = hasta;
+                                    previo.Dias = dias;
+                                    previo.DiaNat = diaNat;
+                                    if (!string.IsNullOrWhiteSpace(registro.ClaseAbsentismo))
+                                        previo.ClaseAbsentismo = registro.ClaseAbsentismo.Trim();
+
+                                    registrosActualizados++;
+                                    continue;
+                                }
+
                                 // Crear nuevo registro
                                 var nuevoPermiso = new PermisosEIncapacidadesSAP
                                 {
@@ -229,7 +267,11 @@ namespace tiempo_libre.Services
                                     EsRegistroManual = false,
                                     FechaRegistro = DateTime.Now,
                                     UsuarioRegistraId = null,
-                                    EstadoSolicitud = "Aprobado",
+                                    // "Aprobada" con A: todos los filtros del backend
+                                    // comparan contra esa forma. Escribir "Aprobado"
+                                    // solo funcionaba de rebote porque estas filas
+                                    // tienen FechaSolicitud nula.
+                                    EstadoSolicitud = "Aprobada",
                                     DelegadoSolicitanteId = null,
                                     JefeAprobadorId = null,
                                     MotivoRechazo = null,
@@ -247,13 +289,13 @@ namespace tiempo_libre.Services
                             }
                         }
 
-                        // Guardar cada lote
-                        if (registrosInsertados > 0)
+                        // Guardar cada lote (altas y actualizaciones pendientes)
+                        if (context.ChangeTracker.HasChanges())
                         {
                             try
                             {
-                                await context.SaveChangesAsync();
-                                _logger.LogInformation($"Lote guardado con {registrosInsertados} registros");
+                                var guardados = await context.SaveChangesAsync();
+                                _logger.LogInformation($"Lote guardado: {guardados} filas afectadas");
                             }
                             catch (Exception ex)
                             {
@@ -263,8 +305,17 @@ namespace tiempo_libre.Services
                         }
                     }
 
-                    // Limpiar tabla SOLO si se insertaron registros exitosamente
-                    if (registrosInsertados > 0)
+                    // Las filas descartadas se pierden al truncar. Se dejan en el log
+                    // ANTES del TRUNCATE, con nomina y motivo, para poder recapturarlas.
+                    if (rechazados.Count > 0)
+                    {
+                        _logger.LogError(
+                            "SINCRONIZACION DE PERMISOS: {Total} fila(s) del Excel NO se cargaron y se perderan al limpiar el staging:\n{Detalle}",
+                            rechazados.Count, string.Join("\n", rechazados));
+                    }
+
+                    // Limpiar tabla SOLO si se proceso algo exitosamente
+                    if (registrosInsertados > 0 || registrosActualizados > 0)
                     {
                         try
                         {
@@ -280,8 +331,9 @@ namespace tiempo_libre.Services
                     _logger.LogInformation(
                         $"Sincronizaci�n de permisos completada. " +
                         $"Insertados: {registrosInsertados}, " +
-                        $"Omitidos (duplicados): {registrosOmitidos}, " +
-                        $"Errores: {erroresConversion}");
+                        $"Actualizados: {registrosActualizados}, " +
+                        $"Omitidos (sin cambios): {registrosOmitidos}, " +
+                        $"Descartados: {erroresConversion}");
                 }
                 catch (Exception ex)
                 {
@@ -289,6 +341,55 @@ namespace tiempo_libre.Services
                     throw;
                 }
             }
+        }
+
+        // SAP entrega las fechas como texto en la tabla de staging y no siempre
+        // con el mismo formato. Antes se intentaba "yyyy-MM-dd" y, si fallaba,
+        // se caía a DateOnly.TryParse a secas: ese overload usa la cultura del
+        // SERVIDOR. Con cultura en-US un "05/07/2026" (5 de julio) se guardaba
+        // como 7 de mayo, sin error y sin aviso — el permiso aparecía en el mes
+        // equivocado. Y con día > 12 ("25/07/2026") no parseaba y la fila se
+        // descartaba en silencio.
+        //
+        // Ahora los formatos son explícitos e invariantes. Se asume orden
+        // día-mes (formato SAP/México); NO se acepta MM/dd/yyyy porque es
+        // indistinguible de dd/MM/yyyy y adivinar es justo lo que causó el bug.
+        private static readonly string[] _formatosFecha =
+        {
+            "yyyy-MM-dd", "yyyy/MM/dd", "yyyyMMdd",
+            "dd/MM/yyyy", "dd-MM-yyyy", "dd.MM.yyyy",
+            "d/M/yyyy",   "d-M-yyyy",   "d.M.yyyy",
+            "dd/MM/yy",   "d/M/yy",
+        };
+
+        private static readonly string[] _formatosFechaHora =
+        {
+            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd HH:mm",
+            "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm",
+        };
+
+        private static bool TryParsearFecha(string? valor, out DateOnly fecha)
+        {
+            fecha = default;
+            if (string.IsNullOrWhiteSpace(valor)) return false;
+
+            var v = valor.Trim();
+
+            if (DateOnly.TryParseExact(v, _formatosFecha, CultureInfo.InvariantCulture, DateTimeStyles.None, out fecha))
+                return true;
+
+            if (DateTime.TryParseExact(v, _formatosFechaHora, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            {
+                fecha = DateOnly.FromDateTime(dt);
+                return true;
+            }
+
+            // Último recurso: cultura mexicana (día-mes), explícita y estable,
+            // en vez de la cultura del servidor que puede cambiar sin avisar.
+            if (DateOnly.TryParse(v, CultureInfo.GetCultureInfo("es-MX"), DateTimeStyles.None, out fecha))
+                return true;
+
+            return false;
         }
     }
 }
