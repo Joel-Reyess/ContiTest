@@ -76,6 +76,7 @@ namespace tiempo_libre.Services
                     int registrosOmitidos = 0;
                     int erroresConversion = 0;
                     int muestraParseo = 0;
+                    bool huboFalloAlGuardar = false;
 
                     // La tabla de staging se TRUNCA al terminar, asi que una fila
                     // descartada aqui se pierde para siempre: no vuelve a llegar en
@@ -299,8 +300,19 @@ namespace tiempo_libre.Services
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogError(ex, "Error al guardar lote en PermisosEIncapacidadesSAP");
-                                throw;
+                                // Un lote que truena ya no aborta la sincronizacion
+                                // entera. Antes este throw dejaba sin procesar TODOS
+                                // los lotes siguientes: un solo registro invalido
+                                // (un nombre mas largo de lo permitido, por ejemplo)
+                                // podia esconder cientos de permisos buenos, y el
+                                // sintoma era justo este — incapacidades que nunca
+                                // aparecen en la app aunque esten en el Excel.
+                                _logger.LogError(ex,
+                                    "Error al guardar lote en PermisosEIncapacidadesSAP. Nominas del lote: {Nominas}",
+                                    string.Join(", ", lote.Select(r => r.Nomina)));
+
+                                huboFalloAlGuardar = true;
+                                context.ChangeTracker.Clear();
                             }
                         }
                     }
@@ -314,8 +326,17 @@ namespace tiempo_libre.Services
                             rechazados.Count, string.Join("\n", rechazados));
                     }
 
+                    // Si algun lote no se pudo guardar, NO se limpia el staging: esas
+                    // filas siguen ahi para el siguiente intento en vez de perderse.
+                    if (huboFalloAlGuardar)
+                    {
+                        _logger.LogError(
+                            "SINCRONIZACION DE PERMISOS: hubo lotes que no se guardaron. " +
+                            "No se limpia PermisosEIncapacidadesSAP_Actualizar para no perder esas filas.");
+                    }
+
                     // Limpiar tabla SOLO si se proceso algo exitosamente
-                    if (registrosInsertados > 0 || registrosActualizados > 0)
+                    if ((registrosInsertados > 0 || registrosActualizados > 0) && !huboFalloAlGuardar)
                     {
                         try
                         {

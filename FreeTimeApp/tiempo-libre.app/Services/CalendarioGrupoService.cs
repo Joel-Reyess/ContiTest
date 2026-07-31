@@ -229,6 +229,8 @@ namespace tiempo_libre.Services
                     .Where(p => p.Nomina == nominaUsuario.Value &&
                                 p.Hasta >= fechaInicioOnly && p.Desde <= fechaFinOnly &&
                                 (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                    .OrderByDescending(p => p.FechaRegistro)
+                    .ThenByDescending(p => p.Id)
                     .ToListAsync()
                 : new List<PermisosEIncapacidadesSAP>();
 
@@ -241,23 +243,36 @@ namespace tiempo_libre.Services
             {
                 var fechaDia = DateOnly.FromDateTime(dia.Fecha);
 
-                // Verificar vacaciones
-                var vacacion = vacaciones.FirstOrDefault(v => v.FechaVacacion == fechaDia);
-                if (vacacion != null)
-                {
-                    dia.Incidencia = "V";
-                    dia.TipoIncidencia = vacacion.TipoVacacion.ToLower();
-                    continue;
-                }
-
-                // Verificar permisos/incapacidades SAP (incluye extensiones)
-                var permisoSap = permisosSap.FirstOrDefault(p => fechaDia >= p.Desde && fechaDia <= p.Hasta);
+                // El permiso/incapacidad que reporta SAP manda sobre lo que la app
+                // tenga programado ese día: es lo que nómina va a pagar.
+                //
+                // Antes las vacaciones se evaluaban primero y hacían 'continue', así
+                // que un festivo trabajado programado (VacacionesProgramadas con
+                // TipoVacacion = "FestivoTrabajado") tapaba por completo un permiso
+                // sin goce reportado por SAP para el mismo día, y el calendario lo
+                // pintaba como "Festivo trabajado". El rol semanal sí daba prioridad
+                // al permiso, así que las dos pantallas se contradecían.
+                //
+                // Se excluye ClAbPre 1100 (vacación): de eso la app lleva su propio
+                // registro en VacacionesProgramadas, con el tipo de vacación que SAP
+                // no distingue (automática, anual, reprogramación, festivo trabajado).
+                var permisoSap = permisosSap.FirstOrDefault(p =>
+                    fechaDia >= p.Desde && fechaDia <= p.Hasta && p.ClAbPre != 1100);
                 if (permisoSap != null)
                 {
                     dia.Incidencia = "I";
                     dia.TipoIncidencia = !string.IsNullOrEmpty(permisoSap.ClaseAbsentismo)
                         ? permisoSap.ClaseAbsentismo
                         : (permisoSap.ClAbPre?.ToString() ?? "Permiso");
+                    continue;
+                }
+
+                // Verificar vacaciones
+                var vacacion = vacaciones.FirstOrDefault(v => v.FechaVacacion == fechaDia);
+                if (vacacion != null)
+                {
+                    dia.Incidencia = "V";
+                    dia.TipoIncidencia = vacacion.TipoVacacion.ToLower();
                     continue;
                 }
 
