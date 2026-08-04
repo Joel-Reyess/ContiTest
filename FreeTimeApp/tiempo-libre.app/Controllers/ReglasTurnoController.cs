@@ -43,7 +43,7 @@ namespace tiempo_libre.Controllers
         /// los grupos de esas áreas llevan como Rol el código de la regla, con
         /// sufijo "_NN" en los sub-grupos derivados.
         /// </summary>
-        private async Task<System.Collections.Generic.HashSet<string>?> ObtenerCodigosDeReglasVisiblesAsync()
+        private async Task<System.Collections.Generic.List<string>?> ObtenerRolesDeGruposVisiblesAsync()
         {
             if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
                 return null;
@@ -57,23 +57,22 @@ namespace tiempo_libre.Controllers
 
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(claim, out var userId))
-                return new System.Collections.Generic.HashSet<string>();
+                return new System.Collections.Generic.List<string>();
 
             var areasVisibles = await Helpers.AreasVisiblesHelper.AreasVisiblesAsync(_db, userId);
             if (areasVisibles.Count == 0)
-                return new System.Collections.Generic.HashSet<string>();
+                return new System.Collections.Generic.List<string>();
 
-            var roles = await _db.Grupos
+            return await _db.Grupos
                 .Where(g => areasVisibles.Contains(g.AreaId))
                 .Select(g => g.Rol)
                 .Distinct()
                 .ToListAsync();
-
-            // "R0144_02" (sub-grupo derivado) pertenece a la regla "R0144".
-            return roles
-                .Select(rol => System.Text.RegularExpressions.Regex.Replace(rol, @"_\d+$", string.Empty))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
+
+        /// <summary>"R0144_02" (sub-grupo derivado) pertenece a la regla "R0144".</summary>
+        private static string CodigoBaseDeRol(string rol) =>
+            System.Text.RegularExpressions.Regex.Replace(rol, @"_\d+$", string.Empty);
 
         /// <summary>Listar todas las reglas con su patrón actual.</summary>
         [HttpGet]
@@ -88,9 +87,21 @@ namespace tiempo_libre.Controllers
                 // planta a cualquiera con permiso de lectura. Una regla "vive" en
                 // un área a través de los grupos que se le crearon al asignarla
                 // (Grupos.Rol = codigo o codigo_NN), así que se filtra por ahí.
-                var codigosVisibles = await ObtenerCodigosDeReglasVisiblesAsync();
-                if (codigosVisibles != null)
-                    reglas = reglas.Where(r => codigosVisibles.Contains(r.Codigo)).ToList();
+                var rolesVisibles = await ObtenerRolesDeGruposVisiblesAsync();
+                if (rolesVisibles != null)
+                {
+                    // Además de quedarnos con las reglas del área, se marca qué
+                    // sub-grupos existen ahí: el calendario anual dibuja una fila
+                    // por semana del patrón, y sin esto pintaba también los
+                    // sub-grupos que viven en áreas ajenas.
+                    var porCodigo = rolesVisibles
+                        .GroupBy(CodigoBaseDeRol, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.Distinct().ToList(), StringComparer.OrdinalIgnoreCase);
+
+                    reglas = reglas.Where(r => porCodigo.ContainsKey(r.Codigo)).ToList();
+                    foreach (var regla in reglas)
+                        regla.GruposVisibles = porCodigo[regla.Codigo];
+                }
 
                 return Ok(new ApiResponse<object>(true, reglas, null));
             }

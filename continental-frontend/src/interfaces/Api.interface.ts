@@ -1156,6 +1156,12 @@ export interface ReglaTurno {
     estado: 'Activa' | 'PendienteConfiguracion';
     createdAt: string;
     updatedAt?: string | null;
+    /**
+     * Sub-grupos de esta regla que existen en las áreas del usuario que
+     * consulta ("R0144", "R0144_02", …). Ausente = sin restricción, y los
+     * sub-grupos se derivan del largo del patrón como siempre.
+     */
+    gruposVisibles?: string[] | null;
 }
 
 export interface AsignarReglaAAreaRequest {

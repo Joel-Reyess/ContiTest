@@ -147,12 +147,15 @@ export const CalendarioAnualReglas = () => {
         const out: FilaSubGrupo[] = [];
         for (const regla of reglasFiltradas) {
             const numGrupos = Math.max(1, Math.floor(regla.patron.length / 7));
+            // El patrón dice cuántos sub-grupos CABEN, no cuáles existen en el
+            // área de quien consulta. Cuando el backend manda gruposVisibles
+            // (jefe / Gerente BT / RH) nos quedamos solo con ésos: antes se
+            // pintaban también los sub-grupos que viven en otras áreas.
+            const visibles = regla.gruposVisibles;
             for (let g = 1; g <= numGrupos; g++) {
-                out.push({
-                    regla,
-                    subGrupo: g,
-                    nombre: nombreSubGrupo(regla.codigo, g),
-                });
+                const nombre = nombreSubGrupo(regla.codigo, g);
+                if (visibles && visibles.length > 0 && !visibles.includes(nombre)) continue;
+                out.push({ regla, subGrupo: g, nombre });
             }
         }
         return out;

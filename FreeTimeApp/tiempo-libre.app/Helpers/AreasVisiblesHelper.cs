@@ -17,11 +17,42 @@ namespace tiempo_libre.Helpers
     ///   2. AreaAsignaciones (Gerente BT / RH).
     ///   3. Grupos.LiderId (líder de grupo → área del grupo).
     ///   4. AreaIngenieros activos (Ingeniero Industrial).
+    ///
+    /// Excepción: un Gerente BT / RH que no sea además jefe, líder o ingeniero
+    /// solo ve las áreas de AreaAsignaciones — la unión le heredaba áreas por
+    /// fuentes ajenas a su rol.
     /// </summary>
     public static class AreasVisiblesHelper
     {
         public static async Task<List<int>> AreasVisiblesAsync(FreeTimeDbContext db, int userId)
         {
+            // Gerente BT / RH "puro" (sin jefatura, liderazgo ni ingeniería):
+            // su alcance son EXACTAMENTE las áreas que se le asignaron, y nada
+            // más. Antes se le aplicaba la unión completa, así que heredaba
+            // áreas por fuentes que no le corresponden — una fila vieja en
+            // Grupos.LiderId o en las columnas legacy JefeId/JefeSuplenteId le
+            // metía áreas que nadie le asignó. El calendario no lo mostraba
+            // porque lee solo AreaAsignaciones; solicitudes y roles semanales
+            // pasan por aquí, y por eso ahí sí aparecían.
+            var roles = await db.Users
+                .Where(u => u.Id == userId)
+                .SelectMany(u => u.Roles)
+                .Select(r => r.Name)
+                .ToListAsync();
+
+            var esGerenteORH = RolesHelper.TieneRolNombres(roles, "Gerente BT", "RH");
+            var tieneOtroRolDeAlcance = RolesHelper.TieneRolNombres(
+                roles, "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial", "Super Usuario");
+
+            if (esGerenteORH && !tieneOtroRolDeAlcance)
+            {
+                return await db.AreaAsignaciones
+                    .Where(aa => aa.UserId == userId)
+                    .Select(aa => aa.AreaId)
+                    .Distinct()
+                    .ToListAsync();
+            }
+
             var porJefatura = await db.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == userId) ||
                             a.Asignaciones.Any(aa => aa.UserId == userId) ||

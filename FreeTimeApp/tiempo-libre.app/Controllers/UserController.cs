@@ -1186,6 +1186,45 @@ namespace tiempo_libre.app.Controllers
             _logger.LogInformation("BuildConsolidatedAreas llamado para usuario {UserId}", userId);
             var consolidatedAreas = new List<AreaWithRoleDto>();
 
+            // Gerente BT / RH "puro": su alcance son solo sus AreaAsignaciones.
+            // Con la unión completa heredaba áreas por jefatura legacy o por
+            // Grupos.LiderId, y esas áreas aparecían en el selector y en las
+            // consultas aunque nadie se las hubiera asignado. Misma regla que
+            // AreasVisiblesHelper; las dos fuentes tienen que coincidir.
+            var rolesUsuario = await _dbContext.Users
+                .Where(u => u.Id == userId)
+                .SelectMany(u => u.Roles)
+                .Select(r => r.Name)
+                .ToListAsync();
+
+            var soloAsignaciones =
+                Helpers.RolesHelper.TieneRolNombres(rolesUsuario, "Gerente BT", "RH") &&
+                !Helpers.RolesHelper.TieneRolNombres(
+                    rolesUsuario, "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial", "Super Usuario");
+
+            if (soloAsignaciones)
+            {
+                var soloAsignadas = await _dbContext.Areas
+                    .Where(a => a.Asignaciones.Any(aa => aa.UserId == userId))
+                    .Select(a => new AreaWithRoleDto
+                    {
+                        AreaId = a.AreaId,
+                        NombreGeneral = a.NombreGeneral,
+                        UserRole = "Asignado",
+                        Grupos = a.Grupos.Select(g => new GrupoBasicDto
+                        {
+                            GrupoId = g.GrupoId,
+                            Rol = g.Rol
+                        }).ToList()
+                    })
+                    .ToListAsync();
+
+                _logger.LogInformation(
+                    "BuildConsolidatedAreas: usuario {UserId} es Gerente BT / RH sin otro rol de alcance; {Count} area(s) asignada(s)",
+                    userId, soloAsignadas.Count);
+                return soloAsignadas;
+            }
+
             // 1. Áreas donde es jefe - incluir todos los grupos del área
             var areasAsJefe = await _dbContext.Areas
                 .Where(a => a.Jefes.Any(aj => aj.UserId == userId) ||

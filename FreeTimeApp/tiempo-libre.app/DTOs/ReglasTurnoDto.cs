@@ -19,6 +19,17 @@ namespace tiempo_libre.DTOs
         public string Estado { get; set; } = "Activa";
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+
+        /// <summary>
+        /// Sub-grupos de esta regla que existen en las áreas del usuario que
+        /// consulta ("R0144", "R0144_02", …). null = sin restricción, y el
+        /// consumidor deriva los sub-grupos del largo del patrón como siempre.
+        ///
+        /// Existe porque el calendario anual dibuja una fila por cada semana
+        /// del patrón, así que a un Gerente BT / RH le pintaba también los
+        /// sub-grupos que viven en áreas ajenas.
+        /// </summary>
+        public List<string>? GruposVisibles { get; set; }
     }
 
     /// <summary>Request para crear grupos con una regla en un área.</summary>
