@@ -343,8 +343,29 @@ namespace tiempo_libre.Services
         /// año. La usa el historial del delegado sindical, que no está acotado a
         /// un área: el delegado captura para compañeros de varias.
         /// </summary>
-        public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerTodasAsync(int? anio = null)
+        /// <summary>
+        /// Historial de ediciones de días empresa.
+        /// <paramref name="usuarioId"/> y <paramref name="tieneRolDeMando"/>
+        /// definen el alcance: sin rol de mando solo se ven las solicitudes
+        /// propias, salvo que el usuario pertenezca al área "Sindicato" (comité
+        /// sindical, que opera como delegado sin tener el rol dado de alta).
+        /// </summary>
+        public async Task<List<SolicitudEdicionDiaEmpresaDto>> ObtenerTodasAsync(
+            int? anio = null, int? usuarioId = null, bool tieneRolDeMando = true)
         {
+            var veTodo = tieneRolDeMando;
+            if (!veTodo && usuarioId.HasValue)
+            {
+                var areaUsuario = await _db.Users
+                    .Where(u => u.Id == usuarioId.Value)
+                    .Select(u => u.Area != null ? u.Area.NombreGeneral : null)
+                    .FirstOrDefaultAsync();
+                veTodo = string.Equals(
+                    areaUsuario?.Trim(),
+                    VisibilidadDiasEmpresaHelper.AreaSindicato,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
             var query = _db.SolicitudesEdicionDiasEmpresa
                 .Include(s => s.Empleado)
                     .ThenInclude(e => e.Area)
@@ -353,6 +374,15 @@ namespace tiempo_libre.Services
                 .Include(s => s.JefeArea)
                 .Include(s => s.SolicitadoPor)
                 .AsQueryable();
+
+            if (!veTodo)
+            {
+                // Sin usuario identificable no se devuelve nada: mejor una lista
+                // vacía que exponer los movimientos de toda la planta.
+                if (!usuarioId.HasValue) return new List<SolicitudEdicionDiaEmpresaDto>();
+                var propioId = usuarioId.Value;
+                query = query.Where(s => s.EmpleadoId == propioId || s.SolicitadoPorId == propioId);
+            }
 
             if (anio.HasValue)
                 query = query.Where(s => s.FechaSolicitud.Year == anio.Value);

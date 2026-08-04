@@ -128,12 +128,17 @@ namespace tiempo_libre.Controllers
         /// después no tenía forma de consultarlas.
         /// </summary>
         [HttpGet("todas")]
-        [Authorize(Roles = "SuperUsuario,Super Usuario,DelegadoSindical,Delegado Sindical,Jefe De Area,JefeArea,Gerente BT,GerenteBT,RH")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,DelegadoSindical,Delegado Sindical,Jefe De Area,JefeArea,Gerente BT,GerenteBT,RH,EmpleadoSindicalizado,Empleado Sindicalizado")]
         public async Task<IActionResult> ObtenerTodas([FromQuery] int? anio = null)
         {
             try
             {
-                var solicitudes = await _service.ObtenerTodasAsync(anio);
+                // El sindicalizado raso solo ve lo suyo; el comité sindical
+                // (rol "Empleado Sindicalizado" pero área "Sindicato") ve todo.
+                var solicitudes = await _service.ObtenerTodasAsync(
+                    anio,
+                    ObtenerUsuarioId(),
+                    Helpers.VisibilidadDiasEmpresaHelper.TieneRolDeMando(User));
                 return Ok(new ApiResponse<object>(true, solicitudes));
             }
             catch (Exception ex)

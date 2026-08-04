@@ -199,7 +199,18 @@ namespace tiempo_libre.Services
                          p.EmpleadoDestino.Grupo.Area.AreaId == area) ||
                         (esJefeArea && p.JefeAprobadorId == jefeIdLocal));
                 }
-                else if (tieneAreaScope && !esSuperUsuario && areasComoJefe.Count > 0)
+                else if (tieneAreaScope && !esSuperUsuario && areasComoJefe.Count == 0)
+                {
+                    // Gerente BT / RH (o jefe) sin ningún área asignada. Antes esta
+                    // combinación se escapaba al else de abajo y se quedaba SIN
+                    // filtro: veía las permutas de toda la planta. Cero es la
+                    // respuesta correcta; lo que falta es asignarle sus áreas.
+                    query = query.Where(p => false);
+                    _logger.LogWarning(
+                        "🔒 Usuario {UsuarioId} con scope de área pero SIN áreas asignadas: no se devuelven permutas",
+                        usuarioId);
+                }
+                else if (tieneAreaScope && !esSuperUsuario)
                 {
                     // Sin filtro frontend: auto-restringir a TODAS las áreas visibles
                     // (jefe o asignación Gerente/RH), origen O destino, más permutas

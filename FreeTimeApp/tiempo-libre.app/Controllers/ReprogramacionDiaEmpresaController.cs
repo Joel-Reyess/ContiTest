@@ -158,12 +158,17 @@ namespace tiempo_libre.Controllers
         /// empresa aunque no los haya generado él.
         /// </summary>
         [HttpGet("todas")]
-        [Authorize(Roles = "SuperUsuario,Super Usuario,DelegadoSindical,Delegado Sindical")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario,DelegadoSindical,Delegado Sindical,Jefe De Area,JefeArea,Gerente BT,GerenteBT,RH,EmpleadoSindicalizado,Empleado Sindicalizado")]
         public async Task<IActionResult> ObtenerTodas([FromQuery] string? estado = null)
         {
             try
             {
-                var data = await _service.ObtenerTodasAsync(estado);
+                // El sindicalizado raso solo ve lo suyo; el comité sindical
+                // (rol "Empleado Sindicalizado" pero área "Sindicato") ve todo.
+                var data = await _service.ObtenerTodasAsync(
+                    estado,
+                    ObtenerUsuarioId(),
+                    Helpers.VisibilidadDiasEmpresaHelper.TieneRolDeMando(User));
                 return Ok(new ApiResponse<object>(true, data));
             }
             catch (Exception ex)

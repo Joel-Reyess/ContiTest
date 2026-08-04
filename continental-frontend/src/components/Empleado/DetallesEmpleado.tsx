@@ -27,6 +27,7 @@ import { OvertimeIndicator } from '../Dashboard-Area/OvertimeIndicator';
 import { OvertimeExceptionsList } from '../Dashboard-Area/OvertimeExceptionsList';
 import { CalendarService } from '@/services/calendarService';
 import { edicionDiasEmpresaService } from '@/services/edicionDiasEmpresaService';
+import { reprogramacionDiaEmpresaService } from '@/services/reprogramacionDiaEmpresaService';
 import { OvertimeCalendar } from '../Dashboard-Area/OvertimeCalendar';
 import useAuth from '@/hooks/useAuth';
 import { RegistrarPermisoModal } from "@/components/Empleado/RegistrarPermisoModal";
@@ -182,25 +183,55 @@ export const DetallesEmpleado = ({
           // Se marcan en la lista para que quede constancia de que ese día fue
           // alterado: antes solo se veía la fecha nueva, indistinguible de un día
           // que nunca se tocó, y no había forma de llevar ese control.
-          let edicionesPorFecha = new Map<string, string>();
+          // Fecha nueva -> { origen, fecha que tenía antes }. Se llena con los
+          // DOS flujos que mueven un día de empresa; para quien consulta la
+          // lista es el mismo movimiento, solo cambia quién lo hizo.
+          const movimientosPorFecha = new Map<string, { origen: string; fechaAnterior: string }>();
           try {
             const solicitudesEdicion = await edicionDiasEmpresaService.obtenerMisSolicitudes(empId);
-            edicionesPorFecha = new Map(
-              (solicitudesEdicion ?? [])
-                .filter(s => s.estadoSolicitud === "Aprobada")
-                .map(s => [String(s.fechaNueva).slice(0, 10), String(s.fechaOriginal).slice(0, 10)])
-            );
+            (solicitudesEdicion ?? [])
+              .filter(s => s.estadoSolicitud === "Aprobada")
+              .forEach(s => movimientosPorFecha.set(String(s.fechaNueva).slice(0, 10), {
+                origen: "Edición empresa",
+                fechaAnterior: String(s.fechaOriginal).slice(0, 10),
+              }));
           } catch (err) {
             console.warn('No se pudieron cargar las ediciones de días empresa:', err);
           }
+          try {
+            const reprogSuper = await reprogramacionDiaEmpresaService.getTodas('Aprobada');
+            (reprogSuper ?? [])
+              .filter(s => s.empleadoId === empId)
+              .forEach(s => movimientosPorFecha.set(String(s.fechaNueva).slice(0, 10), {
+                origen: "Editado por superusuario",
+                fechaAnterior: String(s.fechaOriginal).slice(0, 10),
+              }));
+          } catch (err) {
+            console.warn('No se pudieron cargar las reprogramaciones de día empresa:', err);
+          }
 
+          // El día que reprograma el superusuario cambia a TipoVacacion
+          // "DiaEmpresaReprogramado", así que filtrar solo por "Automatica"
+          // lo hacía desaparecer de esta lista: el movimiento existía (en el
+          // calendario salía como "C") pero aquí ya no había rastro de él.
+          const TIPOS_ASIGNADOS_POR_EMPRESA = [
+            "Automatica",
+            "AsignadaAutomaticamente",
+            "DiaEmpresaReprogramado",
+          ];
           const automaticas = vacs
-            .filter(v => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
+            .filter(v => TIPOS_ASIGNADOS_POR_EMPRESA.includes(v.tipoVacacion) && v.estadoVacacion === "Activa")
             .map(v => {
-              const fechaAnterior = edicionesPorFecha.get(String(v.fechaVacacion).slice(0, 10));
-              return fechaAnterior
-                ? { date: v.fechaVacacion, origen: "Edición empresa", fechaAnterior }
-                : { date: v.fechaVacacion };
+              const movimiento = movimientosPorFecha.get(String(v.fechaVacacion).slice(0, 10));
+              if (movimiento) {
+                return { date: v.fechaVacacion, origen: movimiento.origen, fechaAnterior: movimiento.fechaAnterior };
+              }
+              // Sin solicitud que lo respalde pero con el tipo ya cambiado:
+              // al menos dejamos constancia de que fue alterado.
+              if (v.tipoVacacion === "DiaEmpresaReprogramado") {
+                return { date: v.fechaVacacion, origen: "Editado por superusuario" };
+              }
+              return { date: v.fechaVacacion };
             });
           const festivosTrabajados = vacs
             .filter(v => v.tipoVacacion === "FestivoTrabajado" && v.estadoVacacion === "Activa")

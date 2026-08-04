@@ -293,9 +293,38 @@ namespace tiempo_libre.Services
                 .ToListAsync();
         }
 
-        public async Task<List<SolicitudReprogramacionDiaEmpresaDto>> ObtenerTodasAsync(string? estado = null)
+        /// <summary>
+        /// Historial de reprogramaciones del superusuario.
+        /// <paramref name="usuarioId"/> y <paramref name="tieneRolDeMando"/>
+        /// definen el alcance: sin rol de mando solo se ven las solicitudes
+        /// propias, salvo que el usuario pertenezca al área "Sindicato" (comité
+        /// sindical, que opera como delegado sin tener el rol dado de alta).
+        /// </summary>
+        public async Task<List<SolicitudReprogramacionDiaEmpresaDto>> ObtenerTodasAsync(
+            string? estado = null, int? usuarioId = null, bool tieneRolDeMando = true)
         {
+            var veTodo = tieneRolDeMando;
+            if (!veTodo && usuarioId.HasValue)
+            {
+                var areaUsuario = await _db.Users
+                    .Where(u => u.Id == usuarioId.Value)
+                    .Select(u => u.Area != null ? u.Area.NombreGeneral : null)
+                    .FirstOrDefaultAsync();
+                veTodo = string.Equals(
+                    areaUsuario?.Trim(),
+                    VisibilidadDiasEmpresaHelper.AreaSindicato,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
             var query = BaseQuery();
+
+            if (!veTodo)
+            {
+                if (!usuarioId.HasValue) return new List<SolicitudReprogramacionDiaEmpresaDto>();
+                var propioId = usuarioId.Value;
+                query = query.Where(s => s.EmpleadoId == propioId || s.SolicitadoPorId == propioId);
+            }
+
             if (!string.IsNullOrWhiteSpace(estado))
                 query = query.Where(s => s.EstadoSolicitud == estado);
             return await query

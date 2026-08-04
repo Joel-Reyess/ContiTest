@@ -136,14 +136,21 @@ const CalendarComponent: React.FC = () => {
                 logger.info(`Loading areas for Gerente/RH - User ID: ${user.id}`, 'CALENDAR_COMPONENT');
                 try {
                     const response = await areasService.getAreasByAsignacion(user.id);
-                    if (response.success && response.data) {
-                        areasData = response.data.map((item: AreaByLiderItem) => ({
-                            id: item.areaId.toString(),
-                            name: item.nombreGeneral,
-                            grupos: item.grupos,
-                            manning: item.manning
-                        }));
-                    }
+                    // Desempaquetado defensivo: según por dónde pase la respuesta
+                    // llega como ApiResponse {success, data} o ya como el arreglo.
+                    // Exigir response.success dejaba el calendario en blanco aunque
+                    // el usuario sí tuviera áreas asignadas.
+                    const raw: any = (response as any)?.success && (response as any)?.data
+                        ? (response as any).data
+                        : ((response as any)?.data ?? response ?? []);
+                    const items: AreaByLiderItem[] = Array.isArray(raw) ? raw : [];
+                    logger.info(`Gerente/RH ${user.id}: ${items.length} área(s) asignada(s)`, 'CALENDAR_COMPONENT');
+                    areasData = items.map((item: AreaByLiderItem) => ({
+                        id: item.areaId.toString(),
+                        name: item.nombreGeneral,
+                        grupos: item.grupos,
+                        manning: item.manning
+                    }));
                 } catch (apiError) {
                     logger.error('Failed to load areas for Gerente/RH', apiError, 'CALENDAR_COMPONENT');
                 }
@@ -232,11 +239,23 @@ const CalendarComponent: React.FC = () => {
         );
     }
 
-    // Show no areas message
+    // Show no areas message. Para Gerente BT / RH el mensaje genérico no decía
+    // qué hacer: la pantalla se veía "rota" cuando en realidad faltaba la
+    // asignación de áreas, que hace el superusuario desde Áreas.
     if (areas.length === 0) {
+        const esGerenteORH = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH);
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="text-gray-500">No tienes áreas asignadas</div>
+            <div className="flex items-center justify-center h-64 px-6">
+                <div className="text-center text-gray-500 max-w-md">
+                    <p className="font-medium">No tienes áreas asignadas</p>
+                    {esGerenteORH && (
+                        <p className="mt-2 text-sm">
+                            El calendario muestra únicamente las áreas que se te hayan asignado.
+                            Pide al superusuario que te agregue como Gerente BT / RH en
+                            <span className="font-medium"> Áreas</span>.
+                        </p>
+                    )}
+                </div>
             </div>
         );
     }

@@ -519,8 +519,14 @@ namespace tiempo_libre.Services
                 {
                     // Gerente BT / RH: solo VEN (no aprueban) las solicitudes de
                     // sus áreas asignadas (AreaAsignaciones, vía el mismo helper
-                    // que arma el selector de áreas). Sin asignaciones en BD se
-                    // queda sin filtro para no dejarlos en ceros.
+                    // que arma el selector de áreas).
+                    //
+                    // Sin asignaciones NO ven nada. Antes esta rama se quedaba
+                    // sin filtro "para no dejarlos en ceros", pero el efecto era
+                    // el contrario del buscado: un gerente al que nadie le había
+                    // asignado áreas terminaba viendo las solicitudes de TODA la
+                    // planta. Cero es la respuesta correcta; lo que hay que
+                    // corregir en ese caso es la asignación, en Áreas.
                     var areasAsignadas = await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioConsultaId);
                     if (areasAsignadas.Count > 0)
                     {
@@ -533,7 +539,10 @@ namespace tiempo_libre.Services
                     }
                     else
                     {
-                        _logger.LogInformation("Gerente BT / RH {UserId} - sin áreas asignadas, sin filtro", usuarioConsultaId);
+                        query = query.Where(s => false);
+                        _logger.LogWarning(
+                            "Gerente BT / RH {UserId} - sin áreas asignadas en AreaAsignaciones: no se devuelven solicitudes",
+                            usuarioConsultaId);
                     }
                 }
                 else if (esJefeArea)
