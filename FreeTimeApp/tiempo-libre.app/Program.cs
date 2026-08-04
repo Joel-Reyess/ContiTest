@@ -65,16 +65,27 @@ builder.Services.AddSingleton<tiempo_libre.Services.IEmailService, tiempo_libre.
 // Servicio de recuperación de contraseña
 builder.Services.AddScoped<tiempo_libre.Services.IRecuperacionPasswordService, tiempo_libre.Services.RecuperacionPasswordService>();
 
-// Background service para actualizar estados automáticamente
-builder.Services.AddHostedService<tiempo_libre.Services.ActualizacionEstadosBackgroundService>();
+// Servicios en segundo plano. Se pueden apagar por configuración
+// ("BackgroundServices:Habilitados": false) para el entorno de pruebas: ahí no
+// interesa que corran las sincronizaciones de SAP ni las rotaciones agendadas,
+// y dejarlas prendidas hace que dos instancias escriban en paralelo y que la
+// máquina cargue dos veces el mismo trabajo.
+var backgroundServicesHabilitados =
+    builder.Configuration.GetValue("BackgroundServices:Habilitados", true);
 
-//Background para actualizar roles automaticamente
-builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionRolesBackgroundService>();
-// Background service para sincronizar permisos desde tabla de staging
-builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionPermisosBackgroundService>();
+if (backgroundServicesHabilitados)
+{
+    // Background service para actualizar estados automáticamente
+    builder.Services.AddHostedService<tiempo_libre.Services.ActualizacionEstadosBackgroundService>();
 
-// Background service para ejecutar rotaciones de reglas agendadas a fecha futura
-builder.Services.AddHostedService<tiempo_libre.Services.EjecucionRotacionesProgramadasBackgroundService>();
+    //Background para actualizar roles automaticamente
+    builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionRolesBackgroundService>();
+    // Background service para sincronizar permisos desde tabla de staging
+    builder.Services.AddHostedService<tiempo_libre.Services.SincronizacionPermisosBackgroundService>();
+
+    // Background service para ejecutar rotaciones de reglas agendadas a fecha futura
+    builder.Services.AddHostedService<tiempo_libre.Services.EjecucionRotacionesProgramadasBackgroundService>();
+}
 
 // Configuración CORS para permitir peticiones desde el frontend
 var allowedOrigins = new[] {

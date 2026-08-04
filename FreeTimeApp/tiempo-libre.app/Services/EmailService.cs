@@ -21,12 +21,24 @@ namespace tiempo_libre.Services
         private readonly ILogger<EmailService> _logger;
         private readonly IConfiguration _configuration;
 
+        /// <summary>
+        /// Modo simulacro: registra el correo en el log y NO lo envía. Es lo que
+        /// separa un entorno de pruebas de uno que le manda correos reales a los
+        /// jefes cada vez que alguien prueba una solicitud.
+        /// Se activa con "SmtpSettings:ModoSimulacro": true.
+        /// </summary>
+        private readonly bool _modoSimulacro;
+
         public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
         {
             _configuration = configuration;
             _logger = logger;
             _smtpConfiguration = new SmtpConfiguration();
             configuration.GetSection("SmtpSettings").Bind(_smtpConfiguration);
+
+            _modoSimulacro = configuration.GetValue<bool>("SmtpSettings:ModoSimulacro");
+            if (_modoSimulacro)
+                _logger.LogWarning("EmailService en MODO SIMULACRO: los correos se registran en el log y no se envían.");
 
             // Obtener contraseña de variable de entorno si no está en configuración
             if (string.IsNullOrEmpty(_smtpConfiguration.Password))
@@ -53,6 +65,14 @@ namespace tiempo_libre.Services
         {
             try
             {
+                if (_modoSimulacro)
+                {
+                    _logger.LogInformation(
+                        "[SIMULACRO] Correo NO enviado. Para: {Destinatarios} | Asunto: {Asunto}",
+                        string.Join(", ", to), subject);
+                    return true;
+                }
+
                 if (string.IsNullOrEmpty(_smtpConfiguration.Password))
                 {
                     _logger.LogError("No se puede enviar correo: Contraseña SMTP no configurada");
@@ -101,6 +121,14 @@ namespace tiempo_libre.Services
         {
             try
             {
+                if (_modoSimulacro)
+                {
+                    _logger.LogInformation(
+                        "[SIMULACRO] Correo con adjunto NO enviado. Para: {Destinatario} | Asunto: {Asunto}",
+                        to, subject);
+                    return true;
+                }
+
                 if (string.IsNullOrEmpty(_smtpConfiguration.Password))
                 {
                     _logger.LogError("No se puede enviar correo: Contraseña SMTP no configurada");
