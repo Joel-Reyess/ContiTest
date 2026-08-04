@@ -16,12 +16,34 @@ namespace tiempo_libre.Controllers
     public class AusenciaController : ControllerBase
     {
         private readonly AusenciaService _ausenciaService;
+        private readonly FreeTimeDbContext _db;
         private readonly ILogger<AusenciaController> _logger;
 
-        public AusenciaController(AusenciaService ausenciaService, ILogger<AusenciaController> logger)
+        public AusenciaController(
+            AusenciaService ausenciaService,
+            FreeTimeDbContext db,
+            ILogger<AusenciaController> logger)
         {
             _ausenciaService = ausenciaService;
+            _db = db;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Áreas que el usuario autenticado puede consultar. null = sin
+        /// restricción (SuperUsuario). Lista vacía = no tiene áreas asignadas,
+        /// y entonces no debe recibir datos de ninguna.
+        /// </summary>
+        private async Task<System.Collections.Generic.List<int>?> ResolverAreasPermitidasAsync()
+        {
+            if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
+                return null;
+
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(claim, out var userId))
+                return new System.Collections.Generic.List<int>();
+
+            return await Helpers.AreasVisiblesHelper.AreasVisiblesAsync(_db, userId);
         }
 
         /// <summary>
@@ -40,11 +62,12 @@ namespace tiempo_libre.Controllers
                     return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada inválidos: {errors}"));
                 }
 
+                request.AreaIdsPermitidas = await ResolverAreasPermitidasAsync();
                 var response = await _ausenciaService.CalcularAusenciasPorFechasAsync(request);
-                
+
                 if (!response.Success)
                     return BadRequest(response);
-                
+
                 return Ok(response);
             }
             catch (Exception ex)
@@ -102,7 +125,8 @@ namespace tiempo_libre.Controllers
                 {
                     FechaInicio = fecha,
                     FechaFin = null, // Solo un día
-                    GrupoId = grupoId
+                    GrupoId = grupoId,
+                    AreaIdsPermitidas = await ResolverAreasPermitidasAsync()
                 };
 
                 var response = await _ausenciaService.CalcularAusenciasPorFechasAsync(request);
@@ -136,7 +160,8 @@ namespace tiempo_libre.Controllers
                 {
                     FechaInicio = fecha,
                     FechaFin = null, // Solo un día
-                    AreaId = areaId
+                    AreaId = areaId,
+                    AreaIdsPermitidas = await ResolverAreasPermitidasAsync()
                 };
 
                 var response = await _ausenciaService.CalcularAusenciasPorFechasAsync(request);

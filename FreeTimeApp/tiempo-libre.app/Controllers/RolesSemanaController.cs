@@ -26,6 +26,44 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
+        /// True si el usuario autenticado puede consultar el rol de ese grupo.
+        /// El endpoint solo pedía [Authorize] con una lista de roles: cualquiera
+        /// de ellos podía pedir CUALQUIER grupoId, y el filtrado por área vivía
+        /// únicamente en el selector del frontend.
+        ///
+        /// El sindicalizado y el delegado siguen viendo cualquier grupo (es su
+        /// consulta normal del rol semanal); a quien tiene alcance por área
+        /// —jefe, ingeniero, líder, Gerente BT, RH— se le exige que el grupo
+        /// caiga dentro de sus áreas.
+        /// </summary>
+        private async Task<bool> PuedeVerGrupoAsync(int grupoId)
+        {
+            if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
+                return true;
+
+            var tieneAlcancePorArea =
+                User.IsInRole("Jefe De Area") || User.IsInRole("JefeArea") || User.IsInRole("JefeDeArea") ||
+                User.IsInRole("Ingeniero Industrial") || User.IsInRole("IngenieroIndustrial") ||
+                User.IsInRole("Lider De Grupo") || User.IsInRole("LiderDeGrupo") ||
+                User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT") ||
+                User.IsInRole("RH");
+
+            if (!tieneAlcancePorArea) return true;
+
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(claim, out var userId)) return false;
+
+            var areaDelGrupo = await _db.Grupos
+                .Where(g => g.GrupoId == grupoId)
+                .Select(g => (int?)g.AreaId)
+                .FirstOrDefaultAsync();
+            if (areaDelGrupo == null) return false;
+
+            var areasVisibles = await Helpers.AreasVisiblesHelper.AreasVisiblesAsync(_db, userId);
+            return areasVisibles.Contains(areaDelGrupo.Value);
+        }
+
+        /// <summary>
         /// Obtiene los turnos semanales (lunes a domingo) de un grupo.
         /// El cálculo de códigos vive en RolSemanalCalculoService, compartido
         /// con el dashboard de tiempo extra/ausencias para que ambos coincidan.
@@ -40,6 +78,10 @@ namespace tiempo_libre.Controllers
         {
             try
             {
+                if (!await PuedeVerGrupoAsync(grupoId))
+                    return StatusCode(403, new ApiResponse<object>(false, null,
+                        "No tienes acceso al rol semanal de este grupo."));
+
                 var inicio = DateOnly.FromDateTime(fechaInicio.Date);
                 var fin = inicio.AddDays(6);
 

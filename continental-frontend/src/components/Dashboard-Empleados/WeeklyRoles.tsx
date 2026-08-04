@@ -124,7 +124,12 @@ const WeeklyRoles = () => {
                     // Mismo pipeline que Plantilla/CalendarComponent.
                     try {
                         const resp = await areasService.getAreasByAsignacion(user.id);
-                        const asignAreas = (resp?.success && resp.data) ? resp.data : [];
+                        // Desempaquetado defensivo: la respuesta llega como
+                        // ApiResponse {success, data} o ya como el arreglo.
+                        const rawAsign: any = (resp as any)?.success && (resp as any)?.data
+                            ? (resp as any).data
+                            : ((resp as any)?.data ?? resp ?? []);
+                        const asignAreas: any[] = Array.isArray(rawAsign) ? rawAsign : [];
                         const areaIds = asignAreas.map((a) => a.areaId);
                         allowedAreas = allAreas.filter((a) => a.areaId != null && areaIds.includes(a.areaId));
                     } catch (error) {
@@ -136,10 +141,17 @@ const WeeklyRoles = () => {
                 }
 
                 const allowedAreaIds = allowedAreas.map((a) => a.areaId).filter((id) => id != null);
+                // Quien tiene alcance por área y se queda sin áreas permitidas NO
+                // debe ver todos los grupos. El fallback anterior ("si no hay
+                // áreas, muestra todo") le abría la planta completa a un Gerente
+                // BT / RH al que nadie le había asignado áreas todavía.
+                const tieneAlcancePorArea = isBoss || isIndustrial || isGerenteORH;
                 const filteredGroups =
                     allowedAreaIds.length > 0
                         ? orderedGroups.filter((g) => allowedAreaIds.includes(g.areaId as number))
-                        : orderedGroups;
+                        : tieneAlcancePorArea
+                            ? []
+                            : orderedGroups;
 
                 setAreas(allowedAreas);
                 setGroups(filteredGroups);

@@ -38,6 +38,14 @@ namespace tiempo_libre.Services
                     gruposQuery = gruposQuery.Where(g => g.GrupoId == request.GrupoId.Value);
                 if (request.AreaId.HasValue)
                     gruposQuery = gruposQuery.Where(g => g.AreaId == request.AreaId.Value);
+                // Alcance del usuario. Sin esto, un Gerente BT / RH sin áreas
+                // asignadas recibía el cálculo de TODA la planta: el endpoint
+                // solo pedía [Authorize] y el AreaId era opcional.
+                if (request.AreaIdsPermitidas != null)
+                {
+                    var permitidas = request.AreaIdsPermitidas;
+                    gruposQuery = gruposQuery.Where(g => permitidas.Contains(g.AreaId));
+                }
                 var grupos = await gruposQuery.ToListAsync();
 
                 if (!grupos.Any())

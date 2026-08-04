@@ -161,6 +161,7 @@ const TooltipTE = ({ active, payload, label }: any) => {
 export const Dashboard: React.FC = () => {
     const { user, hasRole } = useAuth();
     const isAdmin = hasRole(UserRole.SUPER_ADMIN);
+    const esGerenteORH = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH);
 
     const [vistaMode, setVistaMode] = useState<'ausencias' | 'tiempoExtra'>('ausencias');
 
@@ -182,14 +183,17 @@ export const Dashboard: React.FC = () => {
             .then(detail => {
                 const ids = new Set<number>();
                 detail?.areas?.forEach(a => { if (a.areaId) ids.add(a.areaId); });
-                if (ids.size === 0 && user?.area?.areaId) ids.add(user.area.areaId);
+                // El fallback al área propia es para jefes con data legacy. Para
+                // Gerente BT / RH el alcance son SUS asignaciones: darles el área
+                // que traen de SAP les mostraba un área que nadie les asignó.
+                if (ids.size === 0 && !esGerenteORH && user?.area?.areaId) ids.add(user.area.areaId);
                 setAreasUsuario(Array.from(ids));
             })
             .catch(err => {
                 console.error('No se pudieron cargar las áreas del usuario', err);
-                if (user?.area?.areaId) setAreasUsuario([user.area.areaId]);
+                if (!esGerenteORH && user?.area?.areaId) setAreasUsuario([user.area.areaId]);
             });
-    }, [isAdmin, user?.id, user?.area?.areaId]);
+    }, [isAdmin, esGerenteORH, user?.id, user?.area?.areaId]);
 
     // Multi-selección de áreas. Convención: array vacío = "todas las áreas
     // permitidas" (todas las del sistema si admin, todas las del jefe si no).

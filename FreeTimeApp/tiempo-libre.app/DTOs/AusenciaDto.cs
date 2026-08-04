@@ -16,6 +16,15 @@ namespace tiempo_libre.DTOs
 
         public int? GrupoId { get; set; } // Opcional: filtrar por grupo específico
         public int? AreaId { get; set; }  // Opcional: filtrar por área específica
+
+        /// <summary>
+        /// Alcance por área del usuario autenticado. Lo llena SIEMPRE el
+        /// controlador a partir del token — nunca el cliente, por eso se ignora
+        /// al deserializar. null = sin restricción (SuperUsuario); lista vacía =
+        /// sin áreas asignadas, así que no se devuelven datos.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<int>? AreaIdsPermitidas { get; set; }
     }
 
     public class AusenciaPorFechaResponse

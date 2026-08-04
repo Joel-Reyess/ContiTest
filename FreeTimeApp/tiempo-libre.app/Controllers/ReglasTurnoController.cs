@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
@@ -18,16 +19,60 @@ namespace tiempo_libre.Controllers
     {
         private readonly ReglasTurnoService _service;
         private readonly RotacionesProgramadasService _rotProgService;
+        private readonly FreeTimeDbContext _db;
         private readonly ILogger<ReglasTurnoController> _logger;
 
         public ReglasTurnoController(
             ReglasTurnoService service,
             RotacionesProgramadasService rotProgService,
+            FreeTimeDbContext db,
             ILogger<ReglasTurnoController> logger)
         {
             _service = service;
             _rotProgService = rotProgService;
+            _db = db;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Códigos de regla que el usuario puede ver, o null si no tiene
+        /// restricción (SuperUsuario, Ingeniero Industrial y Delegado Sindical,
+        /// que trabajan sobre el catálogo completo).
+        ///
+        /// Para jefe de área, Gerente BT y RH se derivan de sus áreas visibles:
+        /// los grupos de esas áreas llevan como Rol el código de la regla, con
+        /// sufijo "_NN" en los sub-grupos derivados.
+        /// </summary>
+        private async Task<System.Collections.Generic.HashSet<string>?> ObtenerCodigosDeReglasVisiblesAsync()
+        {
+            if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
+                return null;
+
+            var tieneAlcancePorArea =
+                User.IsInRole("Jefe De Area") || User.IsInRole("JefeArea") ||
+                User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT") ||
+                User.IsInRole("RH");
+
+            if (!tieneAlcancePorArea) return null;
+
+            var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(claim, out var userId))
+                return new System.Collections.Generic.HashSet<string>();
+
+            var areasVisibles = await Helpers.AreasVisiblesHelper.AreasVisiblesAsync(_db, userId);
+            if (areasVisibles.Count == 0)
+                return new System.Collections.Generic.HashSet<string>();
+
+            var roles = await _db.Grupos
+                .Where(g => areasVisibles.Contains(g.AreaId))
+                .Select(g => g.Rol)
+                .Distinct()
+                .ToListAsync();
+
+            // "R0144_02" (sub-grupo derivado) pertenece a la regla "R0144".
+            return roles
+                .Select(rol => System.Text.RegularExpressions.Regex.Replace(rol, @"_\d+$", string.Empty))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>Listar todas las reglas con su patrón actual.</summary>
@@ -38,6 +83,15 @@ namespace tiempo_libre.Controllers
             try
             {
                 var reglas = await _service.GetAllAsync();
+
+                // El calendario anual de reglas mostraba TODAS las reglas de la
+                // planta a cualquiera con permiso de lectura. Una regla "vive" en
+                // un área a través de los grupos que se le crearon al asignarla
+                // (Grupos.Rol = codigo o codigo_NN), así que se filtra por ahí.
+                var codigosVisibles = await ObtenerCodigosDeReglasVisiblesAsync();
+                if (codigosVisibles != null)
+                    reglas = reglas.Where(r => codigosVisibles.Contains(r.Codigo)).ToList();
+
                 return Ok(new ApiResponse<object>(true, reglas, null));
             }
             catch (Exception ex)
