@@ -30,14 +30,29 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
-        /// Áreas que el usuario autenticado puede consultar. null = sin
-        /// restricción (SuperUsuario). Lista vacía = no tiene áreas asignadas,
-        /// y entonces no debe recibir datos de ninguna.
+        /// Áreas que el usuario autenticado puede consultar.
+        ///
+        /// null = sin restricción. Es el caso del SuperUsuario y TAMBIÉN el del
+        /// empleado sindicalizado o el delegado: ellos no tienen áreas a su
+        /// cargo, consultan el calendario de su grupo y siempre pudieron
+        /// hacerlo. Restringirlos por "áreas asignadas" les vacía el calendario.
+        ///
+        /// Lista vacía solo aplica a quien SÍ tiene alcance por área —jefe,
+        /// líder, ingeniero, Gerente BT, RH— y no tiene ninguna asignada.
         /// </summary>
         private async Task<System.Collections.Generic.List<int>?> ResolverAreasPermitidasAsync()
         {
             if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
                 return null;
+
+            var tieneAlcancePorArea =
+                User.IsInRole("Jefe De Area") || User.IsInRole("JefeArea") || User.IsInRole("JefeDeArea") ||
+                User.IsInRole("Lider De Grupo") || User.IsInRole("LiderDeGrupo") ||
+                User.IsInRole("Ingeniero Industrial") || User.IsInRole("IngenieroIndustrial") ||
+                User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT") ||
+                User.IsInRole("RH");
+
+            if (!tieneAlcancePorArea) return null;
 
             var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(claim, out var userId))
