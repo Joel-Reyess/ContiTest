@@ -11,6 +11,8 @@ export interface EnvConfig {
   LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error';
   APP_NAME: string;
   APP_VERSION: string;
+  /** true solo en el entorno de pruebas (6173/6050 → FreeTime_Test). */
+  ES_PRUEBAS: boolean;
 }
 
 const getEnvVar = (key: string, defaultValue?: string): string => {
@@ -42,6 +44,8 @@ export const env: EnvConfig = {
   LOG_LEVEL: (getEnvVar('VITE_LOG_LEVEL', 'debug') as EnvConfig['LOG_LEVEL']),
   APP_NAME: getEnvVar('VITE_APP_NAME', 'Continental'),
   APP_VERSION: getEnvVar('VITE_APP_VERSION', '1.0.0'),
+  // Por omisión false: si alguien compila sin definirla, se ve como producción.
+  ES_PRUEBAS: getBooleanEnvVar('VITE_ES_PRUEBAS', false),
 };
 
 // Validate critical environment variables

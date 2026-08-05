@@ -1,6 +1,7 @@
 import useAuth from "@/hooks/useAuth";
 import { PeriodLight } from "./PeriodLight";
 import { NavbarUser } from "../ui/navbar-user";
+import { EntornoBadge } from "../ui/entorno-badge";
 import { Info } from "./Info";
 import { Calendar, CalendarClock, Users2, Users, CalendarDays } from "lucide-react";
 import { Button } from "../ui/button";
@@ -251,7 +252,8 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                         )
                     }
                 </div>
-                <div>
+                <div className="flex items-center gap-3">
+                    <EntornoBadge />
                     <PeriodLight currenPeriod={currentPeriod} />
                 </div>
                 <NavbarUser />

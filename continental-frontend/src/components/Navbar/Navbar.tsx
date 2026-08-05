@@ -1,6 +1,7 @@
 
 import ContinentalLogo from "@/assets/Logo.webp"
 import { NavbarUser } from "@/components/ui/navbar-user";
+import { EntornoBadge } from "@/components/ui/entorno-badge";
 
 export const Navbar = ({children}: {children: React.ReactNode}) => {
 
@@ -13,6 +14,7 @@ export const Navbar = ({children}: {children: React.ReactNode}) => {
           <span className="hidden md:inline text-xs font-semibold uppercase tracking-[0.18em] text-continental-gray-1">
             Vacaciones
           </span>
+          <EntornoBadge />
         </div>
         <div className="flex-1 flex justify-center overflow-x-auto">
           {children}

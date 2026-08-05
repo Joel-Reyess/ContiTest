@@ -213,14 +213,20 @@ robocopy .\build C:\inetpub\vacaciones-test-frontend /MIR /XF web.config
 
 ## Cómo saber que estás en pruebas y no en producción
 
-Tres señales, en orden de confianza:
+Cuatro señales, en orden inverso de confianza (la última es la que manda):
 
-1. La URL dice **6173**.
-2. El backend de esa pestaña responde en **6050** (pestaña Network del navegador).
-3. En el log del backend, al arrancar, aparece
+1. En el navbar, junto a "Vacaciones", aparece el distintivo rojo **TEST**.
+   Sale de `VITE_ES_PRUEBAS=true`, que solo trae `.env.test`.
+2. La URL dice **6173**.
+3. El backend de esa pestaña responde en **6050** (pestaña Network del navegador).
+4. En el log del backend, al arrancar, aparece
    `EmailService en MODO SIMULACRO`.
 
-Si el 3 no aparece, `ASPNETCORE_ENVIRONMENT=Test` no quedó puesto y **estás
+Ojo con el orden: el distintivo del navbar dice qué `.env` usó el **build del
+front**, no a qué base pega el **backend**. Son cosas independientes. La señal
+que de verdad prueba que no estás tocando `FreeTime` es la 4.
+
+Si la 4 no aparece, `ASPNETCORE_ENVIRONMENT=Test` no quedó puesto y **estás
 escribiendo en la base de producción**. Para ahí y revisa el paso 2.
 
 ---
