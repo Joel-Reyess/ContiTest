@@ -13,6 +13,7 @@ import { PeriodOptions, type Period } from "@/interfaces/Calendar.interface";
 import { toast } from "sonner";
 import useAuth from "@/hooks/useAuth";
 import { getVacacionesAsignadasPorEmpleado } from "@/services/vacacionesService";
+import { obtenerMovimientosDiasEmpresa, marcarDiaAsignado, TIPOS_ASIGNADOS_POR_EMPRESA, type DiaAsignado } from "@/utils/diasEmpresaMovimientos";
 import { ReprogramacionService } from "@/services/reprogramacionService";
 import { festivosTrabajadosService, type FestivoTrabajado } from "@/services/festivosTrabajadosService";
 import { validarFestivoParaSolicitud, validarFechaDeUso, calcularFechaMaximaUso } from "@/utils/festivosTrabajadosValidation";
@@ -41,7 +42,7 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [showRequestModal, setShowRequestModal] = useState(false)
     const [selectedDay, setSelectedDay] = useState<string | null>(null)
     const [selectedVacation, setSelectedVacation] = useState<VacacionAsignada | null>(null)
-    const [realAssignedDays, setRealAssignedDays] = useState<{ date: string }[]>([]);
+    const [realAssignedDays, setRealAssignedDays] = useState<DiaAsignado[]>([]);
     const [vacacionesData, setVacacionesData] = useState<VacacionesAsignadasResponse | null>(null);
     const [loadingVacations, setLoadingVacations] = useState(true);
     const [selectedDays, setSelectedDays] = useState<{ date: string }[]>([]);
@@ -165,10 +166,15 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 const resp = await getVacacionesAsignadasPorEmpleado(id);
                 setVacacionesData(resp);
 
-                // Separar vacaciones por tipo
+                // Días asignados que ya cambiaron de fecha, para marcarlos abajo.
+                const movimientos = await obtenerMovimientosDiasEmpresa(id);
+
+                // Separar vacaciones por tipo. Ojo con TIPOS_ASIGNADOS_POR_EMPRESA:
+                // filtrar solo por "Automatica" escondía los días que reprogramó
+                // el superusuario, porque a esos les cambia el tipo.
                 const automaticas = resp.vacaciones
-                    .filter(v => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
-                    .map(v => ({ date: v.fechaVacacion }));
+                    .filter(v => TIPOS_ASIGNADOS_POR_EMPRESA.includes(v.tipoVacacion) && v.estadoVacacion === "Activa")
+                    .map(v => marcarDiaAsignado(v.fechaVacacion, v.tipoVacacion, movimientos));
                 const festivosTrabajados = resp.vacaciones
                     .filter(v => v.tipoVacacion === "FestivoTrabajado" && v.estadoVacacion === "Activa")
                     .map(v => ({ date: v.fechaVacacion }));
