@@ -410,6 +410,7 @@ namespace tiempo_libre.Services
             try
             {
                 var usuarioConsulta = await _db.Users
+                    .AsNoTracking()
                     .Include(u => u.Roles)
                     .FirstOrDefaultAsync(u => u.Id == usuarioConsultaId);
 
@@ -430,8 +431,11 @@ namespace tiempo_libre.Services
                     ? await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioConsultaId)
                     : new List<int>();
 
-                // Construir query base
+                // Construir query base. AsNoTracking: la consulta es de solo lectura
+                // (se proyecta a DTOs y nunca se guarda), y con 5 Includes el change
+                // tracker era una parte grande del costo.
                 var query = _db.SolicitudesFestivosTrabajados
+                    .AsNoTracking()
                     .Include(s => s.Empleado)
                         .ThenInclude(e => e.Area)
                     .Include(s => s.Empleado)

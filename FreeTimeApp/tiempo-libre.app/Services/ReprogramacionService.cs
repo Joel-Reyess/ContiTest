@@ -472,6 +472,7 @@ namespace tiempo_libre.Services
             {
                 _db.Database.SetCommandTimeout(60);
                 var usuarioConsulta = await _db.Users
+                    .AsNoTracking()
                     .Include(u => u.Roles)
                     .Include(u => u.Area)
                     .Include(u => u.Grupo)
@@ -500,7 +501,9 @@ namespace tiempo_libre.Services
                     "Usuario {UserId} consultando solicitudes. Roles: SuperUsuario={Super}, JefeArea={Jefe}, Delegado={Delegado}, Sindicalizado={Sind}",
                     usuarioConsultaId, esSuperUsuario, esJefeArea, esDelegadoSindical, esSindicalizado);
 
+                // AsNoTracking: consulta de solo lectura, se proyecta a DTOs.
                 var query = _db.SolicitudesReprogramacion
+                    .AsNoTracking()
                     .Include(s => s.Empleado)
                         .ThenInclude(e => e.Area)
                     .Include(s => s.Empleado.Grupo)

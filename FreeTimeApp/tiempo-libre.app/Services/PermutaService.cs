@@ -130,8 +130,19 @@ namespace tiempo_libre.Services
             {
                 _db.Database.SetCommandTimeout(60);
 
+                if (!usuarioId.HasValue)
+                {
+                    // Llamar sin usuarioId dejaba la consulta sin dueño: no encontraba
+                    // usuario y regresaba 0 permutas en silencio (los exports caían
+                    // aquí y bajaban archivos vacíos). Es un error de programación.
+                    throw new ArgumentNullException(nameof(usuarioId),
+                        "ObtenerPermutasAsync requiere el id del usuario que consulta");
+                }
+
                 var usuarioConsulta = await _db.Users
+                    .AsNoTracking()
                     .Include(u => u.Roles)
+                    .Include(u => u.Area)
                     .Include(u => u.Grupo)
                         .ThenInclude(g => g.Area)
                     .FirstOrDefaultAsync(u => u.Id == usuarioId);
@@ -146,6 +157,21 @@ namespace tiempo_libre.Services
                 var esSuperUsuario = RolesHelper.TieneRol(usuarioConsulta.Roles, "SuperUsuario", "Super Usuario");
                 var esGerenteOrRH = RolesHelper.TieneRol(usuarioConsulta.Roles, "Gerente BT", "RH");
                 var tieneAreaScope = esJefeArea || esGerenteOrRH;
+
+                // Mismo heurístico que ReprogramacionService.ConsultarSolicitudesAsync:
+                // los integrantes del comité sindical no siempre traen el rol Delegado
+                // en BD, pero su área es "Sindicato".
+                var esDelegadoSindical = RolesHelper.TieneRol(usuarioConsulta.Roles, "Delegado Sindical") ||
+                                         usuarioConsulta.Grupo?.Area?.NombreGeneral?.ToLower() == "sindicato" ||
+                                         usuarioConsulta.Area?.NombreGeneral?.ToLower() == "sindicato";
+
+                // Área efectiva del delegado: Users.AreaId, o la de su Grupo cuando el
+                // sync SAP deja AreaId en null / desincronizado.
+                int? areaIdDelegado = null;
+                if (esDelegadoSindical)
+                {
+                    areaIdDelegado = usuarioConsulta.AreaId ?? usuarioConsulta.Grupo?.Area?.AreaId;
+                }
 
                 // Áreas donde este usuario tiene visibilidad: AreaJefes (Jefe de Área)
                 // ∪ AreaAsignaciones (Gerente BT / RH). Un mismo usuario puede tener
@@ -183,11 +209,15 @@ namespace tiempo_libre.Services
                     .Include(p => p.JefeAprobador)
                     .AsQueryable();
 
-                if (areaIdFiltro.HasValue)
+                if (areaIdFiltro.HasValue && (esSuperUsuario || tieneAreaScope || esDelegadoSindical))
                 {
                     // Frontend mandó área específica. Defensivo: para jefes, también
                     // incluimos permutas asignadas a él como JefeAprobadorId y las que
                     // tocan al empleado DESTINO (no solo origen).
+                    //
+                    // Se exige rol con visibilidad: sin esa guarda, un sindicalizado
+                    // que mandara ?areaId=N se saltaba su rama y leía las permutas de
+                    // toda esa área.
                     var area = areaIdFiltro.Value;
                     var jefeIdLocal = usuarioId!.Value;
                     _logger.LogInformation("🔒 APLICANDO FILTRO DE ÁREA: {AreaId}", area);
@@ -226,9 +256,45 @@ namespace tiempo_libre.Services
                          areasComoJefe.Contains(p.EmpleadoDestino.Grupo.Area.AreaId)) ||
                         (esJefeArea && p.JefeAprobadorId == jefeIdLocal));
                 }
+                else if (esDelegadoSindical)
+                {
+                    // El delegado no tenía rama propia: caía al else de abajo y se
+                    // quedaba SIN filtro, leyendo las permutas de toda la planta de
+                    // todos los años. Con el volumen real eso agotaba el
+                    // CommandTimeout y el catch lo convertía en "0 permutas".
+                    // Mismo criterio que ReprogramacionService: las que él solicitó
+                    // más las de su área (aquí SolicitadoPorId no es nullable, así
+                    // que no aplica la rama de "sin solicitante").
+                    var delegadoIdLocal = usuarioId.Value;
+                    query = query.Where(p =>
+                        p.SolicitadoPorId == delegadoIdLocal ||
+                        (areaIdDelegado.HasValue &&
+                            ((p.EmpleadoOrigen.Grupo != null && p.EmpleadoOrigen.Grupo.Area != null &&
+                              p.EmpleadoOrigen.Grupo.Area.AreaId == areaIdDelegado.Value) ||
+                             (p.EmpleadoDestino != null && p.EmpleadoDestino.Grupo != null && p.EmpleadoDestino.Grupo.Area != null &&
+                              p.EmpleadoDestino.Grupo.Area.AreaId == areaIdDelegado.Value))));
+
+                    _logger.LogInformation(
+                        "🔒 FILTRO DELEGADO SINDICAL {UsuarioId} (AreaId={AreaId})",
+                        delegadoIdLocal, areaIdDelegado);
+                }
+                else if (!esSuperUsuario)
+                {
+                    // Sindicalizado u otro rol sin privilegio: solo las permutas que
+                    // lo involucran o que él pidió. Antes caía en el else sin filtro
+                    // y veía las de sus compañeros (mismo problema de privacidad que
+                    // ya se corrigió en ReprogramacionService).
+                    var propioIdLocal = usuarioId.Value;
+                    query = query.Where(p =>
+                        p.EmpleadoOrigenId == propioIdLocal ||
+                        p.EmpleadoDestinoId == propioIdLocal ||
+                        p.SolicitadoPorId == propioIdLocal);
+
+                    _logger.LogInformation("🔒 FILTRO PROPIO (rol sin scope): usuario {UsuarioId}", propioIdLocal);
+                }
                 else
                 {
-                    _logger.LogInformation("🔓 SIN FILTRO DE ÁREA (SuperUsuario o sin área)");
+                    _logger.LogInformation("🔓 SIN FILTRO DE ÁREA (SuperUsuario)");
                 }
 
                 if (anio.HasValue)
@@ -236,7 +302,10 @@ namespace tiempo_libre.Services
                     query = query.Where(p => p.FechaPermuta.Year == anio.Value);
                 }
 
-                var permutasRaw = await query.ToListAsync();
+                var permutasRaw = await query
+                    .AsNoTracking()
+                    .OrderByDescending(p => p.FechaSolicitud)
+                    .ToListAsync();
                 _logger.LogInformation("📋 Permutas encontradas DESPUÉS DEL FILTRO: {Count}", permutasRaw.Count);
 
                 foreach (var p in permutasRaw.Take(3))
@@ -249,7 +318,6 @@ namespace tiempo_libre.Services
                 }
 
                 var permutas = permutasRaw
-                    .OrderByDescending(p => p.FechaSolicitud)
                     .Select(p => new PermutaListItem
                     {
                         Id = p.Id,
@@ -277,8 +345,13 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error al obtener permutas");
-                return new PermutasListResponse { Permutas = new List<PermutaListItem>(), Total = 0 };
+                // NO devolver una lista vacía: hacerlo convertía cualquier falla
+                // (incluido el timeout de SQL) en un "0 permutas" con HTTP 200, y la
+                // pantalla no tenía forma de distinguir "no hay" de "reventó".
+                // Que propague; el controller responde 500 y el usuario ve un error.
+                _logger.LogError(ex, "❌ Error al obtener permutas (usuario {UsuarioId}, año {Anio})",
+                    usuarioId, anio);
+                throw;
             }
         }
 
