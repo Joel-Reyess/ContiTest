@@ -33,7 +33,9 @@ namespace tiempo_libre.Controllers
         /// <param name="request">Parámetros de la asignación automática</param>
         /// <returns>Resultado detallado de la asignación por empleado</returns>
         [HttpPost("ejecutar")]
-        public async Task<IActionResult> EjecutarAsignacionAutomatica([FromBody] AsignacionAutomaticaRequest request)
+        public async Task<IActionResult> EjecutarAsignacionAutomatica(
+            [FromBody] AsignacionAutomaticaRequest request,
+            CancellationToken ct = default)
         {
             try
             {
@@ -45,15 +47,21 @@ namespace tiempo_libre.Controllers
                     return BadRequest(new ApiResponse<object>(false, null, $"Datos inválidos: {errors}"));
                 }
 
-                _logger.LogInformation("Iniciando asignación automática para año {Anio} por usuario {Usuario}", 
+                _logger.LogInformation("Iniciando asignación automática para año {Anio} por usuario {Usuario}",
                     request.Anio, User.Identity?.Name);
 
-                var response = await _asignacionService.EjecutarAsignacionAutomaticaAsync(request);
-                
+                var response = await _asignacionService.EjecutarAsignacionAutomaticaAsync(request, ct);
+
                 if (!response.Success)
                     return BadRequest(response);
 
                 return Ok(response);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // El navegador abortó (timeout del cliente): dejar que el pipeline lo
+                // registre como request cancelado en lugar de fabricar un 500.
+                throw;
             }
             catch (Exception ex)
             {
@@ -69,7 +77,9 @@ namespace tiempo_libre.Controllers
         /// <returns>Resultado simulado de la asignación</returns>
         [HttpPost("simular")]
         [Authorize(Roles = "Super Usuario,SuperUsuario")]
-        public async Task<IActionResult> SimularAsignacionAutomatica([FromBody] AsignacionAutomaticaRequest request)
+        public async Task<IActionResult> SimularAsignacionAutomatica(
+            [FromBody] AsignacionAutomaticaRequest request,
+            CancellationToken ct = default)
         {
             try
             {
@@ -86,12 +96,16 @@ namespace tiempo_libre.Controllers
 
                 _logger.LogInformation("Simulando asignación automática para año {Anio}", request.Anio);
 
-                var response = await _asignacionService.EjecutarAsignacionAutomaticaAsync(request);
-                
+                var response = await _asignacionService.EjecutarAsignacionAutomaticaAsync(request, ct);
+
                 if (!response.Success)
                     return BadRequest(response);
 
                 return Ok(response);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {

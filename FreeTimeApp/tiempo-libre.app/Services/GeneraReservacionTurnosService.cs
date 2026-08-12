@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.Models;
 using tiempo_libre.DTOs;
@@ -12,11 +13,16 @@ namespace tiempo_libre.Services
     public class GeneraReservacionTurnosService
     {
         private readonly FreeTimeDbContext _db;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<GeneraReservacionTurnosService> _logger;
 
-        public GeneraReservacionTurnosService(FreeTimeDbContext db, ILogger<GeneraReservacionTurnosService> logger)
+        public GeneraReservacionTurnosService(
+            FreeTimeDbContext db,
+            IServiceScopeFactory scopeFactory,
+            ILogger<GeneraReservacionTurnosService> logger)
         {
             _db = db;
+            _scopeFactory = scopeFactory;
             _logger = logger;
         }
 
@@ -77,13 +83,25 @@ namespace tiempo_libre.Services
 
                 await _db.SaveChangesAsync();
 
-                // Ejecutar la generación de calendarios de forma asíncrona
+                // Ejecutar la generación de calendarios de forma asíncrona.
+                // OJO: no capturar _db aquí. Es el DbContext Scoped del request y se
+                // desecha en cuanto este método retorna; la tarea seguía usándolo y
+                // moría con ObjectDisposedException sin dejar rastro en los logs.
                 _ = Task.Run(async () =>
                 {
-                    var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-                    var logger = loggerFactory.CreateLogger<EmployeesCalendarsGenerator>();
-                    var generator = new EmployeesCalendarsGenerator(_db, logger, request.FechaInicio, request.FechaFinal);
-                    await generator.GenerateEmployeesCalendarsAsync(request.FechaInicio, request.FechaFinal);
+                    using var scope = _scopeFactory.CreateScope();
+                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<EmployeesCalendarsGenerator>>();
+                    try
+                    {
+                        var db = scope.ServiceProvider.GetRequiredService<FreeTimeDbContext>();
+                        var generator = new EmployeesCalendarsGenerator(db, logger, request.FechaInicio, request.FechaFinal);
+                        await generator.GenerateEmployeesCalendarsAsync(request.FechaInicio, request.FechaFinal);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "La generación de calendarios de empleados falló ({FechaInicio} - {FechaFinal})",
+                            request.FechaInicio, request.FechaFinal);
+                    }
                 });
 
                 return new ApiResponse<string>(true, "La generación de calendarios y reservaciones se ha iniciado correctamente.", null);

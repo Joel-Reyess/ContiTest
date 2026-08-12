@@ -15,6 +15,9 @@ import { generarExcelEmpleadosSinAsignacion } from "@/utils/empleadosSinAsignaci
 
 interface ProgramacionAnualContentProps {
   estadisticasBloques: EstadisticasBloquesResponse | null;
+  /** Mensaje de error si la consulta de estadísticas falló (500, timeout, red).
+   *  Permite distinguir "no hay bloques" de "no se pudo consultar". */
+  errorEstadisticas?: string | null;
   loadingEstadisticas: boolean;
   anioVigente: number;
   onDescargarTurnos: () => void;
@@ -30,6 +33,7 @@ interface ProgramacionAnualContentProps {
 
 export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> = ({
   estadisticasBloques,
+  errorEstadisticas,
   loadingEstadisticas,
   anioVigente,
   onDescargarTurnos,
@@ -313,6 +317,23 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
   }
 
   if (!estadisticasBloques) {
+    if (errorEstadisticas) {
+      // La consulta falló: NO decir "no hay datos" — puede haberlos y el
+      // backend estar caído/saturado. Antes este caso se disfrazaba del
+      // mensaje amarillo y persistía incluso tras volver a iniciar sesión.
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-800 font-medium">
+            No se pudo consultar el estado de la programación anual.
+          </p>
+          <p className="text-red-700 text-sm mt-1">
+            {errorEstadisticas}. Los datos pueden existir aunque no se muestren;
+            reintenta en unos minutos o avisa al administrador si el problema
+            persiste.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
         <p className="text-yellow-800">

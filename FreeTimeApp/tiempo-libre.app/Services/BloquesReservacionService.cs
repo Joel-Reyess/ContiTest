@@ -86,6 +86,20 @@ namespace tiempo_libre.Services
                     _logger.LogInformation("Bloques guardados exitosamente en base de datos");
                 }
 
+                if (!response.GeneracionExitosa)
+                {
+                    // Cuando cualquier grupo falla NO se guarda nada (el SaveChanges de
+                    // arriba no corre). Antes esta rama respondía success=true y el
+                    // usuario veía "se generaron N bloques" con la base de datos vacía
+                    // — de ahí el "no hay datos de programación anual" posterior.
+                    var detalleErrores = string.Join(" | ", response.Errores);
+                    _logger.LogWarning(
+                        "Generación de bloques para año {Anio} falló en {Grupos} grupo(s); no se guardó nada. Errores: {Errores}",
+                        request.AnioObjetivo, response.Errores.Count, detalleErrores);
+                    return new ApiResponse<GeneracionBloquesResponse>(false, response,
+                        $"No se guardó ningún bloque: {response.Errores.Count} grupo(s) fallaron. {detalleErrores}");
+                }
+
                 return new ApiResponse<GeneracionBloquesResponse>(true, response, null);
             }
             catch (Exception ex)
@@ -457,15 +471,19 @@ namespace tiempo_libre.Services
             if (diasInhabiles.Contains(fechaSoloDate))
                 return false;
 
-            // Verificar calendario del grupo (días de descanso 'D')
+            // Verificar calendario del grupo (días de descanso 'D').
+            // OJO: el servicio de calendario exige fechaInicio < fechaFin (estricto);
+            // pedir (fecha, fecha) devolvía Success=false y esta validación aprobaba
+            // TODAS las fechas — los bloques caían en días de descanso del grupo.
             var calendarioResponse = await _calendarioService.ObtenerCalendarioGrupoAsync(
-                grupo.GrupoId, fecha.Date, fecha.Date);
+                grupo.GrupoId, fecha.Date, fecha.Date.AddDays(1));
 
             if (!calendarioResponse.Success || !calendarioResponse.Data.Calendario.Any())
                 return true; // Si no hay calendario, asumir que es válido
 
-            var diaCalendario = calendarioResponse.Data.Calendario.First();
-            return diaCalendario.Turno != "D";
+            var diaCalendario = calendarioResponse.Data.Calendario
+                .FirstOrDefault(d => d.Fecha.Date == fecha.Date);
+            return diaCalendario == null || diaCalendario.Turno != "D";
         }
 
         /// <summary>

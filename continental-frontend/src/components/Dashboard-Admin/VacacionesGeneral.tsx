@@ -58,6 +58,12 @@ export const VacacionesGeneral = ({
   const [showGenerarBloquesModal, setShowGenerarBloquesModal] = useState(false);
   const [estadisticasBloques, setEstadisticasBloques] =
     useState<EstadisticasBloquesResponse | null>(null);
+  // null = la consulta funcionó (haya o no bloques); string = la consulta falló.
+  // Sin esta distinción, un 500/timeout del backend se mostraba como
+  // "No hay datos de programación anual", indistinguible de la BD vacía.
+  const [errorEstadisticas, setErrorEstadisticas] = useState<string | null>(
+    null
+  );
   const [loadingEstadisticas, setLoadingEstadisticas] = useState(false);
   const [isEliminandoBloques, setIsEliminandoBloques] = useState(false);
 
@@ -115,9 +121,19 @@ export const VacacionesGeneral = ({
         } else {
           setEstadisticasBloques(null);
         }
+        setErrorEstadisticas(null);
       } catch (error) {
-        console.log("No hay estadísticas de bloques para el año", anioVigente);
+        console.error(
+          "Error al consultar estadísticas de bloques para el año",
+          anioVigente,
+          error
+        );
         setEstadisticasBloques(null);
+        setErrorEstadisticas(
+          error instanceof Error && error.message
+            ? error.message
+            : "No se pudo consultar el estado de los bloques"
+        );
       } finally {
         setLoadingEstadisticas(false);
       }
@@ -717,6 +733,16 @@ export const VacacionesGeneral = ({
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-continental-blue"></div>
                 <span>Verificando bloques existentes...</span>
               </div>
+            ) : errorEstadisticas ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-red-800 font-medium">
+                  No se pudo consultar el estado de los bloques de reservación.
+                </p>
+                <p className="text-red-700 text-sm mt-1">
+                  {errorEstadisticas}. Es posible que ya existan bloques
+                  generados; reintenta antes de volver a generarlos.
+                </p>
+              </div>
             ) : estadisticasBloques ? (
               // Mostrar estadísticas de bloques existentes
               <div className="bg-blue-50/20 border border-blue-200 rounded-lg p-6 space-y-4">
@@ -847,6 +873,7 @@ export const VacacionesGeneral = ({
         /* Contenido que aparece cuando el periodo es ProgramacionAnual */
         <ProgramacionAnualContent
           estadisticasBloques={estadisticasBloques}
+          errorEstadisticas={errorEstadisticas}
           loadingEstadisticas={loadingEstadisticas}
           anioVigente={anioVigente}
           onDescargarTurnos={handleDescargarTurnos}
@@ -861,8 +888,15 @@ export const VacacionesGeneral = ({
             try {
               const estadisticas = await BloquesReservacionService.obtenerEstadisticas(anioVigente);
               setEstadisticasBloques(estadisticas.totalBloques > 0 ? estadisticas : null);
+              setErrorEstadisticas(null);
             } catch (error) {
+              console.error("Error al consultar estadísticas de bloques", error);
               setEstadisticasBloques(null);
+              setErrorEstadisticas(
+                error instanceof Error && error.message
+                  ? error.message
+                  : "No se pudo consultar el estado de los bloques"
+              );
             }
             // Actualizar resumen de asignación
             try {
