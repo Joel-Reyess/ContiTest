@@ -100,9 +100,12 @@ namespace tiempo_libre.Services
                         _logger.LogInformation("Bloque {BloqueId} del grupo {GrupoId} marcado como completado",
                             bloque.Id, bloque.GrupoId);
 
-                        // 4a. Procesar empleados no completados
+                        // 4a. Procesar empleados no completados. "Saltado" cuenta igual
+                        // que "Asignado": el salto solo desbloqueó al siguiente, pero si
+                        // el saltado no capturó dentro de la ventana del bloque, al
+                        // vencer va a la cola como cualquier no-respuesta.
                         var empleadosNoCompletados = bloque.AsignacionesBloque
-                            .Where(a => a.Estado == "Asignado") // Solo empleados que no reservaron
+                            .Where(a => a.Estado == "Asignado" || a.Estado == "Saltado")
                             .ToList();
 
                         if (!bloque.EsBloqueCola) // Si es un bloque regular, transferir al bloque cola

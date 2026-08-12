@@ -19,6 +19,7 @@ import { ProgramacionAutomaticaModal } from "./ProgramacionAutomaticaModal";
 import { RevertirAsignacionModal } from "./RevertirAsignacionModal";
 import { GenerarBloquesModal } from "./GenerarBloquesModal";
 import { ProgramacionAnualContent } from "./ProgramacionAnualContent";
+import { ProgramacionAnualWizard } from "./ProgramacionAnualWizard";
 import { AsignacionAutomaticaService } from "@/services/asignacionAutomaticaService";
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
 import { vacacionesService } from "@/services/vacacionesService";
@@ -39,12 +40,15 @@ interface VacacionesGeneralProps {
   ) => void;
   anioVigente: number;
   onConfigUpdate?: (config: VacacionesConfig) => void;
+  /** Cambia a la pestaña Calendario (pasos 1-2 del wizard). */
+  onIrACalendario?: () => void;
 }
 
 export const VacacionesGeneral = ({
   onNotification,
   anioVigente,
   onConfigUpdate,
+  onIrACalendario,
 }: VacacionesGeneralProps) => {
   const [fechaInicio, setFechaInicio] = useState<string>("");
   const [configVacaciones, setConfigVacaciones] =
@@ -66,6 +70,13 @@ export const VacacionesGeneral = ({
   );
   const [loadingEstadisticas, setLoadingEstadisticas] = useState(false);
   const [isEliminandoBloques, setIsEliminandoBloques] = useState(false);
+  // Coexistencia: cuando la preparación del siguiente año está activa, los
+  // modales de días/bloques deben operar sobre ese año, no sobre el vigente.
+  const [prepFechaInicioBloques, setPrepFechaInicioBloques] = useState<string>("");
+  const [modalesEnPreparacion, setModalesEnPreparacion] = useState(false);
+  const [cambiandoPreparacion, setCambiandoPreparacion] = useState(false);
+
+  const anioPreparacion = configVacaciones?.anioProgramacionAnual ?? null;
 
   // Cargar configuración de vacaciones al iniciar
   useEffect(() => {
@@ -151,6 +162,7 @@ export const VacacionesGeneral = ({
           porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
           periodoActual: "Cerrado",
           anioVigente: configVacaciones.anioVigente,
+          anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
         });
         setConfigVacaciones(updatedConfig);
         onConfigUpdate?.(updatedConfig);
@@ -172,6 +184,7 @@ export const VacacionesGeneral = ({
         porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
         periodoActual: "ProgramacionAnual",
         anioVigente: configVacaciones.anioVigente,
+        anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
       });
 
       setConfigVacaciones(updatedConfig);
@@ -189,7 +202,72 @@ export const VacacionesGeneral = ({
   };
 
   const handleProgramarDiasSuccess = () => {
+    setModalesEnPreparacion(false);
     setShowProgramacionModal(true);
+  };
+
+  // ---- Coexistencia: preparación de la programación anual del siguiente año ----
+
+  const actualizarAnioPreparacion = async (
+    nuevoAnio: number | null,
+    mensajeOk: string
+  ) => {
+    if (!configVacaciones) return;
+    try {
+      setCambiandoPreparacion(true);
+      const updatedConfig = await vacacionesService.updateConfig({
+        porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
+        periodoActual: configVacaciones.periodoActual,
+        anioVigente: configVacaciones.anioVigente,
+        anioProgramacionAnual: nuevoAnio,
+      });
+      setConfigVacaciones(updatedConfig);
+      onConfigUpdate?.(updatedConfig);
+      onNotification("success", "Configuración actualizada", mensajeOk);
+    } catch (error) {
+      console.error("Error al actualizar año de preparación:", error);
+      onNotification(
+        "error",
+        "Error",
+        error instanceof Error
+          ? error.message
+          : "No se pudo actualizar la configuración"
+      );
+    } finally {
+      setCambiandoPreparacion(false);
+    }
+  };
+
+  // HU20 "Activar nuevo periodo anual": el año preparado pasa a ser el vigente
+  // y su reprogramación queda activa; la preparación se limpia.
+  const handleActivarAnioPreparado = async () => {
+    if (!configVacaciones?.anioProgramacionAnual) return;
+    const anioNuevo = configVacaciones.anioProgramacionAnual;
+    try {
+      setCambiandoPreparacion(true);
+      const updatedConfig = await vacacionesService.updateConfig({
+        porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
+        periodoActual: "Reprogramacion",
+        anioVigente: anioNuevo,
+        anioProgramacionAnual: null,
+      });
+      setConfigVacaciones(updatedConfig);
+      onConfigUpdate?.(updatedConfig);
+      onNotification(
+        "success",
+        `Año ${anioNuevo} activado`,
+        `El año vigente ahora es ${anioNuevo}. La reprogramación de ${anioNuevo} queda activa.`
+      );
+    } catch (error) {
+      console.error("Error al activar el año preparado:", error);
+      onNotification(
+        "error",
+        "Error",
+        error instanceof Error ? error.message : "No se pudo activar el año"
+      );
+    } finally {
+      setCambiandoPreparacion(false);
+    }
   };
 
   const handleProgramacionCompleta = async () => {
@@ -261,6 +339,7 @@ export const VacacionesGeneral = ({
   };
 
   const handleGenerarTurnosSuccess = () => {
+    setModalesEnPreparacion(false);
     setShowGenerarBloquesModal(true);
   };
 
@@ -474,6 +553,7 @@ export const VacacionesGeneral = ({
                         porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
                         periodoActual: "ProgramacionAnual",
                         anioVigente: configVacaciones.anioVigente,
+                        anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
                       });
 
                       setConfigVacaciones(updatedConfig);
@@ -514,6 +594,7 @@ export const VacacionesGeneral = ({
                         porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
                         periodoActual: "Cerrado",
                         anioVigente: configVacaciones.anioVigente,
+                        anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
                       });
 
                       setConfigVacaciones(updatedConfig);
@@ -541,9 +622,136 @@ export const VacacionesGeneral = ({
               </div>
             </div>
           </div>
+
+          {/* Coexistencia: preparar la programación anual del siguiente año sin
+              cerrar la reprogramación del año vigente. */}
+          <div className="bg-white border border-continental-yellow/70 rounded-lg p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-continental-yellow/20 rounded-full flex items-center justify-center">
+                <Sun className="w-6 h-6 text-continental-yellow" />
+              </div>
+              <div>
+                <h2 className="text-lg font-medium text-continental-blue-light">
+                  {anioPreparacion
+                    ? `Programación anual ${anioPreparacion} en preparación`
+                    : "Preparar la programación anual del siguiente año"}
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {anioPreparacion
+                    ? `La reprogramación de ${anioVigente} sigue activa; los pasos de abajo operan sobre ${anioPreparacion} sin afectarla.`
+                    : `Puedes ir preparando el siguiente año (roles, festivos, días por empresa y bloques) mientras la reprogramación de ${anioVigente} sigue activa.`}
+                </p>
+              </div>
+            </div>
+
+            {!anioPreparacion ? (
+              <Button
+                variant="continental"
+                disabled={cambiandoPreparacion}
+                onClick={() =>
+                  actualizarAnioPreparacion(
+                    anioVigente + 1,
+                    `Preparación de la programación anual ${anioVigente + 1} iniciada`
+                  )
+                }
+                className="flex items-center gap-2"
+              >
+                <Sun className="w-4 h-4" />
+                Preparar programación anual {anioVigente + 1}
+              </Button>
+            ) : (
+              <>
+                <ProgramacionAnualWizard
+                  anio={anioPreparacion}
+                  onNotification={onNotification}
+                  onIrACalendario={onIrACalendario}
+                  onAbrirProgramarDias={() => {
+                    setModalesEnPreparacion(true);
+                    setShowProgramacionModal(true);
+                  }}
+                  onAbrirGenerarBloques={() => {
+                    if (!prepFechaInicioBloques) {
+                      onNotification(
+                        "warning",
+                        "Falta la fecha de inicio",
+                        "Indica la fecha de inicio de generación de bloques (campo de abajo) antes de generarlos."
+                      );
+                      return;
+                    }
+                    setModalesEnPreparacion(true);
+                    setShowGenerarBloquesModal(true);
+                  }}
+                />
+
+                <div className="w-full max-w-sm">
+                  <Label
+                    htmlFor="prepFechaInicioBloques"
+                    className="text-sm font-medium text-continental-gray-1"
+                  >
+                    Fecha de inicio de generación de bloques ({anioPreparacion})
+                  </Label>
+                  <Input
+                    id="prepFechaInicioBloques"
+                    type="date"
+                    value={prepFechaInicioBloques}
+                    onChange={(e) => setPrepFechaInicioBloques(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-3 pt-2 border-t">
+                  <Button
+                    variant="continental"
+                    disabled={cambiandoPreparacion}
+                    onClick={handleActivarAnioPreparado}
+                    className="flex items-center gap-2"
+                    title={`El año vigente pasa a ser ${anioPreparacion} y su reprogramación queda activa`}
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Activar {anioPreparacion} como año vigente
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={cambiandoPreparacion}
+                    onClick={() =>
+                      actualizarAnioPreparacion(
+                        null,
+                        "Preparación cancelada. Los datos ya capturados del año no se borran."
+                      )
+                    }
+                    className="border-red-300 text-red-600 hover:bg-red-50"
+                  >
+                    Cancelar preparación
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </>
       ) : !mostrarContenidoProgramacionAnual ? (
         <>
+          {/* Estado de la secuencia (rol → festivos → días empresa → bloques) */}
+          <ProgramacionAnualWizard
+            anio={anioVigente}
+            onNotification={onNotification}
+            onIrACalendario={onIrACalendario}
+            onAbrirProgramarDias={() => {
+              setModalesEnPreparacion(false);
+              setShowProgramacionModal(true);
+            }}
+            onAbrirGenerarBloques={() => {
+              if (!fechaInicio) {
+                onNotification(
+                  "warning",
+                  "Falta la fecha de inicio",
+                  "Indica la fecha de inicio de la programación anual (sección 1) antes de generar los bloques."
+                );
+                return;
+              }
+              setModalesEnPreparacion(false);
+              setShowGenerarBloquesModal(true);
+            }}
+          />
+
           {/* Section 1: Iniciar periodo */}
           <div className="space-y-4">
             <h2 className="text-lg font-medium text-continental-blue-light text-left">
@@ -933,8 +1141,10 @@ export const VacacionesGeneral = ({
         onClose={() => setShowGenerarBloquesModal(false)}
         onNotification={onNotification}
         onSuccess={handleBloquesGeneradosSuccess}
-        fechaInicio={fechaInicio}
-        anioVigente={anioVigente}
+        fechaInicio={modalesEnPreparacion ? prepFechaInicioBloques : fechaInicio}
+        anioVigente={
+          modalesEnPreparacion && anioPreparacion ? anioPreparacion : anioVigente
+        }
       />
     </div>
   );

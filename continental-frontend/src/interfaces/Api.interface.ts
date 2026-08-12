@@ -282,6 +282,9 @@ export enum EmpleadoEstado {
     COMPLETADO = 'Completado',
     TRANSFERIDO = 'Transferido',
     NO_RESPONDIO = 'NoRespondio',
+    /** El jefe lo saltó para desbloquear al siguiente; aún puede capturar
+     *  mientras su bloque siga abierto. Si no, pasa al bloque cola. */
+    SALTADO = 'Saltado',
     MANUAL = 'MANUAL'
 }
 

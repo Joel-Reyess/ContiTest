@@ -318,6 +318,34 @@ export class BloquesReservacionService {
    * @param request - Datos del cambio de empleado
    * @returns Respuesta del cambio
    */
+  /**
+   * Salta el turno de un empleado dentro de su bloque actual: desbloquea al
+   * siguiente por antigüedad. El saltado puede capturar mientras el bloque
+   * siga abierto; si no, al vencer pasa al bloque cola automáticamente.
+   */
+  static async saltarTurno(
+    empleadoId: number,
+    bloqueId: number,
+    motivo?: string
+  ): Promise<void> {
+    try {
+      const response = await httpClient.post<ApiResponse<boolean>>(
+        '/api/bloques-reservacion/saltar-turno',
+        { empleadoId, bloqueId, motivo },
+        { timeout: 30000 }
+      );
+
+      if (!response.success) {
+        throw new Error(response.errorMsg || 'Error al saltar el turno');
+      }
+    } catch (error) {
+      console.error('Error en saltarTurno:', error);
+      throw new Error(
+        error instanceof Error ? error.message : 'Error al saltar el turno'
+      );
+    }
+  }
+
   static async cambiarEmpleado(
     request: CambiarEmpleadoRequest
   ): Promise<CambiarEmpleadoResponse> {

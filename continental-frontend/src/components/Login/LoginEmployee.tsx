@@ -182,16 +182,18 @@ export const LoginEmployee = () => {
                         // Encontrar la posición del empleado actual
                         const posicionEmpleado = empleadosOrdenados.findIndex(emp => emp.empleadoId === user.id);
 
-                        // Verificar si hay empleados con mayor antigüedad que aún no han reservado
-                        const empleadosConMayorAntiguedad = empleadosOrdenados.slice(0, posicionEmpleado);
-                        const hayEmpleadosPendientes = empleadosConMayorAntiguedad.some(emp =>
-                            emp.estado !== 'Reservado' && emp.estado !== 'Completado'
+                        // Verificar si hay empleados con mayor antigüedad que aún no han reservado.
+                        // 'Saltado' no bloquea: el jefe lo saltó precisamente para
+                        // desbloquear al siguiente (el saltado aún puede capturar
+                        // mientras el bloque siga abierto).
+                        const hayEmpleadosPendientes = empleadosOrdenados.slice(0, posicionEmpleado).some(emp =>
+                            emp.estado !== 'Reservado' && emp.estado !== 'Completado' && emp.estado !== 'Saltado'
                         );
 
                         if (hayEmpleadosPendientes) {
                             // Hay empleados con mayor antigüedad pendientes de reservar
-                            const empleadosPendientes = empleadosConMayorAntiguedad.filter(emp =>
-                                emp.estado !== 'Reservado' && emp.estado !== 'Completado'
+                            const empleadosPendientes = empleadosOrdenados.slice(0, posicionEmpleado).filter(emp =>
+                                emp.estado !== 'Reservado' && emp.estado !== 'Completado' && emp.estado !== 'Saltado'
                             );
 
                             setBloqueActual(bloque);

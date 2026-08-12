@@ -136,7 +136,10 @@ export const Vacaciones = () => {
       const payload = {
         porcentajeAusenciaMaximo: parseFloat(editableConfig.porcentajeAusenciaMaximo),
         periodoActual: editableConfig.periodoActual as VacacionesConfig['periodoActual'],
-        anioVigente: parseInt(editableConfig.anioVigente)
+        anioVigente: parseInt(editableConfig.anioVigente),
+        // Preservar el año en preparación: el backend persiste lo que reciba
+        // y omitirlo lo borraría.
+        anioProgramacionAnual: config?.anioProgramacionAnual ?? null
       };
       const updated = await vacacionesService.updateConfig(payload);
       setConfig(updated);
@@ -266,6 +269,7 @@ export const Vacaciones = () => {
           <VacacionesGeneral
             onNotification={showNotification}
             anioVigente={config?.anioVigente || new Date().getFullYear() + 1}
+            onIrACalendario={() => setActiveTab('calendario')}
             onConfigUpdate={(updatedConfig) => {
               setConfig(updatedConfig);
               setEditableConfig({

@@ -72,12 +72,15 @@ function EmpleadoRow({
     variant,
     showActions,
     onSkip,
+    onSaltar,
     groupId,
 }: {
     empleado: Empleado
     variant: 'actual' | 'siguiente'
     showActions?: boolean
     onSkip: (empleadoId: string, groupId: string) => void
+    /** Salto en sitio: desbloquea al siguiente sin mover al empleado de bloque. */
+    onSaltar: (empleadoId: string, groupId: string) => void
     groupId: string
 }) {
 const rail = variant === 'actual'
@@ -85,35 +88,67 @@ const rail = variant === 'actual'
     empleado.estado === EmpleadoEstado.RESERVADO ||
     empleado.estado === EmpleadoEstado.MANUAL // ✅ nuevo estado manual
     ? 'bg-[#30a30a]' // verde
-    : 'bg-[#0A4AA3]' // azul
+    : empleado.estado === EmpleadoEstado.SALTADO
+      ? 'bg-amber-500' // ámbar: saltado, aún puede capturar en la ventana
+      : 'bg-[#0A4AA3]' // azul
   : 'bg-gray-400';
+
+    const esAccionable =
+        empleado.estado !== EmpleadoEstado.COMPLETADO &&
+        empleado.estado !== EmpleadoEstado.RESERVADO;
 
     return (
         <div className="relative flex items-stretch gap-2">
             <div className={`w-4 rounded-sm ${rail}`} />
             <div className="group relative flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                 <div className="text-sm font-semibold text-gray-900">{empleado.codigo}</div>
-                <div className="text-xs text-gray-600 pr-16">{empleado.nombre}</div>
+                <div className="text-xs text-gray-600 pr-16">
+                    {empleado.nombre}
+                    {empleado.estado === EmpleadoEstado.SALTADO && (
+                        <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-medium">
+                            Saltado
+                        </span>
+                    )}
+                </div>
 
-                {showActions && (empleado.estado !== EmpleadoEstado.COMPLETADO && empleado.estado !== EmpleadoEstado.RESERVADO) && (
-                    <button
-                        onClick={() => onSkip(empleado.id, groupId)}
+                {showActions && esAccionable && (
+                    <div
                         className="
-                            absolute top-1 right-1
-                            inline-flex items-center gap-1 px-2 py-0.5
-                            rounded-md border border-amber-300 bg-white
-                            text-amber-700 text-[11px] leading-none shadow-sm
+                            absolute top-1 right-1 flex gap-1
                             opacity-0 pointer-events-none
                             transition-opacity duration-150
                             group-hover:opacity-100 group-hover:pointer-events-auto
-                            focus:opacity-100 focus:pointer-events-auto cursor-pointer
+                            focus-within:opacity-100 focus-within:pointer-events-auto
                         "
-                        title="Saltar turno"
-                        aria-label="Saltar turno"
                     >
-                        <SkipForward className="w-3.5 h-3.5" />
-                        <span>Saltar</span>
-                    </button>
+                        {empleado.estado !== EmpleadoEstado.SALTADO && (
+                            <button
+                                onClick={() => onSaltar(empleado.id, groupId)}
+                                className="
+                                    inline-flex items-center gap-1 px-2 py-0.5
+                                    rounded-md border border-amber-300 bg-white
+                                    text-amber-700 text-[11px] leading-none shadow-sm cursor-pointer
+                                "
+                                title="Saltar turno: desbloquea al siguiente empleado; el saltado aún puede capturar mientras el bloque siga abierto"
+                                aria-label="Saltar turno (desbloquear siguiente)"
+                            >
+                                <SkipForward className="w-3.5 h-3.5" />
+                                <span>Saltar</span>
+                            </button>
+                        )}
+                        <button
+                            onClick={() => onSkip(empleado.id, groupId)}
+                            className="
+                                inline-flex items-center gap-1 px-2 py-0.5
+                                rounded-md border border-blue-300 bg-white
+                                text-blue-700 text-[11px] leading-none shadow-sm cursor-pointer
+                            "
+                            title="Reasignar a otro bloque (HU54)"
+                            aria-label="Reasignar a otro bloque"
+                        >
+                            <span>Reasignar</span>
+                        </button>
+                    </div>
                 )}
             </div>
         </div>
@@ -125,6 +160,7 @@ function GrupoCol({
     bloque,
     variant,
     onSkip,
+    onSaltar,
     groupId,
     canSkip = false,
 }: {
@@ -132,6 +168,7 @@ function GrupoCol({
     bloque: BloqueHorario
     variant: 'actual' | 'siguiente'
     onSkip: (empleadoId: string, groupId: string) => void
+    onSaltar: (empleadoId: string, groupId: string) => void
     groupId: string
     canSkip?: boolean
 }) {
@@ -158,6 +195,7 @@ function GrupoCol({
                         variant={variant}
                         showActions={canSkip && variant === 'actual'}
                         onSkip={onSkip}
+                        onSaltar={onSaltar}
                         groupId={groupId}
                     />
                 ))}
@@ -392,6 +430,39 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
         // Establecer el grupo específico para el modal
         setSelectedGrupoId(parseInt(groupId))
         setShowReasignacionModal(true)
+    }
+
+    // Salto en sitio: marca al empleado como "Saltado" para desbloquear al
+    // siguiente por antigüedad. No lo mueve de bloque: puede capturar mientras
+    // el bloque siga abierto y, si no lo hace, el sistema lo manda a la cola.
+    const handleSaltarTurno = async (empleadoId: string, groupId: string) => {
+        if (!canSkip) return
+
+        const grupo = data.find(g => g.id === groupId)
+        if (!grupo) return
+        const empleado = grupo.bloqueActual.empleados.find(emp => emp.id === empleadoId)
+        if (!empleado) return
+
+        const bloqueId = parseInt(grupo.bloqueActual.id)
+        if (!Number.isFinite(bloqueId)) return
+
+        const confirmado = window.confirm(
+            `¿Saltar el turno de ${empleado.nombre}?\n\n` +
+            `El siguiente empleado por antigüedad quedará desbloqueado de inmediato. ` +
+            `${empleado.nombre} todavía podrá capturar mientras el bloque siga abierto; ` +
+            `si no lo hace, pasará automáticamente al bloque cola.`
+        )
+        if (!confirmado) return
+
+        try {
+            await BloquesReservacionService.saltarTurno(parseInt(empleadoId), bloqueId)
+            fetchBloques()
+        } catch (error) {
+            console.error('Error al saltar turno:', error)
+            window.alert(
+                error instanceof Error ? error.message : 'No se pudo saltar el turno'
+            )
+        }
     }
 
     const handleReasignacionConfirm = async (bloqueDestinoId: number, motivo: string, observaciones?: string) => {
@@ -634,6 +705,7 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
                                 bloque={g.bloqueActual}
                                 variant="actual"
                                 onSkip={handleSkip}
+                                onSaltar={handleSaltarTurno}
                                 groupId={g.id}
                                 canSkip={canSkip}
                             />
@@ -659,6 +731,7 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
                                 bloque={g.siguienteBloque}
                                 variant="siguiente"
                                 onSkip={() => { }}
+                                onSaltar={() => { }}
                                 groupId={''}
                                 canSkip={false}
                             />

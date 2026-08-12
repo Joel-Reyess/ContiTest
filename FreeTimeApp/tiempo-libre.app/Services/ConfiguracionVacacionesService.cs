@@ -67,6 +67,7 @@ namespace tiempo_libre.Services
                     configActual.PorcentajeAusenciaMaximo = nuevaConfig.PorcentajeAusenciaMaximo;
                     configActual.PeriodoActual = nuevaConfig.PeriodoActual;
                     configActual.AnioVigente = nuevaConfig.AnioVigente;
+                    configActual.AnioProgramacionAnual = nuevaConfig.AnioProgramacionAnual;
                     configActual.UpdatedAt = DateTime.Now;
                 }
 

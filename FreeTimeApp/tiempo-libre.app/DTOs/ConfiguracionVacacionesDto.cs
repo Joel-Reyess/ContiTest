@@ -17,6 +17,15 @@ namespace tiempo_libre.DTOs
         [Required]
         [Range(2020, 2100, ErrorMessage = "El año debe estar entre 2020 y 2100")]
         public int AnioVigente { get; set; }
+
+        /// <summary>
+        /// Año en preparación de programación anual (coexiste con la
+        /// reprogramación del año vigente). null = sin preparación en curso.
+        /// OJO: el PUT siempre persiste este valor; los clientes deben
+        /// reenviar el valor actual si no desean cambiarlo.
+        /// </summary>
+        [Range(2020, 2100, ErrorMessage = "El año de programación debe estar entre 2020 y 2100")]
+        public int? AnioProgramacionAnual { get; set; }
     }
 
     public class ConfiguracionVacacionesResponse
@@ -25,6 +34,7 @@ namespace tiempo_libre.DTOs
         public decimal PorcentajeAusenciaMaximo { get; set; }
         public string PeriodoActual { get; set; } = string.Empty;
         public int AnioVigente { get; set; }
+        public int? AnioProgramacionAnual { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public string? UpdatedByUser { get; set; }

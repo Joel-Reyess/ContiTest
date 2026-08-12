@@ -89,6 +89,8 @@ namespace tiempo_libre.DTOs
     {
         public string PeriodoActual { get; set; } = string.Empty;
         public int AnioVigente { get; set; }
+        /// <summary>Año en preparación de programación anual; null si no hay.</summary>
+        public int? AnioProgramacionAnual { get; set; }
         public decimal PorcentajeAusenciaMaximo { get; set; }
         public bool PermiteProgramacionAnual { get; set; }
         public bool PermiteReprogramacion { get; set; }

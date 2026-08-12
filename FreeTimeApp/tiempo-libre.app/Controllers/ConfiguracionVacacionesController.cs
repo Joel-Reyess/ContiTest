@@ -46,6 +46,7 @@ namespace tiempo_libre.Controllers
                     PorcentajeAusenciaMaximo = response.Data.PorcentajeAusenciaMaximo,
                     PeriodoActual = response.Data.PeriodoActual,
                     AnioVigente = response.Data.AnioVigente,
+                    AnioProgramacionAnual = response.Data.AnioProgramacionAnual,
                     CreatedAt = response.Data.CreatedAt,
                     UpdatedAt = response.Data.UpdatedAt,
                     UpdatedByUser = null
@@ -81,7 +82,8 @@ namespace tiempo_libre.Controllers
                 {
                     PorcentajeAusenciaMaximo = request.PorcentajeAusenciaMaximo,
                     PeriodoActual = request.PeriodoActual,
-                    AnioVigente = request.AnioVigente
+                    AnioVigente = request.AnioVigente,
+                    AnioProgramacionAnual = request.AnioProgramacionAnual
                 };
 
                 var response = await _configuracionService.ActualizarConfiguracionAsync(nuevaConfig);

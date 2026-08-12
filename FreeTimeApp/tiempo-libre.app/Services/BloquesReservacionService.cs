@@ -660,6 +660,64 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Marca la asignación como "Saltado" SIN moverla de bloque. Efectos:
+        /// - El siguiente empleado por antigüedad queda desbloqueado de inmediato
+        ///   (el gate de captura ignora a los saltados igual que a los que ya
+        ///   reservaron).
+        /// - El saltado conserva el derecho de capturar durante la ventana del
+        ///   bloque (24 h); si captura, su asignación pasa a "Reservado" normal.
+        /// - Si no captura antes de que venza el bloque, EstadosBloquesService lo
+        ///   manda al bloque cola como cualquier no-respuesta.
+        /// </summary>
+        public async Task<ApiResponse<bool>> SaltarTurnoAsync(SaltarTurnoRequest request, int usuarioId)
+        {
+            try
+            {
+                var asignacion = await _db.AsignacionesBloque
+                    .Include(a => a.Empleado)
+                    .FirstOrDefaultAsync(a => a.EmpleadoId == request.EmpleadoId
+                        && a.BloqueId == request.BloqueId
+                        && a.Estado == "Asignado");
+
+                if (asignacion == null)
+                    return new ApiResponse<bool>(false, false,
+                        "El empleado no tiene una asignación pendiente en ese bloque (puede que ya haya reservado o ya fue saltado)");
+
+                asignacion.Estado = "Saltado";
+                asignacion.Observaciones = string.IsNullOrWhiteSpace(request.Motivo)
+                    ? "Saltado para desbloquear al siguiente empleado"
+                    : $"Saltado: {request.Motivo}";
+
+                // Auditoría en la misma tabla que los cambios de bloque; origen y
+                // destino iguales porque el salto no mueve al empleado de bloque.
+                _db.CambiosBloque.Add(new CambiosBloque
+                {
+                    EmpleadoId = request.EmpleadoId,
+                    BloqueOrigenId = request.BloqueId,
+                    BloqueDestinoId = request.BloqueId,
+                    Motivo = string.IsNullOrWhiteSpace(request.Motivo)
+                        ? "Saltar turno"
+                        : request.Motivo,
+                    AutorizadoPor = usuarioId
+                });
+
+                await _db.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Turno saltado: empleado {EmpleadoId} en bloque {BloqueId} por usuario {UsuarioId}",
+                    request.EmpleadoId, request.BloqueId, usuarioId);
+
+                return new ApiResponse<bool>(true, true,
+                    $"Turno de {asignacion.Empleado.FullName} saltado; el siguiente empleado quedó desbloqueado. Podrá capturar mientras el bloque siga abierto.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al saltar turno del empleado {EmpleadoId}", request.EmpleadoId);
+                return new ApiResponse<bool>(false, false, $"Error inesperado: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Consulta bloques con filtros
         /// </summary>
         public async Task<ApiResponse<ConsultaBloquesResponse>> ConsultarBloquesAsync(ConsultaBloquesRequest request)

@@ -160,6 +160,45 @@ namespace tiempo_libre.Controllers
         }
 
         /// <summary>
+        /// Salta el turno de un empleado dentro de su bloque: desbloquea al
+        /// siguiente por antigüedad sin quitarle al saltado el derecho de
+        /// capturar mientras el bloque siga abierto (24 h). Si no captura,
+        /// el proceso de estados lo manda al bloque cola.
+        /// </summary>
+        [HttpPost("saltar-turno")]
+        [Authorize(Roles = "SuperUsuario,Administrador,JefeArea,Jefe De Area")]
+        public async Task<IActionResult> SaltarTurno([FromBody] SaltarTurnoRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = string.Join("; ", ModelState
+                        .SelectMany(x => x.Value.Errors)
+                        .Select(x => x.ErrorMessage));
+                    return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada inválidos: {errors}"));
+                }
+
+                var usuarioId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+
+                _logger.LogInformation("Usuario {UsuarioId} salta turno del empleado {EmpleadoId} en bloque {BloqueId}",
+                    usuarioId, request.EmpleadoId, request.BloqueId);
+
+                var response = await _bloquesService.SaltarTurnoAsync(request, usuarioId);
+
+                if (!response.Success)
+                    return BadRequest(response);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al saltar turno");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Consulta bloques de reservación con filtros opcionales
         /// </summary>
         /// <param name="anioObjetivo">Año a consultar</param>
