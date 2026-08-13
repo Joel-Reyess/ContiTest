@@ -47,6 +47,25 @@ namespace tiempo_libre.Helpers
         /// </summary>
         public static DateTime FECHA_REFERENCIA { get; private set; } = new DateTime(2025, 9, 15);
 
+        /// <summary>
+        /// Fecha de referencia POR regla. FECHA_REFERENCIA es el mínimo de todas y
+        /// sólo se usa como respaldo: una regla que arrancó en otra fecha se debe
+        /// anclar a la suya o el calendario sale corrido.
+        /// </summary>
+        private static Dictionary<string, DateTime> ANCLAS { get; set; } = new();
+
+        /// <summary>
+        /// Movimientos de patrón agendados y todavía NO aplicados
+        /// (RotacionesReglaProgramadas en estado Pendiente), por regla y ordenados
+        /// por fecha. Son de dos tipos: arranque (trae Patron, lo fija a partir de
+        /// esa fecha) y recorrido (trae DiasRotacion, desliza el patrón vigente).
+        /// Sirven para proyectar el año que se está programando: el turno de una
+        /// fecha futura se calcula con lo que va a regir ese día, que es justo lo
+        /// que muestra la vista "Calendario anual de reglas".
+        /// Los ya ejecutados no entran aquí: quedaron dentro del patrón de la regla.
+        /// </summary>
+        private static Dictionary<string, List<(DateTime Fecha, string[]? Patron, int DiasRotacion)>> ARRANQUES { get; set; } = new();
+
         private static readonly object _lock = new();
 
         /// <summary>
@@ -81,19 +100,111 @@ namespace tiempo_libre.Helpers
                     return;
 
                 var fechaRef = filas.Min(f => f.FechaReferencia);
+                var nuevasAnclas = filas
+                    .GroupBy(f => f.Codigo)
+                    .ToDictionary(g => g.Key, g => g.Min(f => f.FechaReferencia).Date);
+
+                var nuevosArranques = CargarArranquesPendientes(db);
 
                 lock (_lock)
                 {
                     REGLAS = nuevoDict;
                     FECHA_REFERENCIA = fechaRef;
+                    ANCLAS = nuevasAnclas;
+                    ARRANQUES = nuevosArranques;
                 }
 
-                Console.WriteLine($"[INFO] TurnosHelper.Reload: {nuevoDict.Count} reglas cargadas desde BD.");
+                Console.WriteLine($"[INFO] TurnosHelper.Reload: {nuevoDict.Count} reglas cargadas desde BD, " +
+                                  $"{nuevosArranques.Sum(a => a.Value.Count)} arranque(s) pendiente(s).");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[WARN] TurnosHelper.Reload falló, se mantienen reglas anteriores: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Lee los arranques agendados que aún no se aplican. Va aparte y con su
+        /// propio try/catch: si la tabla no existe todavía en una BD vieja, las
+        /// reglas se siguen cargando y el sistema opera como antes.
+        /// </summary>
+        private static Dictionary<string, List<(DateTime Fecha, string[]? Patron, int DiasRotacion)>> CargarArranquesPendientes(FreeTimeDbContext db)
+        {
+            var resultado = new Dictionary<string, List<(DateTime Fecha, string[]? Patron, int DiasRotacion)>>();
+            try
+            {
+                var filas = db.RotacionesReglaProgramadas
+                    .AsNoTracking()
+                    .Where(r => r.Estado == "Pendiente")
+                    .OrderBy(r => r.FechaEjecucion)
+                    .ToList();
+
+                foreach (var fila in filas)
+                {
+                    try
+                    {
+                        string[]? patron = null;
+                        if (!string.IsNullOrEmpty(fila.PatronBaseline))
+                        {
+                            patron = JsonSerializer.Deserialize<string[]>(fila.PatronBaseline);
+                            if (patron != null && patron.Length == 0) patron = null;
+                        }
+
+                        // Recorrido sin días efectivos: no mueve nada, se ignora.
+                        if (patron == null && fila.DiasRotacion == 0) continue;
+
+                        if (!resultado.TryGetValue(fila.CodigoRegla, out var lista))
+                        {
+                            lista = new List<(DateTime, string[]?, int)>();
+                            resultado[fila.CodigoRegla] = lista;
+                        }
+                        lista.Add((fila.FechaEjecucion.Date, patron, patron != null ? 0 : fila.DiasRotacion));
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[WARN] TurnosHelper.Reload: movimiento programado #{fila.Id} con patrón inválido: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARN] TurnosHelper.Reload: no se pudieron leer los arranques programados: {ex.Message}");
+            }
+            return resultado;
+        }
+
+        /// <summary>
+        /// Lo que rige en una fecha: el patrón, la fecha a la que está anclado y
+        /// cuántos días de recorrido acumula desde ese ancla.
+        /// Manda el arranque agendado más reciente con fecha menor o igual; si no
+        /// hay, el patrón vigente de la regla anclado a su FechaReferencia. Encima
+        /// se suman los recorridos agendados posteriores al ancla.
+        /// </summary>
+        public static (string[] Patron, DateTime Ancla, int Desplazamiento) ObtenerPatronVigente(string regla, DateTime fecha)
+        {
+            var patron = REGLAS.TryGetValue(regla, out var p) ? p : Array.Empty<string>();
+            var ancla = ANCLAS.TryGetValue(regla, out var a) ? a : FECHA_REFERENCIA.Date;
+            var desplazamiento = 0;
+
+            if (ARRANQUES.TryGetValue(regla, out var programadas))
+            {
+                for (var i = programadas.Count - 1; i >= 0; i--)
+                {
+                    if (programadas[i].Patron == null || programadas[i].Fecha > fecha.Date) continue;
+                    patron = programadas[i].Patron!;
+                    ancla = programadas[i].Fecha;
+                    break;
+                }
+
+                foreach (var mov in programadas)
+                {
+                    if (mov.Patron != null) continue;
+                    if (mov.Fecha > fecha.Date || mov.Fecha <= ancla) continue;
+                    desplazamiento += mov.DiasRotacion;
+                }
+            }
+
+            return (patron, ancla, desplazamiento);
         }
 
         /// <summary>
@@ -142,7 +253,18 @@ namespace tiempo_libre.Helpers
             if (!REGLAS.ContainsKey(reglaRef))
                 return new string[0];
 
-            var regla = REGLAS[reglaRef];
+            return CrearRolDesdePatron(REGLAS[reglaRef], gpoRef);
+        }
+
+        /// <summary>
+        /// Igual que CrearRol pero sobre un patrón dado (el vigente en una fecha,
+        /// que puede venir de un arranque agendado y no del patrón actual).
+        /// </summary>
+        public static string[] CrearRolDesdePatron(string[] regla, int gpoRef)
+        {
+            if (regla == null || regla.Length < 7)
+                return new string[0];
+
             var cantSemanas = regla.Length / 7;
             var rol = new string[cantSemanas * 7];
             var dia = (gpoRef - 1) * 7;
@@ -172,17 +294,23 @@ namespace tiempo_libre.Helpers
             if (reglaInfo == null)
                 return "1";
 
-            var rol = CrearRol(reglaInfo.Value.Regla, reglaInfo.Value.NumeroGrupo);
+            var fechaDateTime = fecha.ToDateTime(TimeOnly.MinValue);
+
+            // El patrón se elige con la fecha real (no la ajustada por Semana
+            // Santa) para que el arranque entre exactamente el día agendado.
+            var (patron, ancla, desplazamiento) = ObtenerPatronVigente(reglaInfo.Value.Regla, fechaDateTime);
+            var rol = CrearRolDesdePatron(patron, reglaInfo.Value.NumeroGrupo);
             if (rol.Length == 0)
                 return "1";
 
-            var fechaDateTime = fecha.ToDateTime(TimeOnly.MinValue);
-
             var fechaAjustada = AjustarFechaPorSemanaSanta(fechaDateTime, semanaSantaFechaFinal);
-            var diasDiferencia = (fechaAjustada - FECHA_REFERENCIA).Days;
-            var indice = diasDiferencia;
+            var diasDiferencia = (fechaAjustada.Date - ancla.Date).Days;
 
-            return rol[Math.Abs(indice) % rol.Length];
+            // Módulo real y no Math.Abs: para fechas anteriores al ancla, el valor
+            // absoluto espeja el patrón en vez de recorrerlo hacia atrás.
+            var indice = (((diasDiferencia + desplazamiento) % rol.Length) + rol.Length) % rol.Length;
+
+            return rol[indice];
         }
 
         public static bool EsDescanso(string turno)

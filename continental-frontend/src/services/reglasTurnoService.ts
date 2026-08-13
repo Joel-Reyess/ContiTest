@@ -174,6 +174,20 @@ export const reglasTurnoService = {
         }
     },
 
+    /**
+     * Aplica ya los arranques/rotaciones cuya fecha ya pasó. En producción lo
+     * hace el proceso en segundo plano; en pruebas está apagado y sin esto no
+     * hay forma de ver el arranque aplicado.
+     */
+    async ejecutarRotacionesPendientes(): Promise<number> {
+        const response = await httpClient.post<ApiResponse<{ ejecutadas: number }>>(
+            `${BASE}/rotaciones-programadas/ejecutar-pendientes`,
+            {}
+        );
+        const data = (response.data ?? response) as { ejecutadas?: number } | undefined;
+        return data?.ejecutadas ?? 0;
+    },
+
     async cancelarRotacionProgramada(id: number): Promise<void> {
         try {
             await httpClient.delete<ApiResponse<unknown>>(

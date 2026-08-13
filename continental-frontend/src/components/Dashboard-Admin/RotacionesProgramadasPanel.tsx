@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CalendarClock, Loader2, Plus, X } from "lucide-react";
+import { CalendarClock, Loader2, Plus, PlayCircle, X } from "lucide-react";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
 import type { RotacionProgramada, EstadoRotacionProgramada } from "@/interfaces/Api.interface";
 import { AgendarRotacionModal } from "./AgendarRotacionModal";
@@ -23,6 +23,7 @@ export function RotacionesProgramadasPanel() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [cancelando, setCancelando] = useState<number | null>(null);
+    const [aplicando, setAplicando] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -55,6 +56,30 @@ export function RotacionesProgramadasPanel() {
         }
     };
 
+    // Aplica los arranques cuya fecha ya pasó. En producción lo hace el proceso
+    // en segundo plano; en pruebas está apagado, así que sin este botón no hay
+    // forma de comprobar que el arranque deja el rol como se capturó.
+    const handleAplicarPendientes = async () => {
+        const vencidos = items.filter(
+            i => i.estado === "Pendiente" && i.fechaEjecucion.slice(0, 10) <= new Date().toISOString().slice(0, 10)
+        );
+        if (vencidos.length === 0) {
+            toast.info("No hay arranques vencidos por aplicar (todos tienen fecha futura).");
+            return;
+        }
+        if (!confirm(`Se aplicarán ${vencidos.length} arranque(s)/rotación(es) con fecha ya cumplida. ¿Continuar?`)) return;
+        setAplicando(true);
+        try {
+            const ejecutadas = await reglasTurnoService.ejecutarRotacionesPendientes();
+            toast.success(`${ejecutadas} movimiento(s) aplicado(s).`);
+            await load();
+        } catch (e: any) {
+            toast.error(e?.message ?? "Error al aplicar los pendientes");
+        } finally {
+            setAplicando(false);
+        }
+    };
+
     const pendientes = items.filter(i => i.estado === "Pendiente");
     const otras = items.filter(i => i.estado !== "Pendiente");
 
@@ -70,13 +95,24 @@ export function RotacionesProgramadasPanel() {
                         (independiente de <em>Reglas de turnos</em>)
                     </span>
                 </div>
-                <button
-                    onClick={() => setShowModal(true)}
-                    className="inline-flex items-center gap-1 bg-continental-yellow hover:bg-continental-yellow/90 text-black text-sm font-semibold px-3 py-1.5 rounded"
-                >
-                    <Plus className="size-4" />
-                    Fecha de ejecución arranque
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleAplicarPendientes}
+                        disabled={aplicando || loading}
+                        title="Aplica los arranques cuya fecha ya pasó sin esperar al proceso automático"
+                        className="inline-flex items-center gap-1 border border-continental-gray-3 hover:bg-continental-gray-4 text-sm px-3 py-1.5 rounded disabled:opacity-50"
+                    >
+                        {aplicando ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+                        Aplicar vencidos
+                    </button>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="inline-flex items-center gap-1 bg-continental-yellow hover:bg-continental-yellow/90 text-black text-sm font-semibold px-3 py-1.5 rounded"
+                    >
+                        <Plus className="size-4" />
+                        Fecha de ejecución arranque
+                    </button>
+                </div>
             </div>
 
             <div className="p-4">

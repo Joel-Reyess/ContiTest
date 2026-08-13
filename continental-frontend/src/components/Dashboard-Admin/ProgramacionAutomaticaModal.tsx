@@ -17,6 +17,8 @@ interface ProgramacionAutomaticaModalProps {
   onClose: () => void;
   onNotification: (type: 'success' | 'info' | 'warning' | 'error', title: string, message?: string) => void;
   onSuccess?: () => void;
+  /** Año que debe traer preseleccionado el modal (el que se está programando). */
+  anioObjetivo?: number;
 }
 
 type ModalStep = 'confirmation' | 'processing' | 'results';
@@ -25,10 +27,15 @@ export const ProgramacionAutomaticaModal = ({
   isOpen, 
   onClose, 
   onNotification,
-  onSuccess
+  onSuccess,
+  anioObjetivo
 }: ProgramacionAutomaticaModalProps) => {
+  // Año que se está programando. Llega desde la vista (el año en preparación
+  // cuando convive con la reprogramación del año en curso); "año actual + 1"
+  // queda sólo como respaldo. Sigue siendo editable a mano.
+  const anioPorDefecto = anioObjetivo ?? new Date().getFullYear() + 1;
   const [step, setStep] = useState<ModalStep>('confirmation');
-  const [anio, setAnio] = useState<number>(new Date().getFullYear() + 1);
+  const [anio, setAnio] = useState<number>(anioPorDefecto);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultados, setResultados] = useState<AsignacionAutomaticaResponse | null>(null);
   const [isReverting, setIsReverting] = useState(false);
@@ -95,7 +102,7 @@ export const ProgramacionAutomaticaModal = ({
     
     // Reset state when closing
     setStep('confirmation');
-    setAnio(new Date().getFullYear() + 1);
+    setAnio(anioPorDefecto);
     setMesesExcluidos([]);
     setResultados(null);
     onClose();
@@ -150,7 +157,7 @@ export const ProgramacionAutomaticaModal = ({
       // Reset to initial state
       setStep('confirmation');
       setResultados(null);
-      setAnio(new Date().getFullYear() + 1);
+      setAnio(anioPorDefecto);
     } catch (error) {
       console.error('Error al revertir asignación:', error);
       
@@ -207,7 +214,7 @@ export const ProgramacionAutomaticaModal = ({
             className="w-full"
           />
           <p className="text-xs text-gray-500">
-            Por defecto se usa el año actual + 1 ({new Date().getFullYear() + 1})
+            Año que se está programando ({anioPorDefecto}); puedes cambiarlo si necesitas otro.
           </p>
         </div>
 

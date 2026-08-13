@@ -69,12 +69,6 @@ namespace tiempo_libre.Services
             if (!TurnosHelper.REGLAS.ContainsKey(regla))
                 return resultado;
 
-            var patronRegla = TurnosHelper.REGLAS[regla];
-            var cantSemanas = patronRegla.Length / 7;
-
-            // Crear el rol específico para este grupo usando TurnosHelper
-            var rol = TurnosHelper.CrearRol(regla, numeroGrupo);
-
             // Buscar Semana Santa del año calendario, independientemente de si está visible en pantalla
             // Obtener todos los años en el rango de fechas para buscar Semana Santa en cada año
             var añoInicio = fechaInicio.Year;
@@ -94,31 +88,29 @@ namespace tiempo_libre.Services
             var fechaInicioDate = fechaInicio.Date;
             var fechaFinDate = fechaFin.Date;
 
-            var fecha = new DateTime(TurnosHelper.FECHA_REFERENCIA.Ticks).Date;
-            var i = 0;
+            // El rol se resuelve día por día con TurnosHelper: así este calendario
+            // y el de cualquier otra vista aplican el mismo patrón, incluidos los
+            // arranques agendados a futuro (p. ej. el rol que inicia en enero del
+            // año que se está programando). Antes se proyectaba con el patrón
+            // actual anclado a la fecha de referencia global y el año siguiente
+            // salía distinto al que muestra el calendario anual de reglas.
+            var rolGrupo = numeroGrupo <= 1 ? regla : $"{regla}_{numeroGrupo:00}";
+            var fecha = fechaInicioDate;
 
-            // Generar desde la fecha de referencia hasta la fecha fin
             while (fecha <= fechaFinDate)
             {
-                if (fecha >= fechaInicioDate)
+                var turnoCode = TurnosHelper.ObtenerTurnoParaFecha(
+                    rolGrupo, DateOnly.FromDateTime(fecha), semanaSantaFechaFinal);
+                var tipoCalendario = TipoCalendarioExtensions.FromShortString(turnoCode);
+
+                resultado.Add(new CalendarioGrupoDiaDto
                 {
-                    // Ajustar la fecha de referencia para el cálculo considerando Semana Santa
-                    var fechaAjustada = TurnosHelper.AjustarFechaPorSemanaSanta(fecha, semanaSantaFechaFinal);
-                    var diasDesdeFechaReferencia = (fechaAjustada - new DateTime(TurnosHelper.FECHA_REFERENCIA.Ticks).Date).Days;
-
-                    var turnoCode = rol[Math.Abs(diasDesdeFechaReferencia) % (cantSemanas * 7)];
-                    var tipoCalendario = TipoCalendarioExtensions.FromShortString(turnoCode);
-
-                    resultado.Add(new CalendarioGrupoDiaDto
-                    {
-                        Fecha = fecha,
-                        Turno = turnoCode,
-                        Tipo = tipoCalendario.ToDescription()
-                    });
-                }
+                    Fecha = fecha,
+                    Turno = turnoCode,
+                    Tipo = tipoCalendario.ToDescription()
+                });
 
                 fecha = fecha.AddDays(1);
-                i++;
             }
 
             return resultado;

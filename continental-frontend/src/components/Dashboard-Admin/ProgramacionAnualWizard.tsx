@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   CalendarClock,
@@ -61,6 +62,7 @@ export const ProgramacionAnualWizard = ({
   onAbrirGenerarBloques,
   onIrACalendario,
 }: ProgramacionAnualWizardProps) => {
+  const navigate = useNavigate();
   const [estado, setEstado] = useState<EstadoWizard | null>(null);
   const [cargando, setCargando] = useState(false);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -83,11 +85,19 @@ export const ProgramacionAnualWizard = ({
         `${anio}-12-31`
       );
       const activas = rotaciones.filter((r) => r.estado !== "Cancelada");
+      // Se listan fecha y regla porque el cliente arranca el año en dos momentos
+      // (enero y ~abril) y necesita confirmar que ambos quedaron agendados.
+      const resumen = activas
+        .slice()
+        .sort((a, b) => a.fechaEjecucion.localeCompare(b.fechaEjecucion))
+        .map((r) => `${r.codigoRegla} ${r.fechaEjecucion.slice(0, 10)}`)
+        .join(" · ");
+      const reglasConArranque = new Set(activas.map((r) => r.codigoRegla)).size;
       nuevo.arranques = {
         completado: activas.length > 0,
         detalle:
           activas.length > 0
-            ? `${activas.length} arranque(s) agendado(s) en ${anio}`
+            ? `${activas.length} arranque(s) en ${anio} sobre ${reglasConArranque} regla(s): ${resumen}`
             : `Ningún arranque de reglas agendado para ${anio}`,
       };
     } catch (e) {
@@ -163,11 +173,17 @@ export const ProgramacionAnualWizard = ({
           numero: 1,
           titulo: `Cargar el rol (arranques ${anio})`,
           descripcion:
-            "Define cómo inician los roles del año: agenda los arranques (ej. enero y abril) en la pestaña Calendario. Al elegir una regla verás sus subreglas (R0144, R0144_02…) con el patrón establecido.",
+            "Define cómo inician los roles del año: agenda los arranques (ej. enero y abril) con su fecha de inicio en la pestaña Calendario. Al elegir una regla verás sus subreglas (R0144, R0144_02…) con el patrón establecido. Desde la fecha agendada el calendario se calcula con ese patrón, así que conviene revisarlo antes de seguir.",
           estado: estado.arranques,
-          accion: onIrACalendario
-            ? { etiqueta: "Ir a Calendario", onClick: onIrACalendario }
-            : undefined,
+          acciones: [
+            ...(onIrACalendario
+              ? [{ etiqueta: "Ir a Calendario", onClick: onIrACalendario }]
+              : []),
+            {
+              etiqueta: `Ver calendario ${anio}`,
+              onClick: () => navigate(`/admin/calendario-anual?anio=${anio}`),
+            },
+          ],
         },
         {
           numero: 2,
@@ -175,9 +191,9 @@ export const ProgramacionAnualWizard = ({
           descripcion:
             "Captura los días inhábiles por ley y por Continental para el año, también en la pestaña Calendario.",
           estado: estado.festivos,
-          accion: onIrACalendario
-            ? { etiqueta: "Ir a Calendario", onClick: onIrACalendario }
-            : undefined,
+          acciones: onIrACalendario
+            ? [{ etiqueta: "Ir a Calendario", onClick: onIrACalendario }]
+            : [],
         },
         {
           numero: 3,
@@ -185,7 +201,7 @@ export const ProgramacionAnualWizard = ({
           descripcion:
             "Ejecuta la asignación automática según la tabla de antigüedades (4 años → 3 días, 5 → 4, 6 o más → 5). Selecciona el año en el modal.",
           estado: estado.diasEmpresa,
-          accion: { etiqueta: "Programar días", onClick: onAbrirProgramarDias },
+          acciones: [{ etiqueta: "Programar días", onClick: onAbrirProgramarDias }],
         },
         {
           numero: 4,
@@ -193,20 +209,22 @@ export const ProgramacionAnualWizard = ({
           descripcion:
             "Genera los bloques por grupo con los que los empleados capturarán sus días. Requiere los pasos anteriores.",
           estado: estado.bloques,
-          accion: {
-            etiqueta: "Generar bloques",
-            onClick: () => {
-              if (!estado.festivos.completado) {
-                onNotification(
-                  "warning",
-                  "Festivos sin cargar",
-                  `Carga los días inhábiles de ${anio} antes de generar los bloques; de lo contrario los bloques pueden caer en festivos.`
-                );
-                return;
-              }
-              onAbrirGenerarBloques();
+          acciones: [
+            {
+              etiqueta: "Generar bloques",
+              onClick: () => {
+                if (!estado.festivos.completado) {
+                  onNotification(
+                    "warning",
+                    "Festivos sin cargar",
+                    `Carga los días inhábiles de ${anio} antes de generar los bloques; de lo contrario los bloques pueden caer en festivos.`
+                  );
+                  return;
+                }
+                onAbrirGenerarBloques();
+              },
             },
-          },
+          ],
         },
       ]
     : [];
@@ -289,16 +307,18 @@ export const ProgramacionAnualWizard = ({
                   {paso.estado.detalle}
                 </p>
               </div>
-              {paso.accion && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={paso.accion.onClick}
-                  className="shrink-0"
-                >
-                  {paso.accion.etiqueta}
-                </Button>
-              )}
+              <div className="flex flex-col gap-1 shrink-0">
+                {paso.acciones.map((accion) => (
+                  <Button
+                    key={accion.etiqueta}
+                    variant="outline"
+                    size="sm"
+                    onClick={accion.onClick}
+                  >
+                    {accion.etiqueta}
+                  </Button>
+                ))}
+              </div>
             </li>
           ))}
         </ol>

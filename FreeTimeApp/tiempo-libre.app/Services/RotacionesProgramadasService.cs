@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
+using tiempo_libre.Helpers;
 using tiempo_libre.Models;
 
 namespace tiempo_libre.Services
@@ -125,6 +126,11 @@ namespace tiempo_libre.Services
 
             await _db.SaveChangesAsync();
 
+            // El cálculo de turnos proyecta los arranques agendados, así que hay
+            // que refrescar el cache o el calendario del año siguiente sigue
+            // mostrando el patrón viejo hasta el próximo reinicio.
+            TurnosHelper.Reload(_db);
+
             var ids = creadas.Select(r => r.Id).ToList();
             var recargadas = await _db.RotacionesReglaProgramadas
                 .Include(r => r.CreatedByUser)
@@ -149,6 +155,7 @@ namespace tiempo_libre.Services
 
             row.Estado = "Cancelada";
             await _db.SaveChangesAsync();
+            TurnosHelper.Reload(_db);
             return true;
         }
 
@@ -179,9 +186,15 @@ namespace tiempo_libre.Services
                     {
                         var patron = JsonSerializer.Deserialize<List<string>>(row.PatronBaseline)
                                      ?? new List<string>();
+                        // La fecha del arranque pasa a ser la referencia de la
+                        // regla: hasta hoy el patrón se aplicaba pero seguía
+                        // anclado a la fecha global, así que al ejecutarse el
+                        // calendario se recorría respecto a lo que se había
+                        // previsualizado.
                         var req = new ActualizarPatronReglaTurnoRequest
                         {
                             Patron = patron,
+                            FechaReferencia = row.FechaEjecucion.Date,
                             Notas = row.Notas
                         };
                         await _reglasTurnoService.ActualizarPatronAsync(
@@ -222,6 +235,7 @@ namespace tiempo_libre.Services
             }
 
             await _db.SaveChangesAsync();
+            TurnosHelper.Reload(_db);
             return ejecutadas;
         }
 

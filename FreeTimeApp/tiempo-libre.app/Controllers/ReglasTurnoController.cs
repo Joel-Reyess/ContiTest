@@ -365,6 +365,28 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>
+        /// Aplica ya las rotaciones/arranques pendientes cuya fecha ya llegó.
+        /// Normalmente lo hace el servicio en segundo plano; este endpoint existe
+        /// porque en el entorno de pruebas los servicios en segundo plano están
+        /// apagados y si no, no hay forma de ver el arranque aplicado.
+        /// </summary>
+        [HttpPost("rotaciones-programadas/ejecutar-pendientes")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario")]
+        public async Task<IActionResult> EjecutarRotacionesPendientes()
+        {
+            try
+            {
+                var ejecutadas = await _rotProgService.EjecutarPendientesAsync();
+                return Ok(new ApiResponse<object>(true, new { ejecutadas }, null));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al ejecutar rotaciones programadas pendientes");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
         private int? GetUsuarioId()
         {
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

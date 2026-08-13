@@ -45,6 +45,7 @@ const RequestVacations = () => {
     const [loading, setLoading] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [reservaResponse, setReservaResponse] = useState<ReservaAnualResponse | null>(null);
+    const [anioCaptura, setAnioCaptura] = useState<number | null>(null);
 
     // Obtener availableDays desde los datos de la API
     const availableDays = (vacacionesData?.resumen?.diasProgramables || 0) - (vacacionesData?.resumen?.anuales || 0);
@@ -108,6 +109,13 @@ const RequestVacations = () => {
             try {
                 const config = await vacacionesService.getConfig();
                 setCurrentPeriod(config.periodoActual as Period);
+                // El año que se captura es el que está en preparación cuando la
+                // programación anual del siguiente año convive con la
+                // reprogramación del actual; si no hay preparación en curso, el
+                // vigente. Antes se calculaba como "año actual + 1", que sólo
+                // acertaba por casualidad y nunca coincidía con el año de los
+                // bloques generados.
+                setAnioCaptura(config.anioProgramacionAnual ?? config.anioVigente ?? null);
                 console.log('📅 Periodo actual cargado:', config.periodoActual);
             } catch (error) {
                 console.error('Error fetching period:', error);
@@ -214,8 +222,7 @@ const RequestVacations = () => {
 
         try {
             // Preparar la solicitud
-            const currentYear = new Date().getFullYear();
-            const anioVacaciones = currentYear + 1; // Año siguiente para programación anual
+            const anioVacaciones = anioCaptura ?? new Date().getFullYear() + 1;
 
             // Formatear fechas a formato YYYY-MM-DD (DateOnly)
             const fechasFormateadas = selectedDays.map(day => {

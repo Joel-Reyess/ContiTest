@@ -1123,6 +1123,9 @@ export const VacacionesGeneral = ({
         onClose={() => setShowProgramacionModal(false)}
         onNotification={onNotification}
         onSuccess={handleProgramacionCompleta}
+        anioObjetivo={
+          modalesEnPreparacion && anioPreparacion ? anioPreparacion : anioVigente
+        }
       />
 
       {/* Modal de Confirmación para Revertir */}
