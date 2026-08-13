@@ -291,7 +291,8 @@ namespace tiempo_libre.Controllers
                     MotivoRechazo = solicitud.MotivoRechazo,
                     FechaSolicitud = solicitud.FechaSolicitud ?? DateTime.Now,
                     FechaRespuesta = solicitud.FechaRespuesta,
-                    DelegadoNombre = delegadoNombre ?? "N/A",
+                    DelegadoNombre = delegadoNombre ?? "Sistema",
+                    DelegadoSolicitanteId = solicitud.DelegadoSolicitanteId,
                     JefeAreaNombre = jefeNombre
                 };
 

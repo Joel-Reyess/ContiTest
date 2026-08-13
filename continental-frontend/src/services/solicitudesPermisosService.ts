@@ -36,6 +36,8 @@ export interface SolicitudPermisoDto {
     fechaSolicitud: string;
     fechaRespuesta?: string;
     delegadoNombre: string;
+    /** Null = no la capturó un delegado (vino del sistema/SAP). */
+    delegadoSolicitanteId?: number | null;
     jefeAreaNombre?: string;
 }
 

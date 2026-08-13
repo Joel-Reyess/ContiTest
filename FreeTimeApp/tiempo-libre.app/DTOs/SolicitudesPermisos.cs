@@ -71,6 +71,13 @@ namespace tiempo_libre.DTOs
         public DateTime FechaSolicitud { get; set; }
         public DateTime? FechaRespuesta { get; set; }
         public string DelegadoNombre { get; set; } = string.Empty;
+        /// <summary>
+        /// Id del delegado sindical que capturó la solicitud. Null = la
+        /// solicitud no la capturó un delegado (vino del sistema/SAP).
+        /// El front lo usa para el filtro Todos/Sistema/Delegado; no se puede
+        /// deducir del nombre porque los textos de respaldo varían.
+        /// </summary>
+        public int? DelegadoSolicitanteId { get; set; }
         public string? JefeAreaNombre { get; set; }
     }
 
