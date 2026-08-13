@@ -19,7 +19,6 @@ import { excepcionesManningService } from "@/services/excepcionesManningService"
 import { SAP_NOMENCLATURA, getSAPEntry } from "@/utils/sapNomenclatura";
 import { esJefeDelArea } from "@/utils/areaJefes";
 
-const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
 const buildWeekDays = (weekStart: Date): Date[] =>
     Array.from({ length: 7 }, (_, i) => {
@@ -838,7 +837,7 @@ const WeeklyRoles = () => {
                                 <th className="px-3 py-2 text-left font-semibold text-gray-700 w-48">Balance personal</th>
                                 {weekDays.map((day, idx) => (
                                     <th key={idx} className="px-3 py-2 text-center font-semibold text-gray-600">
-                                        <div>{dayLabels[idx]}</div>
+                                        <div className="capitalize">{format(day, "EEE", { locale: es })}</div>
                                         <div className="text-[10px] text-gray-500">{format(day, "dd/MM")}</div>
                                     </th>
                                 ))}
@@ -893,7 +892,7 @@ const WeeklyRoles = () => {
                                 </th>
                                 {weekDays.map((day, idx) => (
                                     <th key={idx} className="px-3 py-2 text-center font-semibold text-gray-600">
-                                        <div>{dayLabels[idx]}</div>
+                                        <div className="capitalize">{format(day, "EEE", { locale: es })}</div>
                                         <div className="text-[10px] text-gray-500">{format(day, "dd/MM")}</div>
                                     </th>
                                 ))}
