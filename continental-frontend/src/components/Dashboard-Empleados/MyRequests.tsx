@@ -59,10 +59,36 @@ export interface VacationRequest {
     employeeGroup?: string;
     employeeNomina?: string; // 🆕 Agregado
     requester?: string | null;
+    /**
+     * Id del usuario que capturó la solicitud, cuando el DTO lo trae.
+     * Null/undefined no significa "sistema": hay tipos que solo mandan el
+     * nombre. La clasificación real vive en `origenSolicitud`.
+     */
+    requesterId?: number | null;
+    /** 'sistema' = nadie la capturó a mano (SAP / proceso automático). */
+    origenSolicitud: 'sistema' | 'delegado';
     reviewer?: string | null;
     // Solo para company_day_edit: de cuál de los dos flujos salió el movimiento.
     origenDiaEmpresa?: 'Edición empresa' | 'Superusuario';
 }
+
+/**
+ * Decide si un movimiento lo capturó una persona (delegado, jefe, superusuario)
+ * o si salió del sistema. Cada endpoint resuelve el "solicitado por" distinto:
+ * unos mandan el id del usuario, otros solo el nombre y cuando no hay usuario
+ * rellenan con "Sistema", "" o "N/A". Por eso se revisa primero el id y solo
+ * se cae al texto cuando el DTO no lo trae.
+ */
+const clasificarOrigen = (
+    requesterId: number | null | undefined,
+    requester: string | null | undefined,
+    traeId: boolean
+): 'sistema' | 'delegado' => {
+    if (traeId) return requesterId ? 'delegado' : 'sistema';
+    const nombre = (requester ?? '').trim().toLowerCase();
+    if (!nombre || nombre === 'n/a' || nombre.includes('sistema')) return 'sistema';
+    return 'delegado';
+};
 
 // Función para mapear SolicitudReprogramacion a VacationRequest
 const mapSolicitudToRequest = (solicitud: SolicitudReprogramacion): VacationRequest => {
@@ -85,6 +111,7 @@ const mapSolicitudToRequest = (solicitud: SolicitudReprogramacion): VacationRequ
         employeeGroup: solicitud.grupoEmpleado,
         employeeNomina: solicitud.nominaEmpleado, // 🆕 Agregado
         requester: solicitud.solicitadoPor || null,
+        origenSolicitud: clasificarOrigen(null, solicitud.solicitadoPor, false),
         reviewer: solicitud.aprobadoPor || null
     };
 };
@@ -115,6 +142,7 @@ const mapFestivoToRequest = (
         employeeGroup: fallbackGroup,
         employeeNomina: solicitud.nominaEmpleado || fallbackNomina, // 🆕 Agregado
         requester: festivoData.solicitadoPor || null,
+        origenSolicitud: clasificarOrigen(null, festivoData.solicitadoPor, false),
         reviewer: solicitud.aprobadoPor || festivoData.aprobadoPor || null,
     };
 };
@@ -140,6 +168,7 @@ const mapPostIncapacidadToRequest = (
         employeeGroup: s.grupoEmpleado || undefined,
         employeeNomina: s.nomina ? s.nomina.toString() : undefined,
         requester: s.nombreSolicitadoPor || null,
+        origenSolicitud: clasificarOrigen(null, s.nombreSolicitadoPor, false),
         reviewer: s.nombreAprobadoPor || null,
     };
 };
@@ -160,6 +189,7 @@ const mapEdicionDiaEmpresaToRequest = (s: SolicitudEdicionDiaEmpresa): VacationR
         employeeName: s.nombreEmpleado,
         employeeNomina: s.nominaEmpleado ? s.nominaEmpleado.toString() : undefined,
         requester: s.nombreSolicitadoPor || null,
+        origenSolicitud: clasificarOrigen(null, s.nombreSolicitadoPor, false),
         reviewer: s.nombreJefeArea || null,
         origenDiaEmpresa: 'Edición empresa',
     };
@@ -184,6 +214,7 @@ const mapReprogDiaEmpresaToRequest = (s: SolicitudReprogramacionDiaEmpresa): Vac
         employeeGroup: s.grupoEmpleado || undefined,
         employeeNomina: s.nomina ? s.nomina.toString() : undefined,
         requester: s.nombreSolicitadoPor || null,
+        origenSolicitud: clasificarOrigen(null, s.nombreSolicitadoPor, false),
         reviewer: s.nombreAprobadoPor || null,
         origenDiaEmpresa: 'Superusuario',
     };
@@ -210,6 +241,10 @@ const mapPermisoToRequest = (solicitud: SolicitudPermisoDto): VacationRequest =>
         employeeGroup: undefined,
         employeeNomina: solicitud.nominaEmpleado ? solicitud.nominaEmpleado.toString() : undefined, // 🆕 Agregado
         requester: solicitud.delegadoNombre,
+        requesterId: solicitud.delegadoSolicitanteId ?? null,
+        // Los permisos sí traen el id del delegado: se clasifica con él y no
+        // con el nombre, que antes llegaba como "N/A" y caía en "Delegado".
+        origenSolicitud: clasificarOrigen(solicitud.delegadoSolicitanteId, solicitud.delegadoNombre, true),
         reviewer: solicitud.jefeAreaNombre || null
     };
 };
@@ -262,7 +297,9 @@ const MyRequests = () => {
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
 
     // 🆕 Nuevos filtros
-    const [requesterFilter, setRequesterFilter] = useState<"all" | "sistema" | "delegado">("all");
+    // "all" | "sistema" | "delegado" | "persona:<nombre>" — lo último permite
+    // ver solo lo capturado por un delegado concreto cuando hay varios.
+    const [requesterFilter, setRequesterFilter] = useState<string>("all");
     const [nominaSearch, setNominaSearch] = useState("");
 
     const [exportOpen, setExportOpen] = useState(false);
@@ -450,9 +487,11 @@ const MyRequests = () => {
         // 🆕 Filtro por solicitante
         let byRequester = true;
         if (requesterFilter === "sistema") {
-            byRequester = !r.requester || r.requester.toLowerCase().includes("sistema");
+            byRequester = r.origenSolicitud === "sistema";
         } else if (requesterFilter === "delegado") {
-            byRequester = r.requester && !r.requester.toLowerCase().includes("sistema");
+            byRequester = r.origenSolicitud === "delegado";
+        } else if (requesterFilter.startsWith("persona:")) {
+            byRequester = (r.requester ?? "") === requesterFilter.slice("persona:".length);
         }
 
         // 🆕 Filtro por nómina
@@ -462,6 +501,16 @@ const MyRequests = () => {
         return byStatus && byType && byRequester && byNomina;
     });
 
+    // Nombres de quienes sí capturaron algo, para poder filtrar por un delegado
+    // en particular (en el comité hay varios y todos ven el mismo historial).
+    const solicitantesCapturados = Array.from(
+        new Set(
+            requests
+                .filter((r) => r.origenSolicitud === 'delegado' && r.requester)
+                .map((r) => r.requester as string)
+        )
+    ).sort((a, b) => a.localeCompare(b, 'es'));
+
     const exportMeta = {
         empleadoArea: isDelegadoSindical ? 'Varias areas' : currentEmployee?.area?.nombreGeneral,
         empleadoGrupo: isDelegadoSindical ? 'Varios grupos' : currentEmployee?.grupo?.rol,
@@ -470,7 +519,13 @@ const MyRequests = () => {
         filtros: {
             tipo: typeFilter === 'all' ? 'Todos' : getRequestTypeText(typeFilter),
             estado: statusFilter === 'all' ? 'Todos' : getStatusText(statusFilter),
-            solicitante: requesterFilter === 'all' ? 'Todos' : requesterFilter === 'sistema' ? 'Sistema' : 'Delegado Sindical', // 🆕
+            solicitante: requesterFilter === 'all'
+                ? 'Todos'
+                : requesterFilter === 'sistema'
+                    ? 'Sistema'
+                    : requesterFilter === 'delegado'
+                        ? 'Delegado Sindical'
+                        : requesterFilter.slice('persona:'.length), // 🆕
             nomina: nominaSearch || 'Todas', // 🆕
         },
     };
@@ -661,7 +716,16 @@ const MyRequests = () => {
                                     >
                                         <option value="all">Todos</option>
                                         <option value="sistema">Sistema</option>
-                                        <option value="delegado">Delegado Sindical</option>
+                                        <option value="delegado">Delegado Sindical (cualquiera)</option>
+                                        {solicitantesCapturados.length > 0 && (
+                                            <optgroup label="Capturado por">
+                                                {solicitantesCapturados.map((nombre) => (
+                                                    <option key={nombre} value={`persona:${nombre}`}>
+                                                        {nombre}
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        )}
                                     </select>
                                 </div>
 
@@ -723,13 +787,11 @@ const MyRequests = () => {
                                             )}
                                             {/* 🆕 Badge para Sistema/Delegado */}
                                             {isDelegadoSindical && (
-                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${!request.requester || request.requester.toLowerCase().includes("sistema")
+                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${request.origenSolicitud === "sistema"
                                                         ? "bg-gray-100 text-gray-700"
                                                         : "bg-blue-100 text-blue-700"
                                                     }`}>
-                                                    {!request.requester || request.requester.toLowerCase().includes("sistema")
-                                                        ? "Sistema"
-                                                        : "Delegado"}
+                                                    {request.origenSolicitud === "sistema" ? "Sistema" : "Delegado"}
                                                 </span>
                                             )}
                                         </div>

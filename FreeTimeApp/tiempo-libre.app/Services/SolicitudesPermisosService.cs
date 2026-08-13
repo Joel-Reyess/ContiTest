@@ -411,10 +411,14 @@ namespace tiempo_libre.Services
                         MotivoRechazo = s.MotivoRechazo,
                         FechaSolicitud = s.FechaSolicitud ?? DateTime.Now,
                         FechaRespuesta = s.FechaRespuesta,
+                        // "Sistema" y no "N/A": es la misma etiqueta que usan
+                        // reprogramaciones y festivos para lo que no capturó una
+                        // persona, y el historial las mezcla en una sola tabla.
                         DelegadoNombre = s.DelegadoSolicitanteId.HasValue &&
                                          delegados.TryGetValue(s.DelegadoSolicitanteId.Value, out var delNombre)
                             ? delNombre
-                            : "N/A",
+                            : "Sistema",
+                        DelegadoSolicitanteId = s.DelegadoSolicitanteId,
                         JefeAreaNombre = s.JefeAprobadorId.HasValue &&
                                          jefes.TryGetValue(s.JefeAprobadorId.Value, out var jefeNombre)
                             ? jefeNombre
