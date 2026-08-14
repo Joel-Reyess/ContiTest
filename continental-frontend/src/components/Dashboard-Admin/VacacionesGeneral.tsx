@@ -486,9 +486,16 @@ export const VacacionesGeneral = ({
     }
   };
 
-  // Determinar si mostrar el contenido de programación anual basado en periodoActual
+  // Determinar si mostrar el contenido de programación anual basado en periodoActual.
+  // Con el periodo en ProgramacionAnual pero sin bloques todavía, la pantalla de
+  // resultados es un callejón sin salida: solo dice "genera los bloques primero"
+  // y no trae ni el asistente ni el botón para volver a la configuración. En ese
+  // caso se sigue mostrando la secuencia de pasos, que es donde están las acciones.
+  // Mientras se consulta, o si la consulta falló, se respeta la vista de resultados
+  // para no fingir que no hay bloques cuando quizá sí los hay.
   const mostrarContenidoProgramacionAnual =
-    configVacaciones?.periodoActual === "ProgramacionAnual";
+    configVacaciones?.periodoActual === "ProgramacionAnual" &&
+    (loadingEstadisticas || estadisticasBloques !== null || !!errorEstadisticas);
 
   return (
     <div className="space-y-6">
