@@ -461,6 +461,27 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                         </div>
                     )
                 }
+                {
+                    // El sindicalizado no entra al calendario general (es de toda
+                    // la planta), pero sí necesita consultar su rol semanal: en
+                    // qué turno va él y sus companeros de grupo.
+                    !isUnionRepresentative && (
+                        <div className="flex-1 flex flex-col items-center justify-center gap-4 h-full p-8 border border-continental-yellow bg-continental-white rounded-lg shadow-lg hover:shadow-xl transition-shadow">
+                            <Users2 size={50} />
+                            <h1 className="text-2xl font-bold">Mi rol semanal</h1>
+                            <p className="text-sm text-slate-600 text-center">
+                                Consulta el turno de tu grupo semana por semana.
+                            </p>
+                            <Button
+                                variant="continental"
+                                className="cursor-pointer"
+                                onClick={goToWeeklyRoles}
+                            >
+                                Ver roles semanales
+                            </Button>
+                        </div>
+                    )
+                }
             </div>
             {/* Tarjeta de edición de días empresa (cuando está habilitado) */}
             {configEdicion?.habilitado && (
