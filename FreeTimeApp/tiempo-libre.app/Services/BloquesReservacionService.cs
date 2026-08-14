@@ -320,9 +320,12 @@ namespace tiempo_libre.Services
         {
             if (antiguedadEnAnios < 1) return 0;
 
-            const int diasEmpresa = 12;
-            const int topeMaximoDias = 28;
-
+            // OJO: esta tabla es una copia de VacacionesService.CalcularVacacionesPorAntiguedad.
+            // Antes había además un tope de 28 días totales que recortaba los
+            // programables a 11 a partir de 26 años de antigüedad; ese tope no
+            // existe en la tabla de antigüedades del cliente (36-40 años = 17 días
+            // de común acuerdo) y hacía que a la gente con más antigüedad se le
+            // generaran menos bloques de los que le tocan.
             // Lógica basada en VacacionesService.CalcularVacacionesPorAntiguedad
             if (antiguedadEnAnios <= 5)
             {
@@ -338,20 +341,10 @@ namespace tiempo_libre.Services
             }
 
             // Años 6 en adelante
-            int diasAsignadosAutomaticamente = 5; // Fijo para 6+ años
-
             // Días programables: inicia con 5 en año 6, y cada 5 años se suman 2 más
             int diasProgramablesBase = 5;
             int gruposDeCincoAnios = (antiguedadEnAnios - 6) / 5;
             int diasProgramables = diasProgramablesBase + (gruposDeCincoAnios * 2);
-
-            // Verificar tope máximo
-            int totalCalculado = diasEmpresa + diasAsignadosAutomaticamente + diasProgramables;
-            if (totalCalculado > topeMaximoDias)
-            {
-                // Ajustar días programables para no exceder el tope
-                diasProgramables = topeMaximoDias - diasEmpresa - diasAsignadosAutomaticamente;
-            }
 
             return Math.Max(0, diasProgramables); // Asegurar que no sea negativo
         }

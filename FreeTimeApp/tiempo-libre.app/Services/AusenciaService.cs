@@ -324,8 +324,12 @@ namespace tiempo_libre.Services
                 // Calcular ausencia actual del grupo
                 var ausenciaActual = await CalcularAusenciaPorGrupoAsync(request.Fecha, empleado.GrupoId.Value);
 
-                // Usar el nuevo validador de porcentaje que considera grupos pequeños
-                var puedeAusentarse = await _validadorPorcentaje.PuedeGrupoTenerAusencias(empleado.GrupoId.Value, 1);
+                // Usar el nuevo validador de porcentaje que considera grupos pequeños.
+                // La fecha es obligatoria aquí: sin ella el validador contestaba lo
+                // mismo para los 365 días del año que se está programando (la foto de
+                // hoy), y la asignación de días por empresa se quedaba sin semanas.
+                var puedeAusentarse = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
+                    empleado.GrupoId.Value, 1, null, request.Fecha);
 
                 // Obtener el estado detallado del grupo para información adicional
                 var estadoGrupo = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value);
@@ -473,7 +477,8 @@ namespace tiempo_libre.Services
             bool excedeLimite = !esGrupoPequeno && (porcentajeAusenciaGrupo > porcentajeMaximo);
 
             // 9) Puede reservar: usa el validador considerando el estado actual
-            bool puedeReservar = await _validadorPorcentaje.PuedeGrupoTenerAusencias(grupoId, 1, personalNoDisponible);
+            bool puedeReservar = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
+                grupoId, 1, personalNoDisponible, fecha);
 
             // 10) DTO de salida
             return new AusenciaPorGrupoDto
