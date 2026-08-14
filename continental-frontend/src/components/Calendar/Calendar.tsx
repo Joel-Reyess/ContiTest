@@ -68,10 +68,10 @@ const CustomDateCellWrapper = ({
   selectedDays?: {date: string}[];
   excepciones?: ExcepcionPorcentaje[]; // ✅ AÑADIR
   groupId?: number;
-  // Rotación de turnos (números 1/2/3, marca D y grises de descanso / día no
-  // laborable): es la lectura de la programación anual y solo se usa en la
-  // vista de Plantilla. En el calendario del empleado se omite para dejar
-  // únicamente la nomenclatura SAP.
+  // Rotación de turnos (números 1/2/3 y marca D de descanso): es la lectura del
+  // rol. Va junto con la nomenclatura SAP, cada una en su esquina — el
+  // sindicato pidió ver ambas. Queda apagado por defecto para las vistas que
+  // solo reportan incidencias.
   mostrarTurnos?: boolean;
 }) => {
   const eventData = schedule.find(

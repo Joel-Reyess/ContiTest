@@ -340,6 +340,9 @@ const RequestVacations = () => {
                             selectedDays={selectedDays}
                             groupId={user?.grupo?.grupoId}
                             userId={user?.id}
+                            // Al capturar vacaciones hay que ver el turno (1/2/3/D)
+                            // para no pedir dias que caen en descanso.
+                            mostrarTurnos
                         />
                     ) : (
                         <AnualView

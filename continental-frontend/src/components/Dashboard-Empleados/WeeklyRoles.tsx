@@ -55,6 +55,9 @@ const WeeklyRoles = () => {
         hasRole(UserRole.LEADER) ||
         hasRole(UserRole.INDUSTRIAL) ||
         hasRole(UserRole.UNION_REPRESENTATIVE) ||
+        // El sindicalizado consulta aquí su propio rol; el backend ya lo
+        // autorizaba en /api/roles/grupo/{id}/semana, solo el front lo cerraba.
+        hasRole(UserRole.UNIONIZED) ||
         hasRole(UserRole.GERENTE_BT) ||
         hasRole(UserRole.RH) ||
         (user as any)?.isUnionCommittee ||

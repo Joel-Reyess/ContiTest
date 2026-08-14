@@ -57,6 +57,13 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [diaConsumido, setDiaConsumido] = useState<string | null>(null);
     const navigate = useNavigate();
 
+    // Empleado que se está mirando: el propio, o el que el delegado eligió en el
+    // buscador (?empleadoId=). El grupo sale de ese mismo empleado; con el grupo
+    // del delegado el calendario pintaba las ausencias de otra gente.
+    const idCalendario = employeeId !== 'undefined' && employeeId !== null ? parseInt(employeeId) : user?.id;
+    const grupoCalendario =
+        (idCalendario !== user?.id ? selectedEmployee?.grupo?.grupoId : undefined) ?? user?.grupo?.grupoId;
+
     const isDelegadoSindical = Boolean(
         (user?.roles || []).some(role => (typeof role === 'string' ? role === UserRole.UNION_REPRESENTATIVE : role.name === UserRole.UNION_REPRESENTATIVE)) ||
         (user as any)?.isUnionCommittee ||
@@ -253,8 +260,14 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                         month={currentMonth}
                         onMonthChange={setCurrentMonth}
                         isViewMode
-                        groupId={user?.grupo?.grupoId}
-                        userId={employeeId !== 'undefined' && employeeId !== null ? parseInt(employeeId) : user?.id}
+                        // El grupo manda el cálculo de ausencias del día. Cuando el
+                        // delegado abre el calendario de otro empleado hay que usar
+                        // el grupo de esa persona, no el suyo.
+                        groupId={grupoCalendario}
+                        userId={idCalendario}
+                        // El sindicalizado necesita ver en qué turno va (1/2/3/D)
+                        // además de la nomenclatura SAP de lo que pasó ese día.
+                        mostrarTurnos
                         key={currentPeriod}
                     />
 
