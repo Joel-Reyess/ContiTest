@@ -240,33 +240,45 @@ namespace tiempo_libre.Services
                 await _db.SaveChangesAsync();
 
 
-                // 7. Notificar al jefe de área
-                if (area?.JefeId != null)
-                {
-                    await _notificacionesService.CrearNotificacionAsync(
-                        Models.Enums.TiposDeNotificacionEnum.SolicitudPermiso,
-                        $"Nueva solicitud de permiso - {empleado.FullName}",
-                        $"El delegado sindical {delegado.FullName} ha solicitado un permiso para {empleado.FullName} " +
-                        $"({tipoPermiso.Concepto}) del {fechaInicio:dd/MM/yyyy} al {fechaFin:dd/MM/yyyy}.",
-                        delegado.FullName,
-                        area.JefeId.Value,
-                        delegadoId,
-                        areaId,
-                        empleado.GrupoId,
-                        "SolicitudPermiso",
-                        solicitud.Id,
-                        new
-                        {
-                            SolicitudId = solicitud.Id,
-                            Nomina = request.Nomina,
-                            TipoPermiso = tipoPermiso.ClaveVisualizacion,
-                            FechaInicio = request.FechaInicio,
-                            FechaFin = request.FechaFin
-                        }
-                    );
-                }
-
+                // 7. Confirmar ANTES de notificar: la papeleta no se puede perder
+                //    por un aviso que falle (jefe dado de baja, área con Id
+                //    colgado). Estando dentro de la transacción, esa excepción
+                //    caía en el catch de abajo y salía como HTTP 400.
                 await transaction.CommitAsync();
+
+                try
+                {
+                    if (area?.JefeId != null)
+                    {
+                        await _notificacionesService.CrearNotificacionAsync(
+                            Models.Enums.TiposDeNotificacionEnum.SolicitudPermiso,
+                            $"Nueva solicitud de permiso - {empleado.FullName}",
+                            $"El delegado sindical {delegado.FullName} ha solicitado un permiso para {empleado.FullName} " +
+                            $"({tipoPermiso.Concepto}) del {fechaInicio:dd/MM/yyyy} al {fechaFin:dd/MM/yyyy}.",
+                            delegado.FullName,
+                            area.JefeId.Value,
+                            delegadoId,
+                            areaId,
+                            empleado.GrupoId,
+                            "SolicitudPermiso",
+                            solicitud.Id,
+                            new
+                            {
+                                SolicitudId = solicitud.Id,
+                                Nomina = request.Nomina,
+                                TipoPermiso = tipoPermiso.ClaveVisualizacion,
+                                FechaInicio = request.FechaInicio,
+                                FechaFin = request.FechaFin
+                            }
+                        );
+                    }
+                }
+                catch (Exception exNotif)
+                {
+                    _logger.LogError(exNotif,
+                        "La solicitud de permiso {SolicitudId} se guardó, pero falló el envío de la notificación (nómina {Nomina}, área {AreaId})",
+                        solicitud.Id, request.Nomina, areaId);
+                }
 
                 var response = new CrearSolicitudPermisoResponse
                 {
@@ -288,7 +300,9 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                // Puede venir de antes o de después del commit; revertir una
+                // transacción ya confirmada lanza y taparía el error real.
+                try { await transaction.RollbackAsync(); } catch { /* ya confirmada */ }
                 _logger.LogError(ex, "Error al crear solicitud de permiso para nómina {Nomina}", request.Nomina);
                 return new ApiResponse<CrearSolicitudPermisoResponse>(
                     false, null, $"Error inesperado: {ex.Message}");

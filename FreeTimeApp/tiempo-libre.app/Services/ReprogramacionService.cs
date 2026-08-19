@@ -122,18 +122,15 @@ namespace tiempo_libre.Services
                 }
 
                 // 5. Validar fechas
-                var hoy = DateOnly.FromDateTime(DateTime.Today);
-                // Días ya transcurridos: cualquiera de los tres roles solicitantes
-                // puede moverlos (la papeleta firmada llega después de los hechos:
-                // el operador se presentó en su día de vacación y lo cambia por una
-                // fecha futura). La solicitud sigue pendiente de aprobación del jefe
-                // y la fecha nueva sigue obligada a futuro, que es el candado real.
-
-                if (request.FechaNueva < hoy)
-                {
-                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "La fecha nueva no puede ser en el pasado.");
-                }
+                //
+                // Ninguna de las dos fechas se obliga a futuro. La papeleta llega
+                // después de los hechos: el operador ya se presentó a trabajar en
+                // su día de vacación y ya disfrutó el día de cambio, y el sindicato
+                // la captura días después (ej. mover el 1 de noviembre al 17 de
+                // agosto estando a 19 de agosto). Exigir fecha futura —en la
+                // original o en la nueva— dejaba sin capturar toda la papeletería
+                // retroactiva. Los candados reales son la aprobación del jefe de
+                // área y el año mínimo de abajo.
                 if (request.FechaNueva.Year < 2025)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
@@ -226,29 +223,45 @@ namespace tiempo_libre.Services
                 _db.SolicitudesReprogramacion.Add(solicitud);
                 await _db.SaveChangesAsync();
 
-                // 12. Notificar a jefe de A­rea y al empleado
-                await _notificacionesService.NotificarSolicitudReprogramacionAsync(
-                    usuarioSolicitanteId,
-                    empleado.FullName ?? string.Empty,
-                    usuarioSolicitante.FullName ?? string.Empty,
-                    solicitud.FechaOriginalGuardada,
-                    solicitud.FechaNuevaSolicitada,
-                    empleado.AreaId,
-                    empleado.GrupoId,
-                    solicitud.Id);
-
-                await _notificacionesService.CrearNotificacionAsync(
-                    TiposDeNotificacionEnum.SolicitudReprogramacion,
-                    "Solicitud de reprogramaciA3n pendiente",
-                    $"Tu solicitud para cambiar la vacaciA3n del {solicitud.FechaOriginalGuardada:dd/MM/yyyy} al {solicitud.FechaNuevaSolicitada:dd/MM/yyyy} estA­ pendiente de aprobaciA3n",
-                    usuarioSolicitante.FullName ?? string.Empty,
-                    idUsuarioReceptor: request.EmpleadoId,
-                    idUsuarioEmisor: usuarioSolicitanteId,
-                    areaId: empleado.AreaId,
-                    grupoId: empleado.GrupoId,
-                    idSolicitud: solicitud.Id);
-
+                // 12. Confirmar ANTES de notificar. La papeleta es lo que no se
+                //      puede perder; un aviso que falle (jefe dado de baja, área
+                //      con Id colgado) no debe tirar la transacción. Antes las
+                //      notificaciones corrían dentro y cualquier excepción suya
+                //      caía en el catch de abajo como "Error inesperado", que el
+                //      controlador devuelve como HTTP 400: una sola área con el
+                //      jefe mal referenciado dejaba a todos sus operadores sin
+                //      poder capturar.
                 await transaction.CommitAsync();
+
+                try
+                {
+                    await _notificacionesService.NotificarSolicitudReprogramacionAsync(
+                        usuarioSolicitanteId,
+                        empleado.FullName ?? string.Empty,
+                        usuarioSolicitante.FullName ?? string.Empty,
+                        solicitud.FechaOriginalGuardada,
+                        solicitud.FechaNuevaSolicitada,
+                        empleado.AreaId,
+                        empleado.GrupoId,
+                        solicitud.Id);
+
+                    await _notificacionesService.CrearNotificacionAsync(
+                        TiposDeNotificacionEnum.SolicitudReprogramacion,
+                        "Solicitud de reprogramaciA3n pendiente",
+                        $"Tu solicitud para cambiar la vacaciA3n del {solicitud.FechaOriginalGuardada:dd/MM/yyyy} al {solicitud.FechaNuevaSolicitada:dd/MM/yyyy} estA­ pendiente de aprobaciA3n",
+                        usuarioSolicitante.FullName ?? string.Empty,
+                        idUsuarioReceptor: request.EmpleadoId,
+                        idUsuarioEmisor: usuarioSolicitanteId,
+                        areaId: empleado.AreaId,
+                        grupoId: empleado.GrupoId,
+                        idSolicitud: solicitud.Id);
+                }
+                catch (Exception exNotif)
+                {
+                    _logger.LogError(exNotif,
+                        "La solicitud de reprogramación {SolicitudId} se guardó, pero falló el envío de notificaciones (empleado {EmpleadoId}, área {AreaId}, grupo {GrupoId})",
+                        solicitud.Id, empleado.Id, empleado.AreaId, empleado.GrupoId);
+                }
 
                 var response = new SolicitudReprogramacionResponse
                 {
@@ -278,7 +291,10 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                // La transacción ya pudo quedar confirmada (ver el commit previo
+                // a las notificaciones); revertir entonces lanza y taparía el
+                // error real.
+                try { await transaction.RollbackAsync(); } catch { /* ya confirmada */ }
                 _logger.LogError(ex, "Error al solicitar reprogramaciA3n");
                 return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
                     $"Error inesperado: {ex.Message}");
@@ -908,20 +924,11 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
-                var hoyValidar = DateOnly.FromDateTime(DateTime.Today);
-                if (vacacionOriginal.FechaVacacion < hoyValidar)
-                {
-                    response.EsValida = false;
-                    response.MotivoInvalidez = "No se pueden reprogramar vacaciones de fechas pasadas";
-                    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
-                }
-
-                if (request.FechaNueva < hoyValidar)
-                {
-                    response.EsValida = false;
-                    response.MotivoInvalidez = "La fecha nueva no puede ser en el pasado";
-                    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
-                }
+                // Ni la fecha original ni la nueva se obligan a futuro: esta
+                // validación previa tiene que decir lo mismo que la captura real
+                // (ver SolicitarReprogramacionAsync), o el modal bloquea papeletas
+                // que el backend sí acepta. La papeletería del sindicato es
+                // retroactiva por naturaleza.
 
                 var esDiaInhabil = await _db.DiasInhabiles
                     .AnyAsync(d => d.Fecha == request.FechaNueva);

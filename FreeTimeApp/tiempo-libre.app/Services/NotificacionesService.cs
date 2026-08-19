@@ -733,7 +733,17 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Obtener receptores (jefes y líderes) para un área/grupo específico
+        /// Obtener receptores (jefes y líderes) para un área/grupo específico.
+        ///
+        /// Filtrar por JefeId.HasValue NO basta: el esquema se administra con
+        /// scripts a mano y Areas.JefeId puede quedar apuntando a un usuario que
+        /// ya no existe (jefe dado de baja o recreado con otro Id). En ese caso
+        /// el LEFT JOIN devolvía un null dentro de la lista y quien recorriera
+        /// los receptores tronaba con NullReference; como las notificaciones
+        /// corren dentro de la transacción de la papeleta, esa excepción se
+        /// devolvía como HTTP 400 y toda un área quedaba sin poder capturar.
+        /// Se compara contra la navegación (a.Jefe != null), que traduce a un
+        /// EXISTS sobre Users.
         /// </summary>
         private async Task<List<User>> ObtenerReceptoresAreaGrupoAsync(int? areaId = null, int? grupoId = null)
         {
@@ -743,7 +753,7 @@ namespace tiempo_libre.Services
             if (areaId.HasValue)
             {
                 var jefesArea = await _context.Areas
-                    .Where(a => a.AreaId == areaId.Value && a.JefeId.HasValue)
+                    .Where(a => a.AreaId == areaId.Value && a.Jefe != null)
                     .Select(a => a.Jefe!)
                     .ToListAsync();
 
@@ -754,14 +764,18 @@ namespace tiempo_libre.Services
             if (grupoId.HasValue)
             {
                 var lideresGrupo = await _context.Grupos
-                    .Where(g => g.GrupoId == grupoId.Value && g.LiderId.HasValue)
+                    .Where(g => g.GrupoId == grupoId.Value && g.Lider != null)
                     .Select(g => g.Lider!)
                     .ToListAsync();
 
                 receptores.AddRange(lideresGrupo);
             }
 
-            return receptores.Distinct().ToList();
+            return receptores
+                .Where(r => r != null)
+                .GroupBy(r => r.Id)
+                .Select(g => g.First())
+                .ToList();
         }
     }
 }
