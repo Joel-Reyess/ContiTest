@@ -349,7 +349,12 @@ namespace tiempo_libre.Services
                     {
                         Id = p.Id,
                         EmpleadoOrigenNombre = p.EmpleadoOrigen.FullName,
-                        EmpleadoDestinoNombre = p.EmpleadoDestino != null ? p.EmpleadoDestino.FullName : "N/A",
+                        // En el cambio individual el operador permuta consigo
+                        // mismo (cambia su turno o su día), así que el destino es
+                        // él mismo; poner "N/A" hacía ilegible la papeleta.
+                        EmpleadoDestinoNombre = p.EmpleadoDestino != null
+                            ? p.EmpleadoDestino.FullName
+                            : p.EmpleadoOrigen.FullName,
                         FechaPermuta = p.FechaPermuta,
                         FechaDestino = p.FechaDestino,
                         TurnoEmpleadoOrigen = p.TurnoEmpleadoOrigen,
@@ -363,7 +368,9 @@ namespace tiempo_libre.Services
                         FechaRespuesta = p.FechaRespuesta,
                         MotivoRechazo = p.MotivoRechazo,
                         EmpleadoOrigenNomina = p.EmpleadoOrigen.Nomina.HasValue ? p.EmpleadoOrigen.Nomina.Value.ToString() : null,
-                        EmpleadoDestinoNomina = p.EmpleadoDestino != null && p.EmpleadoDestino.Nomina.HasValue ? p.EmpleadoDestino.Nomina.Value.ToString() : null,
+                        EmpleadoDestinoNomina = p.EmpleadoDestino != null
+                            ? (p.EmpleadoDestino.Nomina.HasValue ? p.EmpleadoDestino.Nomina.Value.ToString() : null)
+                            : (p.EmpleadoOrigen.Nomina.HasValue ? p.EmpleadoOrigen.Nomina.Value.ToString() : null),
                     })
                     .ToList();
 

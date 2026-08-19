@@ -452,8 +452,9 @@ namespace tiempo_libre.Services
                 foreach (var permuta in permutasRaw)
                 {
                     // Cambio individual con cambio de día (papeleta GT-67 de dos
-                    // fechas): dos renglones — el día del rol se trabaja con el
-                    // turno capturado y el descanso se toma en la fecha del cambio.
+                    // fechas): dos renglones — el día del rol es el descanso que
+                    // conserva y en la fecha del cambio se presenta al turno
+                    // capturado.
                     if (permuta.EsCambioIndividual && permuta.FechaDestino.HasValue)
                     {
                         var fechaRolStr = permuta.Fecha.ToString("ddMMyyyy");
@@ -462,13 +463,13 @@ namespace tiempo_libre.Services
                         sb.Append(permuta.NominaOrigen).Append(',')
                           .Append(fechaRolStr).Append(',')
                           .Append(fechaRolStr).Append(",,,,,")
-                          .Append(permuta.TurnoNuevoCapturado ?? "")
+                          .Append("D")
                           .Append('\n');
 
                         sb.Append(permuta.NominaOrigen).Append(',')
                           .Append(fechaCambioStr).Append(',')
                           .Append(fechaCambioStr).Append(",,,,,")
-                          .Append("D")
+                          .Append(permuta.TurnoNuevoCapturado ?? "")
                           .Append('\n');
 
                         continue;

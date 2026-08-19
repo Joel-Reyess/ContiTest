@@ -275,7 +275,7 @@ const MisPermutas = () => {
                                             <span className="text-sm font-medium text-gray-700">
                                                 {formatDate(permuta.fechaPermuta)}
                                                 {permuta.fechaDestino && (
-                                                    <span className="text-amber-700"> → descansa el {formatDate(permuta.fechaDestino)}</span>
+                                                    <span className="text-amber-700"> → se presenta el {formatDate(permuta.fechaDestino)}</span>
                                                 )}
                                             </span>
                                             {/* 🆕 Badge mejorado para identificar al solicitante */}

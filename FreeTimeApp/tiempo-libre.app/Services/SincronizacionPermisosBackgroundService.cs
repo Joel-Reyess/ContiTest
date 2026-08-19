@@ -468,14 +468,22 @@ namespace tiempo_libre.Services
                 return;
             }
 
+            // Días de la app que ya se reasignaron en esta misma pasada: las
+            // consultas de abajo van a la base y no ven los cambios todavía sin
+            // guardar, así que sin esto una misma vacación podría "moverse" a dos
+            // fechas distintas del mismo rango.
+            var yaReasignadas = new HashSet<int>();
+
             for (var f = desde; f <= hasta; f = f.AddDays(1))
             {
                 var yaExiste = await context.VacacionesProgramadas.AnyAsync(v =>
                     v.EmpleadoId == empleadoId && v.FechaVacacion == f && v.EstadoVacacion == "Activa");
                 if (yaExiste) continue;
 
-                var ventanaIni = f.AddDays(-7);
-                var ventanaFin = f.AddDays(7);
+                // Ventana amplia: el encargado del Excel puede recorrer el día
+                // varias semanas, no solo al día siguiente.
+                var ventanaIni = f.AddDays(-31);
+                var ventanaFin = f.AddDays(31);
 
                 var candidatas = await context.VacacionesProgramadas
                     .Where(v => v.EmpleadoId == empleadoId &&
@@ -492,13 +500,22 @@ namespace tiempo_libre.Services
                     .Select(p => new { p.Desde, p.Hasta })
                     .ToListAsync();
 
+                // Se ordenan por cercanía a la fecha que manda el Excel: cuando
+                // hay varias candidatas la más cercana es la que el encargado
+                // recorrió. Antes, con más de una, no se tocaba ninguna y el día
+                // viejo se quedaba activo junto al nuevo (dos vacaciones por un
+                // solo día). El Excel manda, así que se resuelve siempre.
                 var sinConfirmar = candidatas
+                    .Where(v => !yaReasignadas.Contains(v.Id))
                     .Where(v => !confirmadasSap.Any(p => v.FechaVacacion >= p.Desde && v.FechaVacacion <= p.Hasta))
+                    .OrderBy(v => Math.Abs(v.FechaVacacion.DayNumber - f.DayNumber))
+                    .ThenBy(v => v.FechaVacacion)
                     .ToList();
 
-                if (sinConfirmar.Count == 1)
+                if (sinConfirmar.Count > 0)
                 {
                     var original = sinConfirmar[0];
+                    yaReasignadas.Add(original.Id);
                     original.EstadoVacacion = "Cancelada";
                     original.UpdatedAt = DateTime.Now;
                     original.Observaciones =
@@ -524,7 +541,7 @@ namespace tiempo_libre.Services
                         "Excel manda: vacación de nómina {Nomina} movida {Original:yyyy-MM-dd} -> {Nueva:yyyy-MM-dd}",
                         nomina, original.FechaVacacion, f);
                 }
-                else if (sinConfirmar.Count == 0)
+                else
                 {
                     context.VacacionesProgramadas.Add(new VacacionesProgramadas
                     {
@@ -544,13 +561,6 @@ namespace tiempo_libre.Services
                     _logger.LogInformation(
                         "Excel manda: vacación de nómina {Nomina} dada de alta el {Fecha:yyyy-MM-dd} (venía solo en SAP)",
                         nomina, f);
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "Excel manda: SAP reporta vacación el {Fecha:yyyy-MM-dd} para nómina {Nomina} pero hay {N} " +
-                        "vacaciones activas cercanas sin confirmar; no se adivina cuál mover (el calendario pinta la de SAP)",
-                        f, nomina, sinConfirmar.Count);
                 }
             }
         }

@@ -481,7 +481,7 @@ export const PermutaModal = ({
                         {esCambioIndividual && (
                             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Fecha del cambio (día que descansará a cambio)
+                                    Fecha del cambio (día que viene a laborar)
                                 </label>
                                 <Input
                                     type="date"
@@ -496,7 +496,7 @@ export const PermutaModal = ({
                                 {fechaCambio && (
                                     <div className="mt-3">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Turno que trabajará el {fechaPermuta ? fechaPermuta.split('-').reverse().join('/') : '—'} *
+                                            Turno al que se presenta el {fechaCambio.split('-').reverse().join('/')} *
                                         </label>
                                         <select
                                             value={turnoCambio}
