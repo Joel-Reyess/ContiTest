@@ -309,6 +309,20 @@ export const PermutaModal = ({
                             </p>
                         </div>
 
+                        {/* En el cambio individual el operador permuta consigo
+                            mismo, así que el destino es él mismo: se muestra fijo
+                            para que la papeleta se lea igual que la de dos
+                            personas y no quede el campo vacío. */}
+                        {esCambioIndividual && (
+                            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-xs font-medium text-blue-800 mb-1">Empleado Destino:</p>
+                                <p className="text-sm font-semibold text-blue-900">{empleadoOrigen.fullName}</p>
+                                <p className="text-xs text-blue-700">
+                                    Nómina: {empleadoOrigen.nomina} • el cambio es del mismo operador
+                                </p>
+                            </div>
+                        )}
+
                         {/* Selección de Empleado Destino */}
                         {!esCambioIndividual && (
                             <div className="mb-4">

@@ -31,15 +31,20 @@ namespace tiempo_libre.Controllers
         /// de ellos podía pedir CUALQUIER grupoId, y el filtrado por área vivía
         /// únicamente en el selector del frontend.
         ///
-        /// El sindicalizado y el delegado siguen viendo cualquier grupo (es su
-        /// consulta normal del rol semanal); a quien tiene alcance por área
-        /// —jefe, ingeniero, líder, Gerente BT, RH— se le exige que el grupo
-        /// caiga dentro de sus áreas.
+        /// El delegado sindical y el comité siguen viendo cualquier grupo (es su
+        /// función); a quien tiene alcance por área —jefe, ingeniero, líder,
+        /// Gerente BT, RH— se le exige que el grupo caiga dentro de sus áreas; y
+        /// el empleado sindicalizado de a pie queda limitado a SU grupo: antes
+        /// caía en el mismo saco que el delegado y veía el rol semanal de toda
+        /// la planta.
         /// </summary>
         private async Task<bool> PuedeVerGrupoAsync(int grupoId)
         {
             if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
                 return true;
+
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(claim, out var userId)) return false;
 
             var tieneAlcancePorArea =
                 User.IsInRole("Jefe De Area") || User.IsInRole("JefeArea") || User.IsInRole("JefeDeArea") ||
@@ -48,10 +53,40 @@ namespace tiempo_libre.Controllers
                 User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT") ||
                 User.IsInRole("RH");
 
-            if (!tieneAlcancePorArea) return true;
+            if (!tieneAlcancePorArea)
+            {
+                var esDelegado =
+                    User.IsInRole("Delegado Sindical") || User.IsInRole("DelegadoSindical");
 
-            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(claim, out var userId)) return false;
+                if (!esDelegado)
+                {
+                    // El comité sindical está dado de alta como sindicalizado
+                    // pero opera como delegado; se reconoce por el área
+                    // "Sindicato", igual que en ReprogramacionService.
+                    var datos = await _db.Users
+                        .Where(u => u.Id == userId)
+                        .Select(u => new
+                        {
+                            u.GrupoId,
+                            AreaPropia = u.Area != null ? u.Area.NombreGeneral : null,
+                            AreaGrupo = u.Grupo != null && u.Grupo.Area != null
+                                ? u.Grupo.Area.NombreGeneral
+                                : null
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (datos == null) return false;
+
+                    var esSindicato =
+                        string.Equals(datos.AreaPropia, "Sindicato", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(datos.AreaGrupo, "Sindicato", StringComparison.OrdinalIgnoreCase);
+
+                    if (!esSindicato)
+                        return datos.GrupoId.HasValue && datos.GrupoId.Value == grupoId;
+                }
+
+                return true;
+            }
 
             var areaDelGrupo = await _db.Grupos
                 .Where(g => g.GrupoId == grupoId)

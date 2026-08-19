@@ -66,6 +66,15 @@ const WeeklyRoles = () => {
     const isBoss = hasRole(UserRole.AREA_ADMIN);
     const isAdmin = hasRole(UserRole.SUPER_ADMIN);
     const isGerenteORH = hasRole(UserRole.GERENTE_BT) || hasRole(UserRole.RH);
+    // El delegado y el comité sindical sí ven toda la planta (es su función).
+    // El sindicalizado de a pie no: solo su propio grupo.
+    const isDelegado =
+        hasRole(UserRole.UNION_REPRESENTATIVE) ||
+        Boolean((user as any)?.isUnionCommittee) ||
+        user?.area?.nombreGeneral === "Sindicato";
+    const soloSuGrupo = hasRole(UserRole.UNIONIZED) && !isDelegado && !isAdmin &&
+        !isBoss && !isIndustrial && !isGerenteORH;
+    const grupoPropioId = (user as any)?.grupo?.grupoId ?? (user as any)?.grupoId ?? null;
 
     // Cargar areas y grupos (si es jefe de área solo ve sus áreas)
     useEffect(() => {
@@ -138,6 +147,13 @@ const WeeklyRoles = () => {
                         console.error('Error obteniendo áreas asignadas a Gerente/RH:', error);
                         allowedAreas = [];
                     }
+                } else if (soloSuGrupo) {
+                    // Sindicalizado sin función sindical: solo el área de su
+                    // propio grupo. El backend además rechaza cualquier otro.
+                    const grupoPropio = orderedGroups.find((g) => g.grupoId === grupoPropioId);
+                    allowedAreas = grupoPropio
+                        ? allAreas.filter((a) => a.areaId === grupoPropio.areaId)
+                        : [];
                 } else {
                     allowedAreas = allAreas;
                 }
@@ -147,20 +163,25 @@ const WeeklyRoles = () => {
                 // debe ver todos los grupos. El fallback anterior ("si no hay
                 // áreas, muestra todo") le abría la planta completa a un Gerente
                 // BT / RH al que nadie le había asignado áreas todavía.
-                const tieneAlcancePorArea = isBoss || isIndustrial || isGerenteORH;
-                const filteredGroups =
+                const tieneAlcancePorArea = isBoss || isIndustrial || isGerenteORH || soloSuGrupo;
+                const porArea =
                     allowedAreaIds.length > 0
                         ? orderedGroups.filter((g) => allowedAreaIds.includes(g.areaId as number))
                         : tieneAlcancePorArea
                             ? []
                             : orderedGroups;
+                // El sindicalizado de a pie se queda con su grupo, no con toda
+                // su área: es el único grupo que el backend le va a contestar.
+                const filteredGroups = soloSuGrupo
+                    ? porArea.filter((g) => g.grupoId === grupoPropioId)
+                    : porArea;
 
                 setAreas(allowedAreas);
                 setGroups(filteredGroups);
 
-                if ((isBoss || isIndustrial || isGerenteORH) && allowedAreaIds.length > 0) {
+                if ((isBoss || isIndustrial || isGerenteORH || soloSuGrupo) && allowedAreaIds.length > 0) {
                     setSelectedArea(allowedAreaIds[0] as number);
-                } else if (!isBoss && !isIndustrial && !isGerenteORH && filteredGroups.length > 0) {
+                } else if (!isBoss && !isIndustrial && !isGerenteORH && !soloSuGrupo && filteredGroups.length > 0) {
                     setSelectedArea("all");
                 }
 
@@ -725,7 +746,7 @@ const WeeklyRoles = () => {
                         onChange={(e) => setSelectedArea(e.target.value === "all" ? "all" : parseInt(e.target.value, 10))}
                         disabled={loadingGroups}
                     >
-                        {(isAdmin || (!isBoss && !isIndustrial && !isGerenteORH)) && <option value="all">Todas</option>}
+                        {(isAdmin || (!isBoss && !isIndustrial && !isGerenteORH && !soloSuGrupo)) && <option value="all">Todas</option>}
                         {uniqueAreas.map((a) => (
                             <option key={a.id ?? "na"} value={a.id ?? ""}>
                                 {a.name}
