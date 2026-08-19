@@ -511,10 +511,6 @@ export const PermutaModal = ({
                                                 </option>
                                             ))}
                                         </select>
-                                        <p className="text-xs text-amber-700 mt-2">
-                                            El día del rol ({fechaPermuta ? fechaPermuta.split('-').reverse().join('/') : '—'}) quedará como descanso
-                                            y se presentará el {fechaCambio.split('-').reverse().join('/')} al turno elegido.
-                                        </p>
                                     </div>
                                 )}
                             </div>
