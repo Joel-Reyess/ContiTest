@@ -90,3 +90,66 @@ PRINT '=== (8) Días inhábiles del periodo que están pidiendo ===';
 SELECT * FROM dbo.DiasInhabiles
 WHERE Fecha >= CAST(GETDATE() AS DATE)
 ORDER BY Fecha;
+
+PRINT '=== (9) Referencias colgadas: jefes y líderes que ya no existen ===';
+PRINT '    Cada fila aquí es un área/grupo que tumbaba la captura con 400.';
+SELECT a.AreaId, a.UnidadOrganizativaSap, a.NombreGeneral, a.JefeId AS JefeInexistente
+FROM dbo.Areas a
+LEFT JOIN dbo.Users u ON u.Id = a.JefeId
+WHERE a.JefeId IS NOT NULL AND u.Id IS NULL;
+
+SELECT a.AreaId, a.UnidadOrganizativaSap, a.JefeSuplenteId AS SuplenteInexistente
+FROM dbo.Areas a
+LEFT JOIN dbo.Users u ON u.Id = a.JefeSuplenteId
+WHERE a.JefeSuplenteId IS NOT NULL AND u.Id IS NULL;
+
+SELECT g.GrupoId, g.AreaId, g.Rol, g.LiderId AS LiderInexistente
+FROM dbo.Grupos g
+LEFT JOIN dbo.Users u ON u.Id = g.LiderId
+WHERE g.LiderId IS NOT NULL AND u.Id IS NULL;
+
+PRINT '=== (10) Empleados con Area o Grupo colgado / sin nómina ===';
+PRINT '    Sin nómina el backend contesta 400 al capturar el permiso.';
+SELECT u.Id, u.Username, u.Nomina, u.AreaId, u.GrupoId,
+       CASE WHEN u.AreaId  IS NOT NULL AND a.AreaId  IS NULL THEN 'AreaId colgado'  END AS ProblemaArea,
+       CASE WHEN u.GrupoId IS NOT NULL AND g.GrupoId IS NULL THEN 'GrupoId colgado' END AS ProblemaGrupo
+FROM dbo.Users u
+LEFT JOIN dbo.Areas  a ON a.AreaId  = u.AreaId
+LEFT JOIN dbo.Grupos g ON g.GrupoId = u.GrupoId
+WHERE u.Nomina IS NULL
+   OR (u.AreaId  IS NOT NULL AND a.AreaId  IS NULL)
+   OR (u.GrupoId IS NOT NULL AND g.GrupoId IS NULL);
+
+PRINT '=== (11) Nóminas duplicadas (la búsqueda toma la primera que encuentre) ===';
+SELECT Nomina, COUNT(*) AS Veces
+FROM dbo.Users
+WHERE Nomina IS NOT NULL
+GROUP BY Nomina
+HAVING COUNT(*) > 1;
+
+PRINT '=== (12) Áreas duplicadas por unidad organizativa ===';
+SELECT UnidadOrganizativaSap, COUNT(*) AS Veces
+FROM dbo.Areas
+GROUP BY UnidadOrganizativaSap
+HAVING COUNT(*) > 1;
+
+PRINT '=== (13) Días con más de una vacación en la misma fecha (área 80805) ===';
+PRINT '    Explica los 400 de "solo vacaciones activas" / "solo tipo Anual".';
+SELECT v.EmpleadoId, u.FullName, v.FechaVacacion, COUNT(*) AS Filas,
+       STRING_AGG(CONCAT(v.TipoVacacion, '/', v.EstadoVacacion), ' | ') AS Detalle
+FROM dbo.VacacionesProgramadas v
+JOIN dbo.Users u ON u.Id = v.EmpleadoId
+JOIN dbo.Areas a ON a.AreaId = u.AreaId
+WHERE a.UnidadOrganizativaSap LIKE '%80805%'
+GROUP BY v.EmpleadoId, u.FullName, v.FechaVacacion
+HAVING COUNT(*) > 1
+ORDER BY v.FechaVacacion;
+
+PRINT '=== (14) Patrón de turno del grupo contra el catálogo de reglas ===';
+SELECT g.GrupoId, g.Rol, g.IdentificadorSAP
+FROM dbo.Grupos g
+JOIN dbo.Areas a ON a.AreaId = g.AreaId
+WHERE a.UnidadOrganizativaSap LIKE '%80805%';
+
+IF OBJECT_ID('dbo.ReglasTurno') IS NOT NULL
+    SELECT * FROM dbo.ReglasTurno;

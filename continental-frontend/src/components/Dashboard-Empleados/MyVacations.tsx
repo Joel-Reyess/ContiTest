@@ -77,13 +77,28 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 (typeof role === 'string' ? role : role.name) === UserRole.SUPER_ADMIN
             ));
     const abrirReprogramacion = (day: string) => {
-        // Buscar la vacación correspondiente al día seleccionado
-        const vacation = vacacionesData?.vacaciones.find(v => {
-            // Convertir ambas fechas al mismo formato para comparar
-            const vacationDate = new Date(v.fechaVacacion + 'T00:00:00').toDateString();
-            const dayDate = new Date(day + 'T00:00:00').toDateString();
-            return vacationDate === dayDate;
-        });
+        // Una misma fecha puede tener varias filas (una cancelada y su
+        // reemplazo, o un día asignado por la empresa encima). Quedarse con la
+        // primera que coincidiera en fecha mandaba al backend el id equivocado
+        // y contestaba 400 ("solo vacaciones activas" / "solo tipo Anual").
+        const mismaFecha = (v: { fechaVacacion: string }) =>
+            new Date(v.fechaVacacion + 'T00:00:00').toDateString() ===
+            new Date(day + 'T00:00:00').toDateString();
+
+        const esReprogramable = (v: { tipoVacacion?: string; estadoVacacion?: string }) =>
+            v.estadoVacacion === 'Activa' &&
+            (v.tipoVacacion === 'Anual' || v.tipoVacacion === 'Reprogramacion');
+
+        const candidatas = vacacionesData?.vacaciones.filter(mismaFecha) ?? [];
+        const vacation = candidatas.find(esReprogramable);
+
+        if (!vacation && candidatas.length > 0) {
+            const c = candidatas[0];
+            toast.error(
+                `Este día no se puede reprogramar desde aquí (${c.tipoVacacion}, ${c.estadoVacacion}).`
+            );
+            return;
+        }
 
         if (vacation) {
             setSelectedVacation(vacation);

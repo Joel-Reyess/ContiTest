@@ -219,6 +219,14 @@ namespace tiempo_libre.Services
                 //        usuarioSolicitanteId);
                 //}
                 //else
+                // Confirmar ANTES de notificar: si el aviso truena (jefe del área
+                // dado de baja, área/grupo con Id colgado) el catch de abajo lo
+                // devolvía como "Error inesperado" y el controlador como HTTP 400,
+                // perdiendo la papeleta. Mismo arreglo que en reprogramación y
+                // permisos del sindicato.
+                await transaction.CommitAsync();
+
+                try
                 {
                     if (jefeArea != null)
                     {
@@ -232,8 +240,12 @@ namespace tiempo_libre.Services
                             empleado.GrupoId);
                     }
                 }
-
-                await transaction.CommitAsync();
+                catch (Exception exNotif)
+                {
+                    _logger.LogError(exNotif,
+                        "El festivo trabajado {SolicitudId} se guardó, pero falló el envío de notificaciones (empleado {EmpleadoId}, área {AreaId})",
+                        solicitud.Id, empleado.Id, empleado.AreaId);
+                }
 
                 var response = new SolicitudFestivoTrabajadoResponse
                 {
@@ -261,7 +273,9 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                // La transacción ya pudo quedar confirmada; revertirla entonces
+                // lanza y taparía el error real.
+                try { await transaction.RollbackAsync(); } catch { /* ya confirmada */ }
                 _logger.LogError(ex, "Error al solicitar intercambio de festivo trabajado");
                 return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
                     $"Error inesperado: {ex.Message}");

@@ -507,10 +507,33 @@ namespace tiempo_libre.Services
                     // Si no es suplente o el titular de la suplencia no es el jefe aprobador requerido
                     if (suplencia == null || suplencia.UsuarioTitularId != solicitudValidacion.JefeAprobadorId)
                     {
-                        return new ApiResponse<object>(false, null,
-                            "No tiene permisos para responder esta solicitud");
+                        // Último recurso: que el aprobador cubra el área del
+                        // empleado. La papeleta se clava con JefeAprobadorId =
+                        // Areas.JefeId en el momento de crearse, así que un área
+                        // con varios jefes (AreaJefes) o que cambió de titular
+                        // dejaba al jefe real en "No tiene permisos" y sus
+                        // papeletas atoradas. Reprogramación ya resuelve así.
+                        var areasDelAprobador = await tiempo_libre.Helpers.AreasVisiblesHelper
+                            .AreasVisiblesAsync(_db, jefeAreaId);
+
+                        var areaEmpleado = await _db.Users
+                            .Where(u => u.Nomina == solicitudValidacion.Nomina)
+                            .Select(u => new
+                            {
+                                u.AreaId,
+                                GrupoAreaId = u.Grupo != null ? (int?)u.Grupo.AreaId : null
+                            })
+                            .FirstOrDefaultAsync();
+
+                        var areaEmpleadoId = areaEmpleado?.GrupoAreaId ?? areaEmpleado?.AreaId;
+
+                        if (areaEmpleadoId == null || !areasDelAprobador.Contains(areaEmpleadoId.Value))
+                        {
+                            return new ApiResponse<object>(false, null,
+                                "No tiene permisos para responder esta solicitud");
+                        }
                     }
-                    // Si pasa aquí, es un suplente válido y activo
+                    // Si pasa aquí, es un suplente válido o un jefe del área
                 }
 
                 // ✅ Ahora SÍ actualizar el registro completo
