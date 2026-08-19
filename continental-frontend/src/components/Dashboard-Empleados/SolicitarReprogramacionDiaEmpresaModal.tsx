@@ -8,6 +8,7 @@ import {
     reprogramacionDiaEmpresaService,
     MOTIVO_LABEL,
     MOTIVO_NOMENCLATURA,
+    MOTIVOS_ORDEN,
     type MotivoTipo,
     type VacacionAsignada,
 } from '@/services/reprogramacionDiaEmpresaService'
@@ -20,7 +21,7 @@ interface Props {
     onSolicitudCreada?: () => void
 }
 
-const MOTIVOS: MotivoTipo[] = ['Incapacidad', 'PermisoDefuncion', 'Paternidad', 'Maternidad']
+const MOTIVOS: MotivoTipo[] = MOTIVOS_ORDEN
 
 export function SolicitarReprogramacionDiaEmpresaModal({
     show, onClose, empleadoId, empleadoNombre, onSolicitudCreada,
@@ -82,6 +83,10 @@ export function SolicitarReprogramacionDiaEmpresaModal({
     const handleSubmit = async () => {
         if (!empleadoId || !vacacionId || !fechaNueva || !motivoTipo) {
             toast.error('Completa vacación, fecha nueva y motivo.')
+            return
+        }
+        if (motivoTipo === 'Otro' && !justificacion.trim()) {
+            toast.error('Con el motivo "Otro" escribe la justificación.')
             return
         }
         setLoadingSubmit(true)
@@ -207,7 +212,11 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                                 </span>
                                             </div>
                                             <p className="text-xs text-blue-700 mt-2">
-                                                Código SAP: <span className="font-semibold">{MOTIVO_NOMENCLATURA[motivoTipo]}</span>.
+                                                {motivoTipo === 'Otro' ? (
+                                                    <>Motivo libre: descríbelo en la justificación. </>
+                                                ) : (
+                                                    <>Código SAP: <span className="font-semibold">{MOTIVO_NOMENCLATURA[motivoTipo]}</span>. </>
+                                                )}
                                                 El día reprogramado se reflejará como <span className="font-mono font-semibold">C</span> en el rol semanal.
                                             </p>
                                         </div>
@@ -230,14 +239,18 @@ export function SolicitarReprogramacionDiaEmpresaModal({
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Justificación (opcional)
+                                        {motivoTipo === 'Otro' ? (
+                                            <>Justificación (obligatoria) <span className="text-red-500">*</span></>
+                                        ) : 'Justificación (opcional)'}
                                     </label>
                                     <textarea
                                         value={justificacion}
                                         onChange={e => setJustificacion(e.target.value)}
                                         rows={3}
                                         maxLength={500}
-                                        placeholder="Detalles adicionales…"
+                                        placeholder={motivoTipo === 'Otro'
+                                            ? 'Describe el motivo del cambio…'
+                                            : 'Detalles adicionales…'}
                                         className="w-full border border-gray-300 rounded px-2 py-2 text-sm resize-none"
                                     />
                                     <p className="text-xs text-gray-400 mt-1 text-right">
@@ -254,7 +267,8 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                             <Button
                                 variant="continental"
                                 onClick={handleSubmit}
-                                disabled={loadingSubmit || loadingData || !vacacionId || !fechaNueva || !motivoTipo}
+                                disabled={loadingSubmit || loadingData || !vacacionId || !fechaNueva || !motivoTipo ||
+                                    (motivoTipo === 'Otro' && !justificacion.trim())}
                             >
                                 {loadingSubmit ? 'Enviando…' : 'Enviar solicitud'}
                             </Button>

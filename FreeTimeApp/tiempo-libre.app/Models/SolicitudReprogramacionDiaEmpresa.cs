@@ -34,7 +34,9 @@ namespace tiempo_libre.Models
         public DateOnly FechaNueva { get; set; }
 
         /// <summary>
-        /// Motivo del catálogo cerrado: Incapacidad, PermisoDefuncion, Paternidad, Maternidad.
+        /// Motivo tomado del catálogo de nomenclaturas SAP (ver
+        /// <see cref="MotivosReprogramacionDiaEmpresa"/>). Es documental: el día
+        /// reprogramado siempre se pinta como "C" en el rol semanal.
         /// </summary>
         [Required]
         [MaxLength(40)]
@@ -84,16 +86,36 @@ namespace tiempo_libre.Models
     }
 
     /// <summary>Catálogo cerrado de motivos válidos.</summary>
+    /// <summary>
+    /// Catálogo de motivos para reprogramar un día asignado por la empresa.
+    /// Abarca TODAS las nomenclaturas SAP que maneja el rol semanal (mismas de
+    /// CatalogoPermisosResponse) más "Otro": el SuperUsuario captura la papeleta
+    /// después de los hechos y el motivo real puede ser cualquiera, así que un
+    /// catálogo corto obligaba a elegir uno que no correspondía.
+    ///
+    /// Las cuatro primeras claves son las originales y no se renombran: hay
+    /// solicitudes históricas guardadas con ese texto.
+    /// </summary>
     public static class MotivosReprogramacionDiaEmpresa
     {
         public const string Incapacidad = "Incapacidad";
         public const string PermisoDefuncion = "PermisoDefuncion";
         public const string Paternidad = "Paternidad";
         public const string Maternidad = "Maternidad";
+        public const string PermisoConGoce = "PermisoConGoce";
+        public const string PermisoSinGoce = "PermisoSinGoce";
+        public const string PermisoSinGoceSueldo = "PermisoSinGoceSueldo";
+        public const string AccidenteTrabajo = "AccidenteTrabajo";
+        public const string RiesgoTrabajo = "RiesgoTrabajo";
+        public const string Suspension = "Suspension";
+        public const string Vacacion = "Vacacion";
+        public const string Otro = "Otro";
 
         public static readonly string[] Validos =
         {
-            Incapacidad, PermisoDefuncion, Paternidad, Maternidad
+            Incapacidad, PermisoDefuncion, Paternidad, Maternidad,
+            PermisoConGoce, PermisoSinGoce, PermisoSinGoceSueldo,
+            AccidenteTrabajo, RiesgoTrabajo, Suspension, Vacacion, Otro
         };
 
         public static bool EsValido(string? motivo) =>

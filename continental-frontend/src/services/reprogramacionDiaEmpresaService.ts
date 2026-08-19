@@ -3,23 +3,68 @@ import type { ApiResponse } from '../interfaces/Api.interface'
 
 const BASE = '/api/reprogramacion-dia-empresa'
 
-export type MotivoTipo = 'Incapacidad' | 'PermisoDefuncion' | 'Paternidad' | 'Maternidad'
+export type MotivoTipo =
+    | 'Incapacidad'
+    | 'PermisoDefuncion'
+    | 'Paternidad'
+    | 'Maternidad'
+    | 'PermisoConGoce'
+    | 'PermisoSinGoce'
+    | 'PermisoSinGoceSueldo'
+    | 'AccidenteTrabajo'
+    | 'RiesgoTrabajo'
+    | 'Suspension'
+    | 'Vacacion'
+    | 'Otro'
 
 export const MOTIVO_LABEL: Record<MotivoTipo, string> = {
-    Incapacidad: 'Incapacidad',
-    PermisoDefuncion: 'Permiso de defunción',
-    Paternidad: 'Paternidad',
-    Maternidad: 'Maternidad',
+    Incapacidad: 'Inc. Enfermedad General',
+    PermisoDefuncion: 'Permiso Defunción',
+    Paternidad: 'PCG por Paternidad',
+    Maternidad: 'Inc. por Maternidad',
+    PermisoConGoce: 'Permiso con Goce',
+    PermisoSinGoce: 'Permiso sin Goce',
+    PermisoSinGoceSueldo: 'Perm. sin goce de sueldo',
+    AccidenteTrabajo: 'Inc. Accidente de Trabajo',
+    RiesgoTrabajo: 'Inc. Pble. Riesgo Trabajo',
+    Suspension: 'Suspensión',
+    Vacacion: 'Vacación',
+    Otro: 'Otro (especifica en la justificación)',
 }
 
 // Nomenclatura SAP que aparece en el rol semanal cuando se aplica el motivo.
-// Misma convención que PermisosIncapacidadesService._mapeoClaves.
+// Misma convención que CatalogoPermisosResponse / PermisosIncapacidadesService.
+// El motivo es documental: el día reprogramado se pinta siempre como "C".
 export const MOTIVO_NOMENCLATURA: Record<MotivoTipo, string> = {
     Incapacidad: 'E',
     PermisoDefuncion: 'P',
     Paternidad: 'O',
     Maternidad: 'M',
+    PermisoConGoce: 'P',
+    PermisoSinGoce: 'G',
+    PermisoSinGoceSueldo: 'H',
+    AccidenteTrabajo: 'A',
+    RiesgoTrabajo: 'R',
+    Suspension: 'S',
+    Vacacion: 'V',
+    Otro: '—',
 }
+
+// Orden en que se muestran en el selector.
+export const MOTIVOS_ORDEN: MotivoTipo[] = [
+    'Incapacidad',
+    'AccidenteTrabajo',
+    'RiesgoTrabajo',
+    'Maternidad',
+    'Paternidad',
+    'PermisoConGoce',
+    'PermisoDefuncion',
+    'PermisoSinGoce',
+    'PermisoSinGoceSueldo',
+    'Suspension',
+    'Vacacion',
+    'Otro',
+]
 
 export interface VacacionAsignada {
     id: number

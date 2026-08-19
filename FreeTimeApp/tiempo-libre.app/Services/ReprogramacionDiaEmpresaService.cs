@@ -124,6 +124,15 @@ namespace tiempo_libre.Services
                     $"Motivo no válido. Permitidos: {string.Join(", ", MotivosReprogramacionDiaEmpresa.Validos)}.");
             }
 
+            // "Otro" existe para los casos que no caen en ninguna nomenclatura;
+            // sin la nota escrita el jefe no tiene con qué aprobar.
+            if (request.MotivoTipo == MotivosReprogramacionDiaEmpresa.Otro &&
+                string.IsNullOrWhiteSpace(request.Justificacion))
+            {
+                return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,
+                    "Con el motivo \"Otro\" debes escribir la justificación.");
+            }
+
             var empleado = await _db.Users
                 .Include(u => u.Area)
                 .Include(u => u.Grupo)
