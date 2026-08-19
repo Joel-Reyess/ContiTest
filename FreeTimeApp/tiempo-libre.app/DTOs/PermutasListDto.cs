@@ -9,6 +9,8 @@ namespace tiempo_libre.DTOs
         public string EmpleadoOrigenNombre { get; set; } = string.Empty;
         public string EmpleadoDestinoNombre { get; set; } = string.Empty;
         public DateOnly FechaPermuta { get; set; }
+        // Cambio individual con cambio de día: fecha a la que se presenta a laborar
+        public DateOnly? FechaDestino { get; set; }
         public string TurnoEmpleadoOrigen { get; set; } = string.Empty;
         public string TurnoEmpleadoDestino { get; set; } = string.Empty;
         public string Motivo { get; set; } = string.Empty;

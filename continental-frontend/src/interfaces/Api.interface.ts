@@ -1019,6 +1019,8 @@ export interface SolicitudPermutaRequest {
     empleadoOrigenId: number;
     empleadoDestinoId: number | null;
     fechaPermuta: string; // Mantener como string en frontend
+    // Cambio individual con cambio de día: fecha a la que se presenta a laborar
+    fechaDestino?: string | null;
     motivo: string;
     solicitadoPor: number; // ✅ Agregar este campo
     turnoEmpleadoOrigen: string; // ✅ AGREGAR

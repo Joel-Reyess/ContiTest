@@ -46,6 +46,10 @@ export const PermutaModal = ({
     const [empleadosDisponibles, setEmpleadosDisponibles] = useState<UsuarioInfoDto[]>([]);
     const [showSearch, setShowSearch] = useState(false);
     const [esCambioIndividual, setEsCambioIndividual] = useState(false);
+    // Cambio individual que se mueve de día (papeleta GT-67 con "fecha del rol"
+    // y "fecha del cambio"): fecha a la que se presenta y turno de ese día.
+    const [fechaCambio, setFechaCambio] = useState<string>("");
+    const [turnoCambio, setTurnoCambio] = useState<string>("");
     const [loadingTurnos, setLoadingTurnos] = useState(false);
 
     // Buscar empleados del mismo área
@@ -198,16 +202,26 @@ export const PermutaModal = ({
             return;
         }
 
+        if (esCambioIndividual && fechaCambio && !turnoCambio) {
+            toast.error("Indica el turno al que se presentará en la fecha del cambio");
+            return;
+        }
+
+        const cambiaDeDia = esCambioIndividual && !!fechaCambio && fechaCambio !== fechaPermuta;
+
         setLoading(true);
         try {
             const payload: PermutaRequest = {
                 empleadoOrigenId: empleadoOrigen.id,
                 empleadoDestinoId: esCambioIndividual ? null : empleadoDestino!.id,
                 fechaPermuta: (fechaPermuta),
+                fechaDestino: cambiaDeDia ? fechaCambio : null,
                 motivo: motivo.trim(),
                 solicitadoPor: solicitadoPorId,
                 turnoEmpleadoOrigen: turnoOrigen,
-                turnoEmpleadoDestino: esCambioIndividual ? null : turnoDestino,
+                turnoEmpleadoDestino: esCambioIndividual
+                    ? (cambiaDeDia ? turnoCambio : null)
+                    : turnoDestino,
             };
 
             const response = await permutasService.solicitarPermuta(payload);
@@ -241,6 +255,8 @@ export const PermutaModal = ({
         setTurnoOrigenDetectado("");
         setTurnoDestinoDetectado("");
         setEsCambioIndividual(false);
+        setFechaCambio("");
+        setTurnoCambio("");
         onClose();
     };
 
@@ -268,6 +284,9 @@ export const PermutaModal = ({
                                         setEmpleadoDestino(null);
                                         setTurnoDestino("");
                                         setTurnoDestinoDetectado("");
+                                    } else {
+                                        setFechaCambio("");
+                                        setTurnoCambio("");
                                     }
                                 }}
                                 className="w-4 h-4"
@@ -453,6 +472,53 @@ export const PermutaModal = ({
                                 ))}
                             </select>
                         </div>
+
+                        {/* Cambio individual: opción de moverse a otro día
+                            (papeleta GT-67 con "fecha del rol" y "fecha del cambio").
+                            Dos casos: mismo día con otro turno (se deja la fecha del
+                            cambio vacía y se elige el turno arriba), o venir a
+                            laborar otro día (se llenan estos dos campos). */}
+                        {esCambioIndividual && (
+                            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Fecha del cambio (solo si viene a laborar otro día)
+                                </label>
+                                <Input
+                                    type="date"
+                                    value={fechaCambio}
+                                    onChange={(e) => setFechaCambio(e.target.value)}
+                                    disabled={loading}
+                                    min={new Date().toISOString().split("T")[0]}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Déjala vacía si solo cambia el turno del mismo día.
+                                </p>
+                                {fechaCambio && (
+                                    <div className="mt-3">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Turno al que se presenta el {fechaCambio.split('-').reverse().join('/')} *
+                                        </label>
+                                        <select
+                                            value={turnoCambio}
+                                            onChange={(e) => setTurnoCambio(e.target.value)}
+                                            disabled={loading}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">Seleccionar turno...</option>
+                                            {TURNOS_DISPLAY.map((turno) => (
+                                                <option key={turno.value} value={turno.value}>
+                                                    {turno.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-amber-700 mt-2">
+                                            El día del rol ({fechaPermuta ? fechaPermuta.split('-').reverse().join('/') : '—'}) quedará como descanso
+                                            y se presentará el {fechaCambio.split('-').reverse().join('/')} al turno elegido.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Turno Empleado Destino */}
                         {empleadoDestino && !esCambioIndividual && (

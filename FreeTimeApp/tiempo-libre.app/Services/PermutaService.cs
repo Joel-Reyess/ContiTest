@@ -37,6 +37,25 @@ namespace tiempo_libre.Services
                         "Formato de fecha inválido");
                 }
 
+                // Fecha del cambio (solo cambio individual que se mueve de día)
+                DateOnly? fechaDestino = null;
+                if (!string.IsNullOrWhiteSpace(request.FechaDestino))
+                {
+                    if (!DateOnly.TryParseExact(request.FechaDestino, "yyyy-MM-dd",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None,
+                        out var fechaDestinoParsed))
+                    {
+                        return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                            "Formato de fecha del cambio inválido");
+                    }
+
+                    if (fechaDestinoParsed != fechaPermuta)
+                    {
+                        fechaDestino = fechaDestinoParsed;
+                    }
+                }
+
                 var empleadoOrigen = await _db.Users
                     .Include(u => u.Grupo)
                     .Include(u => u.Area)
@@ -72,11 +91,19 @@ namespace tiempo_libre.Services
                     }
                 }
 
+                if (fechaDestino.HasValue && !esCambioIndividual)
+                {
+                    return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                        "La fecha del cambio solo aplica en cambios individuales; " +
+                        "la permuta entre dos empleados es de un solo día");
+                }
+
                 var permuta = new Permuta
                 {
                     EmpleadoOrigenId = request.EmpleadoOrigenId,
                     EmpleadoDestinoId = request.EmpleadoDestinoId,
                     FechaPermuta = fechaPermuta,
+                    FechaDestino = fechaDestino,
                     TurnoEmpleadoOrigen = request.TurnoEmpleadoDestino ?? request.TurnoEmpleadoOrigen,  // Turno que el ORIGEN recibirá
                     TurnoEmpleadoDestino = request.TurnoEmpleadoOrigen,
                     Motivo = request.Motivo,
@@ -324,6 +351,7 @@ namespace tiempo_libre.Services
                         EmpleadoOrigenNombre = p.EmpleadoOrigen.FullName,
                         EmpleadoDestinoNombre = p.EmpleadoDestino != null ? p.EmpleadoDestino.FullName : "N/A",
                         FechaPermuta = p.FechaPermuta,
+                        FechaDestino = p.FechaDestino,
                         TurnoEmpleadoOrigen = p.TurnoEmpleadoOrigen,
                         TurnoEmpleadoDestino = p.TurnoEmpleadoDestino ?? "N/A",
                         Motivo = p.Motivo,
