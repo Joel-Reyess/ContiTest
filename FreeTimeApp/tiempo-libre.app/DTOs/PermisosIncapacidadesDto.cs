@@ -28,6 +28,15 @@ namespace tiempo_libre.DTOs
         /// N�mero de d�as del permiso/incapacidad
         /// </summary>
         public int? Dias { get; set; }
+
+        /// <summary>
+        /// Letra elegida en el cat�logo (P, E, A, H...). El ClAbPre no alcanza:
+        /// 2380 es a la vez "Permiso con Goce" (P) e "Inc. Enfermedad General" (E)
+        /// y 2381 es "Inc. Accidente" (A) y "Perm. sin goce" (H). Sin esta pista el
+        /// backend guardaba el texto ambiguo y todo 2380 se pintaba como E.
+        /// </summary>
+        [MaxLength(5)]
+        public string? ClaveVisualizacion { get; set; }
     }
 
     /// <summary>

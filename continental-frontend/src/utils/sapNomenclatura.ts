@@ -58,13 +58,17 @@ export const codigoFromTipoIncidencia = (tipoIncidencia?: string | null): SAPCod
     if (lower.includes('paternidad')) return 'O';
     if (lower.includes('riesgo')) return 'R';
     if (lower.includes('accidente')) return 'A';
-    if (lower.includes('enfermedad')) return 'E';
-    if (lower.includes('incapacidad')) return 'E';
-    if (lower.includes('suspensi')) return 'S';
+    // Los permisos van antes que enfermedad/incapacidad: el texto histórico
+    // que guardaba el alta directa para el 2380 es "Permiso con Goce / Inc.
+    // Enfermedad General" (trae ambas pistas) y con 'enfermedad' primero un
+    // permiso con goce capturado en la app se pintaba E.
     // 'sin goce' antes que 'con goce': "con goce" no es subcadena de "sin goce",
     // pero el orden deja explícito cuál gana si el texto de SAP trae ambos.
     if (lower.includes('sin goce')) return 'G';
     if (lower.includes('defunci') || lower.includes('con goce')) return 'P';
+    if (lower.includes('enfermedad')) return 'E';
+    if (lower.includes('incapacidad')) return 'E';
+    if (lower.includes('suspensi')) return 'S';
     if (lower.includes('reprog')) return 'C';
     // 'festivo' va al final a propósito: es la señal más débil de todas y
     // aparece de pasada en descripciones de permisos e incapacidades ("permiso

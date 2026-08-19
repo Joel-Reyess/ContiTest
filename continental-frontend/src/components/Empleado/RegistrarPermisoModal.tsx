@@ -78,9 +78,11 @@ export const RegistrarPermisoModal = ({
         setLoading(true);
 
         try {
+            const [clAbPreSel, claveSel] = formData.tipoPermiso.split('|');
             const response = await permisosService.crearPermiso({
                 nomina,
-                clAbPre: formData.tipoPermiso,
+                clAbPre: clAbPreSel,
+                claveVisualizacion: claveSel || undefined,
                 fechaInicio: formData.fechaInicio,
                 fechaFin: formData.fechaFin,
                 observaciones: formData.observaciones || undefined,
@@ -93,7 +95,7 @@ export const RegistrarPermisoModal = ({
                         <div>
                             <div className="font-semibold">Permiso registrado exitosamente</div>
                             <div className="text-sm text-gray-600 mt-1">
-                                {response.diasAfectados} día(s) registrado(s) para {response.nombreEmpleado}
+                                {response.diasAfectados} dï¿½a(s) registrado(s) para {response.nombreEmpleado}
                             </div>
                         </div>
                     </div>
@@ -109,7 +111,10 @@ export const RegistrarPermisoModal = ({
     };
 
     const getTipoPermisoInfo = () => {
-        return catalogoPermisos.find((p) => p.clAbPre === formData.tipoPermiso);
+        const [clAbPreSel, claveSel] = formData.tipoPermiso.split('|');
+        return catalogoPermisos.find(
+            (p) => p.clAbPre === clAbPreSel && (!claveSel || p.claveVisualizacion === claveSel)
+        );
     };
 
     const tipoPermisoInfo = getTipoPermisoInfo();
@@ -151,8 +156,11 @@ export const RegistrarPermisoModal = ({
                             required
                         >
                             <option value="">Seleccionar tipo...</option>
+                            {/* El value lleva clAbPre + letra: el ClAbPre solo no
+                                distingue P de E (2380) ni A de H (2381), y el find
+                                por clAbPre siempre regresaba la primera entrada. */}
                             {catalogoPermisos.map((tipo, index) => (
-                                <option key={index} value={tipo.clAbPre}>
+                                <option key={index} value={`${tipo.clAbPre}|${tipo.claveVisualizacion}`}>
                                     [{tipo.claveVisualizacion}] {tipo.concepto}
                                 </option>
                             ))}
@@ -167,13 +175,13 @@ export const RegistrarPermisoModal = ({
                                         <p className="font-medium text-blue-900">{tipoPermisoInfo.descripcion}</p>
                                         <div className="flex gap-3 mt-1 text-xs text-blue-700">
                                             <span>
-                                                Código: <span className="font-semibold">{tipoPermisoInfo.claveVisualizacion}</span>
+                                                Cï¿½digo: <span className="font-semibold">{tipoPermisoInfo.claveVisualizacion}</span>
                                             </span>
                                             {tipoPermisoInfo.requiereAprobacion && (
-                                                <span className="text-amber-700">• Requiere aprobación</span>
+                                                <span className="text-amber-700">ï¿½ Requiere aprobaciï¿½n</span>
                                             )}
                                             {tipoPermisoInfo.aplicaDescuento && (
-                                                <span className="text-red-700">• Aplica descuento</span>
+                                                <span className="text-red-700">ï¿½ Aplica descuento</span>
                                             )}
                                         </div>
                                     </div>

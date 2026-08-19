@@ -145,9 +145,12 @@ namespace tiempo_libre.Services
                 }
             }
 
-            // Permutas aprobadas (ambos empleados)
+            // Permutas aprobadas (ambos empleados). El rango incluye FechaDestino:
+            // un cambio individual que se mueve de día puede caer en esta semana
+            // solo por su fecha del cambio.
             var permutasAprobadas = await _db.Permutas
-                .Where(p => p.FechaPermuta >= inicio && p.FechaPermuta <= fin &&
+                .Where(p => ((p.FechaPermuta >= inicio && p.FechaPermuta <= fin) ||
+                             (p.FechaDestino.HasValue && p.FechaDestino >= inicio && p.FechaDestino <= fin)) &&
                             p.EstadoSolicitud == "Aprobada" &&
                             (empleadosIds.Contains(p.EmpleadoOrigenId) ||
                              (p.EmpleadoDestinoId.HasValue && empleadosIds.Contains(p.EmpleadoDestinoId.Value))))
@@ -160,7 +163,17 @@ namespace tiempo_libre.Services
                 if (!permutasPorEmpleadoYFecha.ContainsKey(permuta.EmpleadoOrigenId))
                     permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId] = new Dictionary<string, string>();
 
-                if (permuta.EmpleadoDestinoId.HasValue && !string.IsNullOrEmpty(permuta.TurnoEmpleadoDestino))
+                if (!permuta.EmpleadoDestinoId.HasValue && permuta.FechaDestino.HasValue)
+                {
+                    // Cambio individual con cambio de día (papeleta GT-67 con
+                    // "fecha del rol" y "fecha del cambio"): el día original queda
+                    // de descanso y en la fecha del cambio se presenta al turno
+                    // guardado (TurnoEmpleadoOrigen = turno que recibirá).
+                    permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = "D";
+                    permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId]
+                        [permuta.FechaDestino.Value.ToString("yyyy-MM-dd")] = permuta.TurnoEmpleadoOrigen;
+                }
+                else if (permuta.EmpleadoDestinoId.HasValue && !string.IsNullOrEmpty(permuta.TurnoEmpleadoDestino))
                     permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = permuta.TurnoEmpleadoDestino;
                 else
                     permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = permuta.TurnoEmpleadoOrigen;
@@ -294,11 +307,26 @@ namespace tiempo_libre.Services
                 { "1315", "O" }
             };
 
+            var textoClase = (claseAbsentismo ?? string.Empty).ToLowerInvariant();
+
             if (clAbPre == "2380")
-                return claseAbsentismo?.ToLower().Contains("enfermedad") == true ? "E" : "P";
+            {
+                // "goce" primero: el texto histórico del alta directa era
+                // "Permiso con Goce / Inc. Enfermedad General" (trae ambas
+                // pistas) y al buscar "enfermedad" antes, todo permiso con
+                // goce capturado en la app se pintaba E.
+                if (textoClase.Contains("goce")) return "P";
+                return textoClase.Contains("enfermedad") ? "E" : "P";
+            }
 
             if (clAbPre == "2381")
-                return claseAbsentismo?.ToLower().Contains("permiso") == true ? "H" : "A";
+            {
+                // "accidente" primero para que el texto histórico ambiguo
+                // ("Inc. Accidente de Trabajo / Perm. sin goce") siga saliendo A.
+                if (textoClase.Contains("accidente")) return "A";
+                if (textoClase.Contains("goce") || textoClase.Contains("permiso")) return "H";
+                return "A";
+            }
 
             if (mapeo.TryGetValue(clAbPre, out var clave))
                 return clave;
