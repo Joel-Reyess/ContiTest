@@ -13,6 +13,7 @@ import { PeriodOptions, type Period } from "@/interfaces/Calendar.interface";
 import { toast } from "sonner";
 import useAuth from "@/hooks/useAuth";
 import { getVacacionesAsignadasPorEmpleado } from "@/services/vacacionesService";
+import { obtenerMovimientosDiasEmpresa, marcarDiaAsignado, TIPOS_ASIGNADOS_POR_EMPRESA, type DiaAsignado } from "@/utils/diasEmpresaMovimientos";
 import { ReprogramacionService } from "@/services/reprogramacionService";
 import { festivosTrabajadosService, type FestivoTrabajado } from "@/services/festivosTrabajadosService";
 import { validarFestivoParaSolicitud, validarFechaDeUso, calcularFechaMaximaUso } from "@/utils/festivosTrabajadosValidation";
@@ -41,7 +42,7 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const [showRequestModal, setShowRequestModal] = useState(false)
     const [selectedDay, setSelectedDay] = useState<string | null>(null)
     const [selectedVacation, setSelectedVacation] = useState<VacacionAsignada | null>(null)
-    const [realAssignedDays, setRealAssignedDays] = useState<{ date: string }[]>([]);
+    const [realAssignedDays, setRealAssignedDays] = useState<DiaAsignado[]>([]);
     const [vacacionesData, setVacacionesData] = useState<VacacionesAsignadasResponse | null>(null);
     const [loadingVacations, setLoadingVacations] = useState(true);
     const [selectedDays, setSelectedDays] = useState<{ date: string }[]>([]);
@@ -75,23 +76,8 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
             user?.roles?.some(role =>
                 (typeof role === 'string' ? role : role.name) === UserRole.SUPER_ADMIN
             ));
-    const handleEdit = (day: string) => {
-        // Bloqueo: no se puede reprogramar una vacación cuyo día ya pasó o
-        // es hoy. Para días perdidos por incapacidad existe el flujo
-        // "Reprogramación post-incapacidad". Para el resto se ofrece
-        // solicitar un permiso/vacación que el jefe revisará.
-        const hoy = new Date();
-        const y = hoy.getFullYear();
-        const m = String(hoy.getMonth() + 1).padStart(2, '0');
-        const d = String(hoy.getDate()).padStart(2, '0');
-        const hoyStr = `${y}-${m}-${d}`;
-        if (day <= hoyStr) {
-            setDiaConsumido(day);
-            setShowVacacionConsumidaDialog(true);
-            return;
-        }
-
-        // Buscar la vacaciÃ³n correspondiente al dÃ­a seleccionado
+    const abrirReprogramacion = (day: string) => {
+        // Buscar la vacación correspondiente al día seleccionado
         const vacation = vacacionesData?.vacaciones.find(v => {
             // Convertir ambas fechas al mismo formato para comparar
             const vacationDate = new Date(v.fechaVacacion + 'T00:00:00').toDateString();
@@ -104,8 +90,27 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
             setSelectedDay(day);
             setShowEditModal(true);
         } else {
-            toast.error("No se encontrÃ³ informaciÃ³n de la vacaciÃ³n");
+            toast.error("No se encontró información de la vacación");
         }
+    }
+
+    const handleEdit = (day: string) => {
+        // Un día ya transcurrido también se puede reprogramar (la papeleta
+        // firmada suele llegar después de los hechos y el backend lo acepta
+        // con aprobación del jefe); solo se muestra primero el aviso con las
+        // alternativas (permiso, post-incapacidad) para elegir la vía.
+        const hoy = new Date();
+        const y = hoy.getFullYear();
+        const m = String(hoy.getMonth() + 1).padStart(2, '0');
+        const d = String(hoy.getDate()).padStart(2, '0');
+        const hoyStr = `${y}-${m}-${d}`;
+        if (day <= hoyStr) {
+            setDiaConsumido(day);
+            setShowVacacionConsumidaDialog(true);
+            return;
+        }
+
+        abrirReprogramacion(day);
     }
 
     const handleRequestFestiveWorked = () => {
@@ -172,10 +177,15 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 const resp = await getVacacionesAsignadasPorEmpleado(id);
                 setVacacionesData(resp);
 
-                // Separar vacaciones por tipo
+                // Días asignados que ya cambiaron de fecha, para marcarlos abajo.
+                const movimientos = await obtenerMovimientosDiasEmpresa(id);
+
+                // Separar vacaciones por tipo. Ojo con TIPOS_ASIGNADOS_POR_EMPRESA:
+                // filtrar solo por "Automatica" escondía los días que reprogramó
+                // el superusuario, porque a esos les cambia el tipo.
                 const automaticas = resp.vacaciones
-                    .filter(v => v.tipoVacacion === "Automatica" && v.estadoVacacion === "Activa")
-                    .map(v => ({ date: v.fechaVacacion }));
+                    .filter(v => TIPOS_ASIGNADOS_POR_EMPRESA.includes(v.tipoVacacion) && v.estadoVacacion === "Activa")
+                    .map(v => marcarDiaAsignado(v.fechaVacacion, v.tipoVacacion, movimientos));
                 const festivosTrabajados = resp.vacaciones
                     .filter(v => v.tipoVacacion === "FestivoTrabajado" && v.estadoVacacion === "Activa")
                     .map(v => ({ date: v.fechaVacacion }));
@@ -421,7 +431,16 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                     setShowSolicitarPermisoModal(false);
                     setDiaConsumido(null);
                 }}
-                nomina={parseInt((selectedEmployee?.username || user?.username) || "0")}
+                nomina={
+                    // La nómina real primero: el username puede ser un correo y
+                    // parseInt daría NaN → el backend recibía Nomina null y
+                    // contestaba 400 "Datos inválidos".
+                    Number(
+                        (selectedEmployee as any)?.nomina ??
+                        (user as any)?.nomina ??
+                        parseInt((selectedEmployee?.username || user?.username) || "0")
+                    )
+                }
                 nombreEmpleado={selectedEmployee?.fullName || user?.fullName || ''}
                 fechaACambiarDefault={diaConsumido ?? undefined}
                 observacionesDefault={
@@ -459,6 +478,11 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                     setShowVacacionConsumidaDialog(false);
                     setShowReprogPostIncModal(true);
                 }}
+                onReprogramar={() => {
+                    setShowVacacionConsumidaDialog(false);
+                    if (diaConsumido) abrirReprogramacion(diaConsumido);
+                    setDiaConsumido(null);
+                }}
             />
             <SolicitarReprogramacionPostIncapacidadModal
                 show={showReprogPostIncModal}
@@ -481,6 +505,7 @@ const VacacionConsumidaDialog = ({
     onClose,
     onSolicitarPermiso,
     onReprogPostIncapacidad,
+    onReprogramar,
 }: {
     show: boolean;
     day: string | null;
@@ -488,6 +513,7 @@ const VacacionConsumidaDialog = ({
     onClose: () => void;
     onSolicitarPermiso: () => void;
     onReprogPostIncapacidad: () => void;
+    onReprogramar: () => void;
 }) => {
     if (!show) return null;
     const fechaTexto = day
@@ -500,13 +526,21 @@ const VacacionConsumidaDialog = ({
                 <div className="bg-white rounded-lg shadow-lg p-6">
                     <h2 className="text-lg font-semibold mb-2">Vacación ya consumida</h2>
                     <p className="text-sm text-gray-700 mb-2">
-                        No se puede reprogramar la vacación del <span className="font-medium">{fechaTexto}</span> porque ya pasó.
+                        La vacación del <span className="font-medium">{fechaTexto}</span> ya pasó.
                     </p>
                     <p className="text-sm text-gray-600 mb-4">
-                        Si el empleado trabajó ese día o lo perdió por una causa justificada, puedes solicitar un permiso para que el jefe de área lo revise.
+                        Si el empleado se presentó a trabajar ese día, puedes reprogramarla a una fecha futura (queda pendiente de aprobación del jefe de área).
                         Si fue una incapacidad, usa el flujo de reprogramación post-incapacidad.
                     </p>
                     <div className="flex flex-col gap-2">
+                        <Button
+                            variant="continental"
+                            className="w-full cursor-pointer"
+                            onClick={onReprogramar}
+                        >
+                            <CalendarPlus2 className="mr-2 h-4 w-4" />
+                            Reprogramar este día
+                        </Button>
                         {isDelegadoSindical && (
                             <Button
                                 variant="continental"

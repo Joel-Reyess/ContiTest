@@ -14,6 +14,9 @@ export interface TipoPermiso {
 export interface CrearPermisoRequest {
     nomina: number;
     clAbPre: string;
+    // Letra elegida en el catálogo (P/E, A/H): el clAbPre 2380 y 2381 tienen
+    // dos significados y sin la letra el backend guardaba el texto ambiguo.
+    claveVisualizacion?: string;
     fechaInicio: string; // YYYY-MM-DD
     fechaFin: string; // YYYY-MM-DD
     observaciones?: string;

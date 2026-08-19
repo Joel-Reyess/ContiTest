@@ -99,10 +99,19 @@ class HttpClient {
     }
 
     if (!response.ok) {
+      // El backend contesta siempre { success, data, errorMsg }; leer sólo
+      // `message` convertía cualquier 400 con motivo ("No se encontraron
+      // empleados sindicalizados…") en un escueto "HTTP Error 400" y el
+      // usuario se quedaba sin saber por qué no procesó.
+      const backendMsg =
+        typeof data === 'string'
+          ? data
+          : data?.errorMsg || data?.message || data?.title;
+
       const apiError: ApiError = {
-        message: data.message || `HTTP Error ${response.status}`,
+        message: backendMsg || `HTTP Error ${response.status}`,
         status: response.status,
-        code: data.code,
+        code: data?.code,
         details: data,
       };
       throw apiError;

@@ -57,17 +57,26 @@ namespace tiempo_libre.Services
         /// </summary>
         private string ObtenerClaveVisualizacion(int clAbPre, string? contexto = null)
         {
-            // Casos especiales donde el mismo ClAbPre tiene m�ltiples visualizaciones
+            var ctx = contexto?.ToUpper() ?? string.Empty;
+
+            // Casos especiales donde el mismo ClAbPre tiene m�ltiples visualizaciones.
+            // "GOCE" se eval�a primero: el texto hist�rico que guardaba el alta
+            // directa era "Permiso con Goce / Inc. Enfermedad General" (contiene
+            // ambas pistas) y al buscar "ENFERMEDAD" primero, todo permiso con goce
+            // capturado en la app sal�a pintado como E.
             if (clAbPre == 2380)
             {
-                // Si el contexto indica enfermedad, retorna "E", sino "P"
-                return contexto?.ToUpper().Contains("ENFERMEDAD") == true ? "E" : "P";
+                if (ctx.Contains("GOCE")) return "P";
+                return ctx.Contains("ENFERMEDAD") ? "E" : "P";
             }
 
             if (clAbPre == 2381)
             {
-                // Si el contexto indica permiso sin goce, retorna "H", sino "A"
-                return contexto?.ToUpper().Contains("PERMISO") == true ? "H" : "A";
+                // "ACCIDENTE" primero para que el texto hist�rico ambiguo
+                // ("Inc. Accidente de Trabajo / Perm. sin goce") siga saliendo A.
+                if (ctx.Contains("ACCIDENTE")) return "A";
+                if (ctx.Contains("GOCE") || ctx.Contains("PERMISO")) return "H";
+                return "A";
             }
 
             return _mapeoClaves.TryGetValue(clAbPre, out var clave) ? clave : clAbPre.ToString();
@@ -159,11 +168,27 @@ namespace tiempo_libre.Services
                         request.Nomina, detalleConflictos);
                 }
 
-                // 6. Obtener la clave de visualizaci�n
-                var claveVisualizacion = ObtenerClaveVisualizacion(clAbPreInt, request.Observaciones);
-                var descripcion = _descripcionClaves.TryGetValue(clAbPreInt, out var desc)
-                    ? desc
-                    : "Permiso/Incapacidad";
+                // 6. Obtener la clave de visualizaci�n. La letra elegida en el
+                // cat�logo viaja en el request; sin ella se cae a la heur�stica
+                // por observaciones (comportamiento previo).
+                var claveVisualizacion = !string.IsNullOrWhiteSpace(request.ClaveVisualizacion)
+                    ? request.ClaveVisualizacion.Trim().ToUpper()
+                    : ObtenerClaveVisualizacion(clAbPreInt, request.Observaciones);
+
+                // Persistir el concepto SIN ambig�edad: el texto combinado
+                // ("Permiso con Goce / Inc. Enfermedad General") hac�a que todos
+                // los mapeos texto->letra encontraran "enfermedad" y pintaran E
+                // aunque lo capturado fuera un permiso con goce.
+                var descripcion = (clAbPreInt, claveVisualizacion) switch
+                {
+                    (2380, "P") => "Permiso con Goce",
+                    (2380, "E") => "Inc. Enfermedad General",
+                    (2381, "A") => "Inc. Accidente de Trabajo",
+                    (2381, "H") => "Perm.sin goce de sueldo",
+                    _ => _descripcionClaves.TryGetValue(clAbPreInt, out var desc)
+                        ? desc
+                        : "Permiso/Incapacidad"
+                };
 
                 // 7. Crear el registro en la tabla PermisosEIncapacidadesSAP
                 var nuevoPermiso = new PermisosEIncapacidadesSAP

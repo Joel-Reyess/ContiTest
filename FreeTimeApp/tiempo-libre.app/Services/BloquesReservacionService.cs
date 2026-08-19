@@ -86,6 +86,20 @@ namespace tiempo_libre.Services
                     _logger.LogInformation("Bloques guardados exitosamente en base de datos");
                 }
 
+                if (!response.GeneracionExitosa)
+                {
+                    // Cuando cualquier grupo falla NO se guarda nada (el SaveChanges de
+                    // arriba no corre). Antes esta rama respondía success=true y el
+                    // usuario veía "se generaron N bloques" con la base de datos vacía
+                    // — de ahí el "no hay datos de programación anual" posterior.
+                    var detalleErrores = string.Join(" | ", response.Errores);
+                    _logger.LogWarning(
+                        "Generación de bloques para año {Anio} falló en {Grupos} grupo(s); no se guardó nada. Errores: {Errores}",
+                        request.AnioObjetivo, response.Errores.Count, detalleErrores);
+                    return new ApiResponse<GeneracionBloquesResponse>(false, response,
+                        $"No se guardó ningún bloque: {response.Errores.Count} grupo(s) fallaron. {detalleErrores}");
+                }
+
                 return new ApiResponse<GeneracionBloquesResponse>(true, response, null);
             }
             catch (Exception ex)
@@ -306,9 +320,12 @@ namespace tiempo_libre.Services
         {
             if (antiguedadEnAnios < 1) return 0;
 
-            const int diasEmpresa = 12;
-            const int topeMaximoDias = 28;
-
+            // OJO: esta tabla es una copia de VacacionesService.CalcularVacacionesPorAntiguedad.
+            // Antes había además un tope de 28 días totales que recortaba los
+            // programables a 11 a partir de 26 años de antigüedad; ese tope no
+            // existe en la tabla de antigüedades del cliente (36-40 años = 17 días
+            // de común acuerdo) y hacía que a la gente con más antigüedad se le
+            // generaran menos bloques de los que le tocan.
             // Lógica basada en VacacionesService.CalcularVacacionesPorAntiguedad
             if (antiguedadEnAnios <= 5)
             {
@@ -324,20 +341,10 @@ namespace tiempo_libre.Services
             }
 
             // Años 6 en adelante
-            int diasAsignadosAutomaticamente = 5; // Fijo para 6+ años
-
             // Días programables: inicia con 5 en año 6, y cada 5 años se suman 2 más
             int diasProgramablesBase = 5;
             int gruposDeCincoAnios = (antiguedadEnAnios - 6) / 5;
             int diasProgramables = diasProgramablesBase + (gruposDeCincoAnios * 2);
-
-            // Verificar tope máximo
-            int totalCalculado = diasEmpresa + diasAsignadosAutomaticamente + diasProgramables;
-            if (totalCalculado > topeMaximoDias)
-            {
-                // Ajustar días programables para no exceder el tope
-                diasProgramables = topeMaximoDias - diasEmpresa - diasAsignadosAutomaticamente;
-            }
 
             return Math.Max(0, diasProgramables); // Asegurar que no sea negativo
         }
@@ -457,15 +464,19 @@ namespace tiempo_libre.Services
             if (diasInhabiles.Contains(fechaSoloDate))
                 return false;
 
-            // Verificar calendario del grupo (días de descanso 'D')
+            // Verificar calendario del grupo (días de descanso 'D').
+            // OJO: el servicio de calendario exige fechaInicio < fechaFin (estricto);
+            // pedir (fecha, fecha) devolvía Success=false y esta validación aprobaba
+            // TODAS las fechas — los bloques caían en días de descanso del grupo.
             var calendarioResponse = await _calendarioService.ObtenerCalendarioGrupoAsync(
-                grupo.GrupoId, fecha.Date, fecha.Date);
+                grupo.GrupoId, fecha.Date, fecha.Date.AddDays(1));
 
             if (!calendarioResponse.Success || !calendarioResponse.Data.Calendario.Any())
                 return true; // Si no hay calendario, asumir que es válido
 
-            var diaCalendario = calendarioResponse.Data.Calendario.First();
-            return diaCalendario.Turno != "D";
+            var diaCalendario = calendarioResponse.Data.Calendario
+                .FirstOrDefault(d => d.Fecha.Date == fecha.Date);
+            return diaCalendario == null || diaCalendario.Turno != "D";
         }
 
         /// <summary>
@@ -638,6 +649,64 @@ namespace tiempo_libre.Services
             {
                 _logger.LogError(ex, "Error al cambiar empleado de bloque");
                 return new ApiResponse<CambiarBloqueResponse>(false, null, $"Error inesperado: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Marca la asignación como "Saltado" SIN moverla de bloque. Efectos:
+        /// - El siguiente empleado por antigüedad queda desbloqueado de inmediato
+        ///   (el gate de captura ignora a los saltados igual que a los que ya
+        ///   reservaron).
+        /// - El saltado conserva el derecho de capturar durante la ventana del
+        ///   bloque (24 h); si captura, su asignación pasa a "Reservado" normal.
+        /// - Si no captura antes de que venza el bloque, EstadosBloquesService lo
+        ///   manda al bloque cola como cualquier no-respuesta.
+        /// </summary>
+        public async Task<ApiResponse<bool>> SaltarTurnoAsync(SaltarTurnoRequest request, int usuarioId)
+        {
+            try
+            {
+                var asignacion = await _db.AsignacionesBloque
+                    .Include(a => a.Empleado)
+                    .FirstOrDefaultAsync(a => a.EmpleadoId == request.EmpleadoId
+                        && a.BloqueId == request.BloqueId
+                        && a.Estado == "Asignado");
+
+                if (asignacion == null)
+                    return new ApiResponse<bool>(false, false,
+                        "El empleado no tiene una asignación pendiente en ese bloque (puede que ya haya reservado o ya fue saltado)");
+
+                asignacion.Estado = "Saltado";
+                asignacion.Observaciones = string.IsNullOrWhiteSpace(request.Motivo)
+                    ? "Saltado para desbloquear al siguiente empleado"
+                    : $"Saltado: {request.Motivo}";
+
+                // Auditoría en la misma tabla que los cambios de bloque; origen y
+                // destino iguales porque el salto no mueve al empleado de bloque.
+                _db.CambiosBloque.Add(new CambiosBloque
+                {
+                    EmpleadoId = request.EmpleadoId,
+                    BloqueOrigenId = request.BloqueId,
+                    BloqueDestinoId = request.BloqueId,
+                    Motivo = string.IsNullOrWhiteSpace(request.Motivo)
+                        ? "Saltar turno"
+                        : request.Motivo,
+                    AutorizadoPor = usuarioId
+                });
+
+                await _db.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Turno saltado: empleado {EmpleadoId} en bloque {BloqueId} por usuario {UsuarioId}",
+                    request.EmpleadoId, request.BloqueId, usuarioId);
+
+                return new ApiResponse<bool>(true, true,
+                    $"Turno de {asignacion.Empleado.FullName} saltado; el siguiente empleado quedó desbloqueado. Podrá capturar mientras el bloque siga abierto.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al saltar turno del empleado {EmpleadoId}", request.EmpleadoId);
+                return new ApiResponse<bool>(false, false, $"Error inesperado: {ex.Message}");
             }
         }
 

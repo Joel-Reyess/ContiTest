@@ -115,8 +115,19 @@ export const LoginEmployee = () => {
                 return;
             }
 
-            // Si el periodo es ProgramacionAnual
-            if (config.periodoActual === 'ProgramacionAnual') {
+            // Año de los bloques de captura: el que se está preparando cuando la
+            // programación anual del siguiente año convive con la reprogramación
+            // del año en curso, y el vigente en el flujo normal.
+            const anioCaptura = config.anioProgramacionAnual ?? config.anioVigente;
+
+            // Durante la coexistencia el periodo sigue siendo Reprogramacion —
+            // el sindicalizado entra a capturar su año preparado y el delegado
+            // sigue haciendo reprogramaciones del año en curso.
+            const usarFlujoAnual =
+                config.periodoActual === 'ProgramacionAnual' ||
+                (config.anioProgramacionAnual != null && isEmpleadoSindicalizado && !isDelegadoSindical);
+
+            if (usarFlujoAnual) {
                 // Solo empleados sindicalizados pueden acceder en programación anual
                 if (!isEmpleadoSindicalizado) {
                     showWarning('Acceso denegado', 'Solo empleados sindicalizados pueden acceder durante la programación anual.');
@@ -151,7 +162,7 @@ export const LoginEmployee = () => {
                 const bloquesPorFecha = await BloquesReservacionService.obtenerBloquesPorFecha(
                     fechaActual,
                     { grupoId },
-                    config.anioVigente
+                    anioCaptura
                 );
 
                 console.log({ bloquesPorFecha })
@@ -182,16 +193,18 @@ export const LoginEmployee = () => {
                         // Encontrar la posición del empleado actual
                         const posicionEmpleado = empleadosOrdenados.findIndex(emp => emp.empleadoId === user.id);
 
-                        // Verificar si hay empleados con mayor antigüedad que aún no han reservado
-                        const empleadosConMayorAntiguedad = empleadosOrdenados.slice(0, posicionEmpleado);
-                        const hayEmpleadosPendientes = empleadosConMayorAntiguedad.some(emp =>
-                            emp.estado !== 'Reservado' && emp.estado !== 'Completado'
+                        // Verificar si hay empleados con mayor antigüedad que aún no han reservado.
+                        // 'Saltado' no bloquea: el jefe lo saltó precisamente para
+                        // desbloquear al siguiente (el saltado aún puede capturar
+                        // mientras el bloque siga abierto).
+                        const hayEmpleadosPendientes = empleadosOrdenados.slice(0, posicionEmpleado).some(emp =>
+                            emp.estado !== 'Reservado' && emp.estado !== 'Completado' && emp.estado !== 'Saltado'
                         );
 
                         if (hayEmpleadosPendientes) {
                             // Hay empleados con mayor antigüedad pendientes de reservar
-                            const empleadosPendientes = empleadosConMayorAntiguedad.filter(emp =>
-                                emp.estado !== 'Reservado' && emp.estado !== 'Completado'
+                            const empleadosPendientes = empleadosOrdenados.slice(0, posicionEmpleado).filter(emp =>
+                                emp.estado !== 'Reservado' && emp.estado !== 'Completado' && emp.estado !== 'Saltado'
                             );
 
                             setBloqueActual(bloque);
@@ -230,7 +243,7 @@ export const LoginEmployee = () => {
                 // Si no está en ningún bloque actual o siguiente, buscar su bloque asignado
                 const bloquesEmpleado = await BloquesReservacionService.obtenerBloquesPorEmpleado(
                     user.id,
-                    config.anioVigente
+                    anioCaptura
                 );
 
                 if (bloquesEmpleado.bloques.length > 0) {

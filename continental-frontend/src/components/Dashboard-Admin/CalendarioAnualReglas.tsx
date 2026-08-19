@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2, ChevronLeft, ChevronRight, CalendarClock, Filter, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,32 +39,47 @@ function nombreSubGrupo(codigoBase: string, gpoRef: number): string {
 interface ArranqueVigenteInfo {
     patron: string[];
     fechaAncla: Date;
+    /** Días de recorrido agendados después del ancla y ya vencidos en la fecha. */
+    desplazamiento: number;
 }
 
+/**
+ * Qué rige en una fecha. Sólo cuentan los movimientos PENDIENTES: los ya
+ * ejecutados viven dentro de `regla.patron` y su fecha quedó como
+ * `regla.fechaReferencia`, así que volver a aplicarlos los contaría doble.
+ * Es el mismo criterio que usa TurnosHelper en el backend; si los dos no
+ * calculan igual, esta vista y el calendario del grupo se contradicen.
+ */
 function arranqueVigenteEn(
     fecha: Date,
     regla: ReglaTurno,
-    arranques: RotacionProgramada[],
+    programadas: RotacionProgramada[],
 ): ArranqueVigenteInfo {
-    const arranqueAplicable = arranques
-        .filter(a => a.codigoRegla === regla.codigo && a.patronBaseline && a.patronBaseline.length > 0)
-        .filter(a => {
-            const ejec = new Date(a.fechaEjecucion);
-            return diffDias(ejec, fecha) >= 0;
-        })
+    const deLaRegla = programadas.filter(
+        a => a.codigoRegla === regla.codigo && a.estado === "Pendiente"
+    );
+
+    const arranqueAplicable = deLaRegla
+        .filter(a => a.patronBaseline && a.patronBaseline.length > 0)
+        .filter(a => diffDias(new Date(a.fechaEjecucion), fecha) >= 0)
         .sort((a, b) => (a.fechaEjecucion < b.fechaEjecucion ? 1 : -1))[0];
 
-    if (arranqueAplicable) {
-        return {
-            patron: arranqueAplicable.patronBaseline as string[],
-            fechaAncla: new Date(arranqueAplicable.fechaEjecucion),
-        };
-    }
+    const patron = arranqueAplicable
+        ? (arranqueAplicable.patronBaseline as string[])
+        : regla.patron;
+    const fechaAncla = arranqueAplicable
+        ? new Date(arranqueAplicable.fechaEjecucion)
+        : new Date(regla.fechaReferencia);
 
-    return {
-        patron: regla.patron,
-        fechaAncla: new Date(regla.fechaReferencia),
-    };
+    const desplazamiento = deLaRegla
+        .filter(a => !a.patronBaseline || a.patronBaseline.length === 0)
+        .filter(a => {
+            const ejec = new Date(a.fechaEjecucion);
+            return diffDias(ejec, fecha) >= 0 && diffDias(fechaAncla, ejec) > 0;
+        })
+        .reduce((acc, a) => acc + (a.diasRotacion ?? 0), 0);
+
+    return { patron, fechaAncla, desplazamiento };
 }
 
 function codigoParaFecha(
@@ -72,12 +88,12 @@ function codigoParaFecha(
     arranques: RotacionProgramada[],
     subGrupo: number,
 ): string {
-    const { patron, fechaAncla } = arranqueVigenteEn(fecha, regla, arranques);
+    const { patron, fechaAncla, desplazamiento } = arranqueVigenteEn(fecha, regla, arranques);
     const n = patron.length;
     if (n === 0) return "";
     const dias = diffDias(fechaAncla, fecha);
     const offset = ((subGrupo - 1) * 7) % n;
-    const idx = (((dias + offset) % n) + n) % n;
+    const idx = (((dias + offset + desplazamiento) % n) + n) % n;
     return (patron[idx] ?? "").toUpperCase();
 }
 
@@ -106,11 +122,23 @@ function claveSubGrupo(codigoRegla: string, subGrupo: number): string {
     return `${codigoRegla}#${subGrupo}`;
 }
 
-export const CalendarioAnualReglas = () => {
+interface CalendarioAnualReglasProps {
+    /** Año con el que abre la vista. Sirve para llegar desde el asistente de
+     *  programación anual directo al año que se está preparando. */
+    anioInicial?: number;
+}
+
+export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProps = {}) => {
+    // ?anio=2027 permite llegar aquí desde el asistente de programación anual
+    // con el año que se está preparando ya seleccionado.
+    const [searchParams] = useSearchParams();
+    const anioDeUrl = Number(searchParams.get("anio"));
     const [reglas, setReglas] = useState<ReglaTurno[]>([]);
     const [arranques, setArranques] = useState<RotacionProgramada[]>([]);
     const [loading, setLoading] = useState(true);
-    const [anio, setAnio] = useState<number>(new Date().getFullYear());
+    const [anio, setAnio] = useState<number>(
+        anioInicial ?? (Number.isInteger(anioDeUrl) && anioDeUrl > 2000 ? anioDeUrl : new Date().getFullYear())
+    );
     const [filtroRegla, setFiltroRegla] = useState<string>("__todas__");
     const [filtroSubGrupo, setFiltroSubGrupo] = useState<string>("__todos__");
 

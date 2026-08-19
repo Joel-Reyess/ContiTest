@@ -160,7 +160,15 @@ namespace tiempo_libre.Controllers
         {
             try
             {
-                var csvBytes = await _permutaService.ExportarPermutasACsvAsync(anio);
+                // Sin usuarioId el servicio no encontraba usuario y devolvía 0 filas:
+                // el CSV bajaba vacío para todos los roles.
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var usuarioId))
+                {
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+                }
+
+                var csvBytes = await _permutaService.ExportarPermutasACsvAsync(anio, usuarioId);
                 var fileName = $"Permutas_{anio ?? DateTime.Now.Year}_{DateTime.Now:yyyyMMdd}.csv";
 
                 return File(csvBytes, "text/csv", fileName);
@@ -178,7 +186,14 @@ namespace tiempo_libre.Controllers
         {
             try
             {
-                var permutas = await _permutaService.ObtenerPermutasAsync(anio);
+                // Mismo defecto que en el CSV: iba sin usuarioId y el Excel salía vacío.
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var usuarioId))
+                {
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+                }
+
+                var permutas = await _permutaService.ObtenerPermutasAsync(anio, usuarioId);
 
                 using var workbook = new ClosedXML.Excel.XLWorkbook();
                 var worksheet = workbook.Worksheets.Add("Permutas");

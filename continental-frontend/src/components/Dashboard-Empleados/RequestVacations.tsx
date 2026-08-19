@@ -13,6 +13,7 @@ import { getVacacionesAsignadasPorEmpleado, getDisponibilidadVacaciones, reserva
 import type { VacacionesAsignadasResponse, VacacionAsignada, ResumenVacaciones, DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse } from '@/interfaces/Api.interface';
 import { UserRole } from "@/interfaces/User.interface";
 import { vacacionesService } from '@/services/vacacionesService';
+import { obtenerMovimientosDiasEmpresa, marcarDiaAsignado, type DiaAsignado } from '@/utils/diasEmpresaMovimientos';
 
 // Datos de respaldo para ocupación por mes (fallback)
 const fallbackOccupationData = [
@@ -36,7 +37,7 @@ export const fallbackAssignedDays = [];
 const RequestVacations = () => {
     const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
     const [selectedDays, setSelectedDays] = useState<{ date: string }[]>([]);
-    const [realAssignedDays, setRealAssignedDays] = useState<{ date: string }[]>([]);
+    const [realAssignedDays, setRealAssignedDays] = useState<DiaAsignado[]>([]);
     const [vacacionesData, setVacacionesData] = useState<VacacionesAsignadasResponse | null>(null);
     const [disponibilidadData, setDisponibilidadData] = useState<DisponibilidadVacacionesResponse | null>(null);
     const [loadingVacations, setLoadingVacations] = useState(true);
@@ -44,6 +45,7 @@ const RequestVacations = () => {
     const [loading, setLoading] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [reservaResponse, setReservaResponse] = useState<ReservaAnualResponse | null>(null);
+    const [anioCaptura, setAnioCaptura] = useState<number | null>(null);
 
     // Obtener availableDays desde los datos de la API
     const availableDays = (vacacionesData?.resumen?.diasProgramables || 0) - (vacacionesData?.resumen?.anuales || 0);
@@ -107,6 +109,13 @@ const RequestVacations = () => {
             try {
                 const config = await vacacionesService.getConfig();
                 setCurrentPeriod(config.periodoActual as Period);
+                // El año que se captura es el que está en preparación cuando la
+                // programación anual del siguiente año convive con la
+                // reprogramación del actual; si no hay preparación en curso, el
+                // vigente. Antes se calculaba como "año actual + 1", que sólo
+                // acertaba por casualidad y nunca coincidía con el año de los
+                // bloques generados.
+                setAnioCaptura(config.anioProgramacionAnual ?? config.anioVigente ?? null);
                 console.log('📅 Periodo actual cargado:', config.periodoActual);
             } catch (error) {
                 console.error('Error fetching period:', error);
@@ -126,10 +135,13 @@ const RequestVacations = () => {
                 const resp = await getVacacionesAsignadasPorEmpleado(user.id);
                 setVacacionesData(resp);
 
+                // Días de empresa que ya cambiaron de fecha, para marcarlos.
+                const movimientos = await obtenerMovimientosDiasEmpresa(user.id);
+
                 // Mapear las vacaciones para assignedDays
-                const assignedFromApi = resp.vacaciones.map((v: VacacionAsignada) => ({
-                    date: v.fechaVacacion
-                }));
+                const assignedFromApi = resp.vacaciones.map((v: VacacionAsignada) =>
+                    marcarDiaAsignado(v.fechaVacacion, v.tipoVacacion, movimientos)
+                );
                 setRealAssignedDays(assignedFromApi);
             } catch (error) {
                 console.error('Error fetching vacaciones:', error);
@@ -210,8 +222,7 @@ const RequestVacations = () => {
 
         try {
             // Preparar la solicitud
-            const currentYear = new Date().getFullYear();
-            const anioVacaciones = currentYear + 1; // Año siguiente para programación anual
+            const anioVacaciones = anioCaptura ?? new Date().getFullYear() + 1;
 
             // Formatear fechas a formato YYYY-MM-DD (DateOnly)
             const fechasFormateadas = selectedDays.map(day => {
@@ -472,7 +483,10 @@ export const Summary = ({
     period,
     isDelegadoSindicato,
 }: {
-    assignedDays: { date: string }[];
+    // origen/fechaAnterior vienen llenos solo cuando el día ya cambió de fecha
+    // por edición de días empresa o por el superusuario. Dejan constancia
+    // visible de que ese día fue alterado.
+    assignedDays: DiaAsignado[];
     availableDays: number;
     workedHoliday?: { date: string }[];
     vacaciones?: VacacionAsignada[];
@@ -497,7 +511,7 @@ export const Summary = ({
                         {assignedDays.map((day) => (
                             <div
                                 key={day.date}
-                                className="flex items-center justify-center p-2 border border-continental-gray-4"
+                                className="flex flex-col items-center justify-center gap-1 p-2 border border-continental-gray-4"
                             >
                                 <p>
                                     {format(
@@ -506,6 +520,24 @@ export const Summary = ({
                                         { locale: es }
                                     )}
                                 </p>
+                                {day.origen && (
+                                    <span
+                                        className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                                        title={
+                                            day.fechaAnterior
+                                                ? `Originalmente ${format(new Date(day.fechaAnterior + 'T00:00:00'), "d 'de' MMMM 'de' yyyy", { locale: es })}`
+                                                : undefined
+                                        }
+                                    >
+                                        {day.origen}
+                                        {day.fechaAnterior && (
+                                            <>
+                                                {' · antes '}
+                                                {format(new Date(day.fechaAnterior + 'T00:00:00'), 'dd/MM/yyyy')}
+                                            </>
+                                        )}
+                                    </span>
+                                )}
                             </div>
                         ))}
                     </div>

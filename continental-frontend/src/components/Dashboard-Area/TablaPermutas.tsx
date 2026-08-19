@@ -24,6 +24,10 @@ export const TablaPermutas = () => {
     const [loadingUserData, setLoadingUserData] = useState(false);
     const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
     const [nominaSearch, setNominaSearch] = useState("");
+    // El endpoint de permutas no recibe estado, así que se filtra aquí mismo
+    // igual que la búsqueda por nómina. Arranca en "Todas" para no cambiar lo
+    // que esta pantalla ya mostraba.
+    const [estadoFilter, setEstadoFilter] = useState<string>("Todas");
 
     const itemsPerPage = 5;
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -134,6 +138,7 @@ export const TablaPermutas = () => {
 
     // 🆕 Filtrado por nómina en frontend
     const filteredPermutas = permutas.filter((permuta) => {
+        if (estadoFilter !== "Todas" && permuta.estadoSolicitud !== estadoFilter) return false;
         if (!nominaSearch) return true;
 
         const searchLower = nominaSearch.toLowerCase();
@@ -254,6 +259,24 @@ export const TablaPermutas = () => {
                         </div>
                     )}
 
+                    {/* Estado de la permuta */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700">Estado</span>
+                        <select
+                            value={estadoFilter}
+                            onChange={(e) => {
+                                setEstadoFilter(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                            className="text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="Todas">Todas</option>
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="Aprobada">Aprobada</option>
+                            <option value="Rechazada">Rechazada</option>
+                        </select>
+                    </div>
+
                     {/* 🆕 Búsqueda por nómina/nombre */}
                     <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -305,6 +328,9 @@ export const TablaPermutas = () => {
                                             <Calendar className="w-4 h-4 text-gray-500" />
                                             <span className="text-sm font-medium text-gray-700">
                                                 {formatDate(permuta.fechaPermuta)}
+                                                {permuta.fechaDestino && (
+                                                    <span className="text-amber-700"> → se presenta el {formatDate(permuta.fechaDestino)}</span>
+                                                )}
                                             </span>
                                         </div>
 

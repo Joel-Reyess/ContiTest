@@ -130,9 +130,15 @@ namespace tiempo_libre.Services
                 {
                     PeriodoActual = configuracion.PeriodoActual,
                     AnioVigente = configuracion.AnioVigente,
+                    AnioProgramacionAnual = configuracion.AnioProgramacionAnual,
                     PorcentajeAusenciaMaximo = configuracion.PorcentajeAusenciaMaximo,
-                    PermiteProgramacionAnual = configuracion.PeriodoActual == "ProgramacionAnual",
-                    PermiteReprogramacion = configuracion.PeriodoActual == "Reprogramacion",
+                    // La programación anual también está permitida cuando hay un año
+                    // en preparación (coexistiendo con la reprogramación del vigente).
+                    PermiteProgramacionAnual = configuracion.PeriodoActual == "ProgramacionAnual"
+                        || configuracion.AnioProgramacionAnual.HasValue,
+                    // La reprogramación del año vigente sigue abierta mientras se
+                    // prepara el año siguiente: solo "Cerrado" la apaga.
+                    PermiteReprogramacion = configuracion.PeriodoActual != "Cerrado",
                     EstaCerrado = configuracion.PeriodoActual == "Cerrado"
                 };
 
@@ -520,10 +526,13 @@ namespace tiempo_libre.Services
 
                     await _context.SaveChangesAsync();
 
-                    // 6.5. Actualizar estado de AsignacionesBloque a "Reservado"
+                    // 6.5. Actualizar estado de AsignacionesBloque a "Reservado".
+                    // "Saltado" también aplica: el saltado conserva el derecho de
+                    // capturar mientras su bloque siga abierto y al hacerlo su
+                    // asignación se normaliza.
                     var asignacionBloque = await _context.AsignacionesBloque
                         .FirstOrDefaultAsync(a => a.EmpleadoId == request.EmpleadoId &&
-                                                 a.Estado == "Asignado" &&
+                                                 (a.Estado == "Asignado" || a.Estado == "Saltado") &&
                                                  a.Bloque.AnioGeneracion == request.AnioVacaciones);
 
                     if (asignacionBloque != null)

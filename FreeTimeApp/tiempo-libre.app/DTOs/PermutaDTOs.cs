@@ -18,6 +18,14 @@ namespace tiempo_libre.DTOs
         [JsonPropertyName("fechaPermuta")] // ✅ AGREGAR
         public string FechaPermuta { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Cambio individual con cambio de día: fecha a la que el empleado se
+        /// presenta a laborar ("fecha del cambio" de la papeleta GT-67).
+        /// Opcional: sin ella el cambio individual es el mismo día.
+        /// </summary>
+        [JsonPropertyName("fechaDestino")]
+        public string? FechaDestino { get; set; }
+
         [Required]
         [MaxLength(500)]
         [JsonPropertyName("motivo")] // ✅ AGREGAR

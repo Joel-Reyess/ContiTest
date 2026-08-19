@@ -56,13 +56,21 @@ namespace tiempo_libre.Services
         /// <summary>
         /// Valida si un grupo puede tener ausencias respetando el porcentaje configurado
         /// </summary>
+        /// <param name="fecha">
+        /// Día que se está evaluando. Sin esta fecha el cálculo se hacía siempre
+        /// contra "hoy": al programar el año siguiente, las 365 respuestas eran la
+        /// foto del día de la corrida, y si el grupo estaba al tope ese día la
+        /// asignación de días por empresa no encontraba ninguna semana viable.
+        /// </param>
         public async Task<bool> PuedeGrupoTenerAusencias(
             int grupoId,
             int ausenciasSolicitadas = 1,
-            int? ausenciasActuales = null)
+            int? ausenciasActuales = null,
+            DateOnly? fecha = null)
         {
             try
             {
+                var fechaEvaluada = fecha ?? DateOnly.FromDateTime(DateTime.Today);
                 // Obtener configuración actual
                 var config = await _db.ConfiguracionVacaciones
                     .OrderByDescending(c => c.CreatedAt)
@@ -103,12 +111,11 @@ namespace tiempo_libre.Services
                     // Para grupos pequeños: permitir al menos 1 ausencia
                     if (!ausenciasActuales.HasValue)
                     {
-                        // Calcular ausencias actuales (vacaciones programadas activas)
-                        var hoy = DateOnly.FromDateTime(DateTime.Today);
+                        // Ausencias ya programadas para el día que se evalúa
                         ausenciasActuales = await _db.VacacionesProgramadas
                             .CountAsync(v =>
                                 _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId == grupoId) &&
-                                v.FechaVacacion == hoy &&
+                                v.FechaVacacion == fechaEvaluada &&
                                 v.EstadoVacacion == "Activa");
                     }
 
@@ -118,18 +125,19 @@ namespace tiempo_libre.Services
                 }
 
                 // REGLA NORMAL: Grupos grandes usan el porcentaje
-                var hoyManning = DateOnly.FromDateTime(DateTime.Today);
-                var manningArea = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, hoyManning);
+                // El manning también se resuelve con la fecha evaluada: la excepción
+                // mensual del SuperUsuario es por mes, y al programar el año siguiente
+                // la del mes en curso no tiene por qué aplicar.
+                var manningArea = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, fechaEvaluada);
                 var manning = manningArea > 0 ? manningArea : totalEmpleados;
 
                 // Calcular cuántos estarían ausentes con la nueva solicitud
                 if (!ausenciasActuales.HasValue)
                 {
-                    var hoy = DateOnly.FromDateTime(DateTime.Today);
                     ausenciasActuales = await _db.VacacionesProgramadas
                         .CountAsync(v =>
                             _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId == grupoId) &&
-                            v.FechaVacacion == hoy &&
+                            v.FechaVacacion == fechaEvaluada &&
                             v.EstadoVacacion == "Activa");
                 }
 

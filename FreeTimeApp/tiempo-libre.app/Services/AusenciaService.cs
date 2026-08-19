@@ -215,7 +215,13 @@ namespace tiempo_libre.Services
                                     NombreCompleto = emp.FullName ?? "",
                                     Nomina = emp.Nomina,
                                     Maquina = emp.Maquina,
-                                    TipoAusencia = (p.ClaseAbsentismo ?? "").Contains("Incapacidad") ? "Incapacidad" : "Permiso",
+                                    // Los textos reales de SAP abrevian "Inc." ("Inc.
+                                    // Enfermedad General"), no traen la palabra completa:
+                                    // con Contains("Incapacidad") toda incapacidad salía
+                                    // etiquetada como "Permiso" en la vista del sindicato.
+                                    TipoAusencia = (p.ClaseAbsentismo ?? "").Contains("Incapacidad") ||
+                                                   (p.ClaseAbsentismo ?? "").Contains("Inc.")
+                                        ? "Incapacidad" : "Permiso",
                                     TipoVacacion = p.ClaseAbsentismo ?? "Permiso"
                                 };
                             })
@@ -324,8 +330,12 @@ namespace tiempo_libre.Services
                 // Calcular ausencia actual del grupo
                 var ausenciaActual = await CalcularAusenciaPorGrupoAsync(request.Fecha, empleado.GrupoId.Value);
 
-                // Usar el nuevo validador de porcentaje que considera grupos pequeños
-                var puedeAusentarse = await _validadorPorcentaje.PuedeGrupoTenerAusencias(empleado.GrupoId.Value, 1);
+                // Usar el nuevo validador de porcentaje que considera grupos pequeños.
+                // La fecha es obligatoria aquí: sin ella el validador contestaba lo
+                // mismo para los 365 días del año que se está programando (la foto de
+                // hoy), y la asignación de días por empresa se quedaba sin semanas.
+                var puedeAusentarse = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
+                    empleado.GrupoId.Value, 1, null, request.Fecha);
 
                 // Obtener el estado detallado del grupo para información adicional
                 var estadoGrupo = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value);
@@ -473,7 +483,8 @@ namespace tiempo_libre.Services
             bool excedeLimite = !esGrupoPequeno && (porcentajeAusenciaGrupo > porcentajeMaximo);
 
             // 9) Puede reservar: usa el validador considerando el estado actual
-            bool puedeReservar = await _validadorPorcentaje.PuedeGrupoTenerAusencias(grupoId, 1, personalNoDisponible);
+            bool puedeReservar = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
+                grupoId, 1, personalNoDisponible, fecha);
 
             // 10) DTO de salida
             return new AusenciaPorGrupoDto
@@ -555,7 +566,11 @@ namespace tiempo_libre.Services
                     EmpleadoId = pu.Usuario.Id,
                     NombreCompleto = pu.Usuario.FullName ?? "",
                     Nomina = pu.Usuario.Nomina,
-                    TipoAusencia = (pu.Permiso.ClaseAbsentismo ?? "").Contains("Incapacidad") ? "Incapacidad" : "Permiso",
+                    // "Inc." incluido: los textos de SAP abrevian ("Inc. Enfermedad
+                    // General") y con solo "Incapacidad" todo salía como "Permiso".
+                    TipoAusencia = (pu.Permiso.ClaseAbsentismo ?? "").Contains("Incapacidad") ||
+                                   (pu.Permiso.ClaseAbsentismo ?? "").Contains("Inc.")
+                        ? "Incapacidad" : "Permiso",
                     TipoVacacion = pu.Permiso.ClaseAbsentismo ?? "Permiso",
                     Maquina = pu.Usuario.Maquina
                 })

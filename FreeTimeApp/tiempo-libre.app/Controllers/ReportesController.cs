@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.Services;
@@ -164,9 +164,13 @@ namespace tiempo_libre.Controllers
         public async Task<IActionResult> ObtenerEmpleadosFaltantesCaptura(
             [FromQuery] int anioObjetivo,
             [FromQuery] int? areaId = null,
-            [FromQuery] int? grupoId = null)
+            [FromQuery] int? grupoId = null,
+            CancellationToken ct = default)
         {
-            var response = await _reportesService.ObtenerEmpleadosFaltantesCapturaVacacionesAsync(anioObjetivo, areaId, grupoId);
+            // ct viene de HttpContext.RequestAborted: si el navegador se rinde,
+            // la consulta se cancela y suelta su conexión en vez de seguir
+            // corriendo sola en el servidor.
+            var response = await _reportesService.ObtenerEmpleadosFaltantesCapturaVacacionesAsync(anioObjetivo, areaId, grupoId, ct);
 
             if (!response.Success)
                 return BadRequest(response);
@@ -178,9 +182,10 @@ namespace tiempo_libre.Controllers
         public async Task<IActionResult> ObtenerVacacionesAsignadasEmpresa(
             [FromQuery] int anioObjetivo,
             [FromQuery] int? areaId = null,
-            [FromQuery] int? grupoId = null)
+            [FromQuery] int? grupoId = null,
+            CancellationToken ct = default)
         {
-            var response = await _reportesService.ObtenerVacacionesAsignadasPorEmpresaAsync(anioObjetivo, areaId, grupoId);
+            var response = await _reportesService.ObtenerVacacionesAsignadasPorEmpresaAsync(anioObjetivo, areaId, grupoId, ct);
 
             if (!response.Success)
                 return BadRequest(response);
@@ -192,9 +197,10 @@ namespace tiempo_libre.Controllers
         public async Task<IActionResult> ObtenerEmpleadosEnVacaciones(
             [FromQuery] DateOnly? fecha = null,
             [FromQuery] int? areaId = null,
-            [FromQuery] int? grupoId = null)
+            [FromQuery] int? grupoId = null,
+            CancellationToken ct = default)
         {
-            var response = await _reportesService.ObtenerEmpleadosEnVacacionesAsync(fecha, areaId, grupoId);
+            var response = await _reportesService.ObtenerEmpleadosEnVacacionesAsync(fecha, areaId, grupoId, ct);
 
             if (!response.Success)
                 return BadRequest(response);

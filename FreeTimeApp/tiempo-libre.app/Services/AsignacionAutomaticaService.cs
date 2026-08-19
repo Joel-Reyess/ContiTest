@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -42,7 +43,9 @@ namespace tiempo_libre.Services
             _logger = logger;
         }
 
-        public async Task<ApiResponse<AsignacionAutomaticaResponse>> EjecutarAsignacionAutomaticaAsync(AsignacionAutomaticaRequest request)
+        public async Task<ApiResponse<AsignacionAutomaticaResponse>> EjecutarAsignacionAutomaticaAsync(
+            AsignacionAutomaticaRequest request,
+            CancellationToken ct = default)
         {
             try
             {
@@ -54,26 +57,52 @@ namespace tiempo_libre.Services
                 };
 
                 // Obtener empleados sindicalizados (con nómina)
-                var empleados = await ObtenerEmpleadosSindicalizadosAsync(request.GrupoIds);
+                var empleados = await ObtenerEmpleadosSindicalizadosAsync(request.GrupoIds, ct);
                 response.TotalEmpleadosProcesados = empleados.Count;
 
                 if (!empleados.Any())
                 {
-                    return new ApiResponse<AsignacionAutomaticaResponse>(false, response, 
+                    return new ApiResponse<AsignacionAutomaticaResponse>(false, response,
                         "No se encontraron empleados sindicalizados para procesar.");
                 }
 
+                // Empleados que ya tienen asignación automática activa para este año.
+                // Sin este filtro, re-ejecutar el proceso (p. ej. tras un intento que
+                // murió a medias) duplicaba los días: no hay índice único en BD que
+                // frene la segunda inserción.
+                var empleadosYaAsignados = (await _db.VacacionesProgramadas
+                    .Where(v => v.FechaVacacion.Year == request.Anio
+                        && v.OrigenAsignacion == "Automatica"
+                        && v.TipoVacacion == "Automatica"
+                        && v.EstadoVacacion == "Activa")
+                    .Select(v => v.EmpleadoId)
+                    .Distinct()
+                    .ToListAsync(ct)).ToHashSet();
+
                 // Obtener semanas excluidas
-                var semanasExcluidas = request.SemanasExcluidas?.Any() == true 
-                    ? request.SemanasExcluidas 
+                var semanasExcluidas = request.SemanasExcluidas?.Any() == true
+                    ? request.SemanasExcluidas
                     : SEMANAS_EXCLUIDAS_DEFAULT;
 
                 // Obtener días inhábiles del año
-                var diasInhabiles = await ObtenerDiasInhabilesAsync(request.Anio);
+                var diasInhabiles = await ObtenerDiasInhabilesAsync(request.Anio, ct);
 
                 // Procesar cada empleado
                 foreach (var empleado in empleados)
                 {
+                    // Si el navegador abortó el request (timeout del cliente), parar aquí:
+                    // antes el bucle seguía corriendo horas contra SQL después del abort,
+                    // saturando la instancia y tirando el resto de la aplicación.
+                    ct.ThrowIfCancellationRequested();
+
+                    if (empleadosYaAsignados.Contains(empleado.Id))
+                    {
+                        response.TotalEmpleadosAsignados++;
+                        response.Advertencias.Add(
+                            $"Empleado {empleado.FullName} ({empleado.Nomina}): ya tenía asignación automática para {request.Anio}; se omitió.");
+                        continue;
+                    }
+
                     var resultado = await ProcesarEmpleadoAsync(empleado, request.Anio, semanasExcluidas, diasInhabiles);
                     response.ResultadosPorEmpleado.Add(resultado);
 
@@ -86,6 +115,9 @@ namespace tiempo_libre.Services
                         if (!request.SoloSimulacion)
                         {
                             await GuardarVacacionesAsignadasAsync(resultado);
+                            // Sin esto el ChangeTracker acumula todo lo consultado durante
+                            // la corrida y cada SaveChanges es más lento que el anterior.
+                            _db.ChangeTracker.Clear();
                         }
                     }
                     else
@@ -103,6 +135,15 @@ namespace tiempo_libre.Services
 
                 return new ApiResponse<AsignacionAutomaticaResponse>(true, response, mensaje);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // El cliente abortó: no hay a quién responderle. Se relanza para que
+                // el pipeline registre el request como cancelado, no como error 400.
+                _logger.LogWarning(
+                    "Asignación automática para año {Anio} cancelada por el cliente; lo guardado hasta ahora se conserva y la re-ejecución omite a los ya asignados",
+                    request.Anio);
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error durante la asignación automática");
@@ -110,9 +151,10 @@ namespace tiempo_libre.Services
             }
         }
 
-        private async Task<List<User>> ObtenerEmpleadosSindicalizadosAsync(List<int>? grupoIds)
+        private async Task<List<User>> ObtenerEmpleadosSindicalizadosAsync(List<int>? grupoIds, CancellationToken ct = default)
         {
             var query = _db.Users
+                .AsNoTracking()
                 .Include(u => u.Grupo)
                 .ThenInclude(g => g.Area)
                 .Where(u => u.Nomina.HasValue && u.GrupoId.HasValue && u.GrupoId > 0);
@@ -122,15 +164,15 @@ namespace tiempo_libre.Services
                 query = query.Where(u => u.GrupoId.HasValue && grupoIds.Contains(u.GrupoId.Value));
             }
 
-            return await query.ToListAsync();
+            return await query.ToListAsync(ct);
         }
 
-        private async Task<List<DateOnly>> ObtenerDiasInhabilesAsync(int anio)
+        private async Task<List<DateOnly>> ObtenerDiasInhabilesAsync(int anio, CancellationToken ct = default)
         {
             return await _db.DiasInhabiles
                 .Where(d => d.Fecha.Year == anio)
                 .Select(d => d.Fecha)
-                .ToListAsync();
+                .ToListAsync(ct);
         }
 
         private async Task<AsignacionEmpleadoResult> ProcesarEmpleadoAsync(
@@ -233,7 +275,19 @@ namespace tiempo_libre.Services
             foreach (var numeroSemana in semanasDelAnio)
             {
                 var semana = ObtenerRangoSemana(anio, numeroSemana);
-                
+
+                // El lunes de la semana 1 puede caer en diciembre del año anterior y
+                // la semana 52 puede terminar en enero del siguiente. Sin este recorte,
+                // la asignación escribía días de vacaciones con FechaVacacion fuera del
+                // año objetivo: invisibles para todas las consultas del año programado
+                // pero contando como ausencia en el año equivocado.
+                if (semana.FechaInicio.Year < anio)
+                    semana.FechaInicio = new DateOnly(anio, 1, 1);
+                if (semana.FechaFin.Year > anio)
+                    semana.FechaFin = new DateOnly(anio, 12, 31);
+                if (semana.FechaInicio > semana.FechaFin)
+                    continue;
+
                 // Obtener calendario del empleado para esa semana
                 var calendarioResponse = await _calendarioService.ObtenerCalendarioGrupoAsync(
                     empleado.GrupoId ?? 0, semana.FechaInicio.ToDateTime(TimeOnly.MinValue), 
@@ -400,7 +454,10 @@ namespace tiempo_libre.Services
                 _db.VacacionesProgramadas.Add(vacacion);
             }
 
-            await _db.SaveChangesAsync();
+            // CancellationToken.None a propósito: si el cliente aborta justo aquí, es
+            // preferible terminar de escribir los días completos de este empleado a
+            // dejarlo con la semana a medias.
+            await _db.SaveChangesAsync(CancellationToken.None);
         }
 
         public async Task<ApiResponse<VacacionesEmpleadoListResponse>> ObtenerVacacionesEmpleadoAsync(
@@ -602,7 +659,7 @@ namespace tiempo_libre.Services
 
                 // Resumen por grupos
                 var resumenPorGrupos = vacacionesAsignadas
-                    .Where(v => v.Empleado?.GrupoId != null)
+                    .Where(v => v.Empleado?.GrupoId != null && v.Empleado.Grupo != null)
                     .GroupBy(v => new { v.Empleado.GrupoId, v.Empleado.Grupo.Rol })
                     .Select(g => new ResumenAsignacionPorGrupo
                     {

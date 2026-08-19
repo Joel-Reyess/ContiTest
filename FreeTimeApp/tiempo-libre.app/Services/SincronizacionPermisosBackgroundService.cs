@@ -192,7 +192,30 @@ namespace tiempo_libre.Services
                                     continue;
                                 }
 
-                                if (previo != null && previo.Hasta == hasta)
+                                // Convertir Dias y DiaNat (antes del "sin cambios":
+                                // una vacación que SAP deja en 0 días conserva las
+                                // mismas fechas y solo cambia Dias, y hay que verla).
+                                double? dias = null;
+                                if (!string.IsNullOrWhiteSpace(registro.Dias))
+                                {
+                                    string diasLimpio = registro.Dias.Trim().Replace(".00", "").Replace(",00", "");
+                                    if (double.TryParse(diasLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diasParsed))
+                                    {
+                                        dias = Math.Floor(diasParsed);
+                                    }
+                                }
+
+                                double? diaNat = null;
+                                if (!string.IsNullOrWhiteSpace(registro.DiaNat))
+                                {
+                                    string diaNatLimpio = registro.DiaNat.Trim().Replace(".00", "").Replace(",00", "");
+                                    if (double.TryParse(diaNatLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diaNatParsed))
+                                    {
+                                        diaNat = Math.Floor(diaNatParsed);
+                                    }
+                                }
+
+                                if (previo != null && previo.Hasta == hasta && previo.Dias == dias)
                                 {
                                     registrosOmitidos++;
                                     continue;
@@ -212,25 +235,13 @@ namespace tiempo_libre.Services
                                     continue;
                                 }
 
-                                // Convertir Dias y DiaNat
-                                double? dias = null;
-                                if (!string.IsNullOrWhiteSpace(registro.Dias))
+                                // El Excel manda sobre las vacaciones capturadas en la
+                                // app: una fila 1100 nueva o modificada se reconcilia
+                                // contra VacacionesProgramadas (mueve o cancela el día
+                                // que RH ya cambió directo en SAP).
+                                if (clAbPre == 1100)
                                 {
-                                    string diasLimpio = registro.Dias.Trim().Replace(".00", "").Replace(",00", "");
-                                    if (double.TryParse(diasLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diasParsed))
-                                    {
-                                        dias = Math.Floor(diasParsed);
-                                    }
-                                }
-
-                                double? diaNat = null;
-                                if (!string.IsNullOrWhiteSpace(registro.DiaNat))
-                                {
-                                    string diaNatLimpio = registro.DiaNat.Trim().Replace(".00", "").Replace(",00", "");
-                                    if (double.TryParse(diaNatLimpio, NumberStyles.Any, CultureInfo.InvariantCulture, out double diaNatParsed))
-                                    {
-                                        diaNat = Math.Floor(diaNatParsed);
-                                    }
+                                    await ReconciliarVacacionSapAsync(context, nomina, desde, hasta, dias);
                                 }
 
                                 // Mismo permiso con distinto Hasta: SAP lo prolongo (o lo
@@ -411,6 +422,137 @@ namespace tiempo_libre.Services
                 return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// "El Excel manda": alinea VacacionesProgramadas con una fila 1100 de SAP.
+        ///
+        /// - Dias = 0  → SAP dejó esa vacación sin efecto: se cancela el día Activo
+        ///   de la app dentro del rango (es como llega una reprogramación capturada
+        ///   directo en SAP: el día viejo se reporta en 0 y el nuevo con 1).
+        /// - Dias &gt; 0 → por cada día del rango que la app no tenga como vacación:
+        ///     · si hay EXACTAMENTE una vacación activa a ±7 días que SAP no
+        ///       confirme, se mueve a la fecha del Excel (cancelar + crear);
+        ///     · si no hay ninguna candidata, se da de alta (SAP la capturó);
+        ///     · si hay varias, no se adivina: se deja log y el calendario la
+        ///       pinta de todos modos por el registro SAP.
+        /// </summary>
+        private async Task ReconciliarVacacionSapAsync(
+            FreeTimeDbContext context, int nomina, DateOnly desde, DateOnly hasta, double? dias)
+        {
+            var empleadoId = await context.Users
+                .AsNoTracking()
+                .Where(u => u.Nomina == nomina)
+                .Select(u => (int?)u.Id)
+                .FirstOrDefaultAsync();
+
+            if (empleadoId == null) return;
+
+            if (dias.HasValue && dias.Value <= 0)
+            {
+                var sinEfecto = await context.VacacionesProgramadas
+                    .Where(v => v.EmpleadoId == empleadoId &&
+                                v.FechaVacacion >= desde && v.FechaVacacion <= hasta &&
+                                v.EstadoVacacion == "Activa")
+                    .ToListAsync();
+
+                foreach (var v in sinEfecto)
+                {
+                    v.EstadoVacacion = "Cancelada";
+                    v.UpdatedAt = DateTime.Now;
+                    v.Observaciones = "Cancelada por sincronización SAP (Excel la reporta con 0 días)";
+                    _logger.LogInformation(
+                        "Excel manda: vacación {Fecha:yyyy-MM-dd} de nómina {Nomina} cancelada (SAP la dejó en 0 días)",
+                        v.FechaVacacion, nomina);
+                }
+                return;
+            }
+
+            for (var f = desde; f <= hasta; f = f.AddDays(1))
+            {
+                var yaExiste = await context.VacacionesProgramadas.AnyAsync(v =>
+                    v.EmpleadoId == empleadoId && v.FechaVacacion == f && v.EstadoVacacion == "Activa");
+                if (yaExiste) continue;
+
+                var ventanaIni = f.AddDays(-7);
+                var ventanaFin = f.AddDays(7);
+
+                var candidatas = await context.VacacionesProgramadas
+                    .Where(v => v.EmpleadoId == empleadoId &&
+                                v.EstadoVacacion == "Activa" &&
+                                v.FechaVacacion >= ventanaIni && v.FechaVacacion <= ventanaFin)
+                    .ToListAsync();
+
+                // Un día que SAP también reporta como vacación vigente no es
+                // candidato a moverse: SAP y la app ya están de acuerdo en él.
+                var confirmadasSap = await context.PermisosEIncapacidadesSAP
+                    .Where(p => p.Nomina == nomina && p.ClAbPre == 1100 &&
+                                (p.Dias == null || p.Dias > 0) &&
+                                p.Desde <= ventanaFin && p.Hasta >= ventanaIni)
+                    .Select(p => new { p.Desde, p.Hasta })
+                    .ToListAsync();
+
+                var sinConfirmar = candidatas
+                    .Where(v => !confirmadasSap.Any(p => v.FechaVacacion >= p.Desde && v.FechaVacacion <= p.Hasta))
+                    .ToList();
+
+                if (sinConfirmar.Count == 1)
+                {
+                    var original = sinConfirmar[0];
+                    original.EstadoVacacion = "Cancelada";
+                    original.UpdatedAt = DateTime.Now;
+                    original.Observaciones =
+                        $"Reprogramada por sincronización SAP: el Excel reporta la vacación el {f:dd/MM/yyyy}";
+
+                    context.VacacionesProgramadas.Add(new VacacionesProgramadas
+                    {
+                        EmpleadoId = empleadoId.Value,
+                        FechaVacacion = f,
+                        TipoVacacion = original.TipoVacacion,
+                        OrigenAsignacion = original.OrigenAsignacion,
+                        EstadoVacacion = "Activa",
+                        PeriodoProgramacion = "Reprogramacion",
+                        FechaProgramacion = original.FechaProgramacion,
+                        PuedeSerIntercambiada = original.PuedeSerIntercambiada,
+                        Observaciones =
+                            $"Reprogramada por sincronización SAP: {original.FechaVacacion:dd/MM/yyyy} -> {f:dd/MM/yyyy}",
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    });
+
+                    _logger.LogInformation(
+                        "Excel manda: vacación de nómina {Nomina} movida {Original:yyyy-MM-dd} -> {Nueva:yyyy-MM-dd}",
+                        nomina, original.FechaVacacion, f);
+                }
+                else if (sinConfirmar.Count == 0)
+                {
+                    context.VacacionesProgramadas.Add(new VacacionesProgramadas
+                    {
+                        EmpleadoId = empleadoId.Value,
+                        FechaVacacion = f,
+                        TipoVacacion = "Reprogramacion",
+                        OrigenAsignacion = "Manual",
+                        EstadoVacacion = "Activa",
+                        PeriodoProgramacion = "Reprogramacion",
+                        FechaProgramacion = DateTime.Now,
+                        PuedeSerIntercambiada = true,
+                        Observaciones = "Alta por sincronización SAP (vacación capturada directo en SAP)",
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    });
+
+                    _logger.LogInformation(
+                        "Excel manda: vacación de nómina {Nomina} dada de alta el {Fecha:yyyy-MM-dd} (venía solo en SAP)",
+                        nomina, f);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Excel manda: SAP reporta vacación el {Fecha:yyyy-MM-dd} para nómina {Nomina} pero hay {N} " +
+                        "vacaciones activas cercanas sin confirmar; no se adivina cuál mover (el calendario pinta la de SAP)",
+                        f, nomina, sinConfirmar.Count);
+                }
+            }
         }
     }
 }

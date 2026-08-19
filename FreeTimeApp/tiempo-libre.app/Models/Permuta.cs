@@ -25,6 +25,15 @@ namespace tiempo_libre.Models
         [Required]
         public DateOnly FechaPermuta { get; set; }
 
+        /// <summary>
+        /// Solo para cambio individual que se mueve de día: fecha en la que el
+        /// empleado se presentará a laborar (la papeleta GT-67 trae "fecha del
+        /// rol" y "fecha del cambio"). Null = el cambio es el mismo día
+        /// (solo cambia el turno) o es permuta hombre por hombre.
+        /// Requiere la columna FechaDestino (ver AddFechaDestinoPermutas.sql).
+        /// </summary>
+        public DateOnly? FechaDestino { get; set; }
+
         [Required]
         [MaxLength(50)]
         public string TurnoEmpleadoOrigen { get; set; } = string.Empty;

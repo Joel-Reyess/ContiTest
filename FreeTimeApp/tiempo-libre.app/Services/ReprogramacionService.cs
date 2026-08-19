@@ -48,10 +48,15 @@ namespace tiempo_libre.Services
                     .OrderByDescending(c => c.CreatedAt)
                     .FirstOrDefaultAsync();
 
-                if (configuracion == null || configuracion.PeriodoActual != "Reprogramacion")
+                // "ProgramacionAnual" ahora significa "se está preparando el año
+                // siguiente" y convive con la operación del año en curso: si aquí
+                // se exigiera exactamente "Reprogramacion", arrancar la programación
+                // anual dejaba en 400 todas las reprogramaciones y las papeletas del
+                // sindicato del año vigente. Solo "Cerrado" bloquea.
+                if (configuracion == null || configuracion.PeriodoActual == "Cerrado")
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "Solo se pueden solicitar reprogramaciones durante el periodo de reprogramaciA3n");
+                        "El periodo de vacaciones está cerrado: no se pueden solicitar reprogramaciones");
                 }
 
                 // 2. Validar roles del solicitante
@@ -118,16 +123,11 @@ namespace tiempo_libre.Services
 
                 // 5. Validar fechas
                 var hoy = DateOnly.FromDateTime(DateTime.Today);
-                // Días ya transcurridos: el jefe y el delegado siguen sin poder moverlos
-                // (para eso está 'Reprogramación post-incapacidad' o el permiso), pero el
-                // SuperUsuario sí, porque es la vía de corrección cuando el día se perdió
-                // y el motivo se conoce después. La fecha nueva sigue obligada a futuro.
-                if (vacacionOriginal.FechaVacacion < hoy && !esSuperUsuario)
-                {
-                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "No se pueden reprogramar vacaciones de fechas pasadas. " +
-                        "Si el día se perdió por una incapacidad, usa la opción 'Reprogramación post-incapacidad'.");
-                }
+                // Días ya transcurridos: cualquiera de los tres roles solicitantes
+                // puede moverlos (la papeleta firmada llega después de los hechos:
+                // el operador se presentó en su día de vacación y lo cambia por una
+                // fecha futura). La solicitud sigue pendiente de aprobación del jefe
+                // y la fecha nueva sigue obligada a futuro, que es el candado real.
 
                 if (request.FechaNueva < hoy)
                 {
@@ -472,6 +472,7 @@ namespace tiempo_libre.Services
             {
                 _db.Database.SetCommandTimeout(60);
                 var usuarioConsulta = await _db.Users
+                    .AsNoTracking()
                     .Include(u => u.Roles)
                     .Include(u => u.Area)
                     .Include(u => u.Grupo)
@@ -500,7 +501,9 @@ namespace tiempo_libre.Services
                     "Usuario {UserId} consultando solicitudes. Roles: SuperUsuario={Super}, JefeArea={Jefe}, Delegado={Delegado}, Sindicalizado={Sind}",
                     usuarioConsultaId, esSuperUsuario, esJefeArea, esDelegadoSindical, esSindicalizado);
 
+                // AsNoTracking: consulta de solo lectura, se proyecta a DTOs.
                 var query = _db.SolicitudesReprogramacion
+                    .AsNoTracking()
                     .Include(s => s.Empleado)
                         .ThenInclude(e => e.Area)
                     .Include(s => s.Empleado.Grupo)
@@ -965,9 +968,12 @@ namespace tiempo_libre.Services
                     .OrderByDescending(c => c.CreatedAt)
                     .FirstOrDefaultAsync();
 
-                if (configuracion?.PeriodoActual != "Reprogramacion")
+                // Igual que en SolicitarReprogramacionAsync: la preparación del año
+                // siguiente (periodo "ProgramacionAnual") no cierra la reprogramación
+                // del año vigente; solo "Cerrado" amerita la advertencia.
+                if (configuracion == null || configuracion.PeriodoActual == "Cerrado")
                 {
-                    response.Advertencias.Add("Actualmente no estamos en periodo de reprogramaciA3n");
+                    response.Advertencias.Add("El periodo de vacaciones está cerrado");
                 }
 
                 return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);

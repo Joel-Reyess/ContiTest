@@ -90,6 +90,18 @@ namespace tiempo_libre.DTOs
         public string? Observaciones { get; set; }
     }
 
+    public class SaltarTurnoRequest
+    {
+        [Required]
+        public int EmpleadoId { get; set; }
+
+        [Required]
+        public int BloqueId { get; set; }
+
+        [MaxLength(200)]
+        public string? Motivo { get; set; }
+    }
+
     public class CambiarBloqueRequest
     {
         [Required]

@@ -220,6 +220,11 @@ namespace tiempo_libre.Services
                     Hasta = fechaFin,
                     ClAbPre = int.Parse(request.ClAbPre),
                     ClaseAbsentismo = tipoPermiso.Concepto,
+                    // El alta directa (PermisosIncapacidadesService) sí llena estos
+                    // dos campos; aquí faltaban y si la columna física es NOT NULL
+                    // el INSERT truena y el catch lo regresaba como 400 sin pista.
+                    Dias = (fechaFin.DayNumber - fechaInicio.DayNumber) + 1,
+                    DiaNat = (fechaFin.DayNumber - fechaInicio.DayNumber) + 1,
                     Observaciones = request.Observaciones,
                     EsRegistroManual = false, // ✅ Las solicitudes NO son manuales
                     FechaRegistro = DateTime.Now,

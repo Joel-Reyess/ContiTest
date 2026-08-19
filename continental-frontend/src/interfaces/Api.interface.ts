@@ -282,6 +282,9 @@ export enum EmpleadoEstado {
     COMPLETADO = 'Completado',
     TRANSFERIDO = 'Transferido',
     NO_RESPONDIO = 'NoRespondio',
+    /** El jefe lo saltó para desbloquear al siguiente; aún puede capturar
+     *  mientras su bloque siga abierto. Si no, pasa al bloque cola. */
+    SALTADO = 'Saltado',
     MANUAL = 'MANUAL'
 }
 
@@ -1016,6 +1019,8 @@ export interface SolicitudPermutaRequest {
     empleadoOrigenId: number;
     empleadoDestinoId: number | null;
     fechaPermuta: string; // Mantener como string en frontend
+    // Cambio individual con cambio de día: fecha a la que se presenta a laborar
+    fechaDestino?: string | null;
     motivo: string;
     solicitadoPor: number; // ✅ Agregar este campo
     turnoEmpleadoOrigen: string; // ✅ AGREGAR

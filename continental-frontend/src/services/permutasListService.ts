@@ -5,6 +5,8 @@ export interface PermutaListItem {
     empleadoOrigenNombre: string;
     empleadoDestinoNombre: string;
     fechaPermuta: string;
+    // Cambio individual con cambio de día: fecha a la que se presenta a laborar
+    fechaDestino?: string | null;
     turnoEmpleadoOrigen: string;
     turnoEmpleadoDestino: string;
     motivo: string;

@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using tiempo_libre.DTOs;
 using tiempo_libre.Models;
@@ -10,25 +10,36 @@ namespace tiempo_libre.Services
         private readonly FreeTimeDbContext _db;
         private readonly ILogger<ReportesVacacionesService> _logger;
 
+        /// <summary>
+        /// Techo para los reportes pesados de este servicio. Antes era 0 (sin
+        /// límite): una consulta atorada se quedaba corriendo para siempre,
+        /// reteniendo su conexión del pool aunque el navegador ya se hubiera
+        /// rendido. Con un techo, SQL Server la aborta y libera la conexión.
+        /// </summary>
+        private const int TimeoutReportesSegundos = 180;
+
         public ReportesVacacionesService(
             FreeTimeDbContext db,
             ILogger<ReportesVacacionesService> logger)
         {
             _db = db;
             _logger = logger;
-            // Sin límite de tiempo para consultas de reportes pesados
-            _db.Database.SetCommandTimeout(0);
+            // OJO: aquí NO se toca el CommandTimeout. El DbContext es Scoped y lo
+            // comparten todos los servicios del request; poner el timeout en el
+            // constructor se lo aplicaba también a VacacionesExportService y a
+            // EdicionDiasEmpresaService, que conviven en ReportesController y
+            // nunca lo pidieron. El timeout se fija por método.
         }
 
         public async Task<ApiResponse<EmpleadosFaltantesCapturaResponse>> ObtenerEmpleadosFaltantesCapturaVacacionesAsync(
             int anioObjetivo,
             int? areaId = null,
-            int? grupoId = null)
+            int? grupoId = null,
+            CancellationToken ct = default)
         {
             try
             {
-                // 0 = sin límite de timeout para permitir consultas largas
-                _db.Database.SetCommandTimeout(0);
+                _db.Database.SetCommandTimeout(TimeoutReportesSegundos);
                 if (anioObjetivo <= 0)
                 {
                     return new ApiResponse<EmpleadosFaltantesCapturaResponse>(false, null, "El año objetivo es obligatorio");
@@ -96,7 +107,7 @@ namespace tiempo_libre.Services
                         Observaciones = x.asignacion.Observaciones,
                         RequiereAccionUrgente = x.bloque.EsBloqueCola
                     })
-                    .ToListAsync();
+                    .ToListAsync(ct);
 
                 var response = new EmpleadosFaltantesCapturaResponse
                 {
@@ -119,10 +130,14 @@ namespace tiempo_libre.Services
         public async Task<ApiResponse<VacacionesAsignadasEmpresaResponse>> ObtenerVacacionesAsignadasPorEmpresaAsync(
             int anioObjetivo,
             int? areaId = null,
-            int? grupoId = null)
+            int? grupoId = null,
+            CancellationToken ct = default)
         {
             try
             {
+                // Antes heredaba el timeout 0 que ponía el constructor.
+                _db.Database.SetCommandTimeout(TimeoutReportesSegundos);
+
                 if (anioObjetivo <= 0)
                 {
                     return new ApiResponse<VacacionesAsignadasEmpresaResponse>(false, null, "El año objetivo es obligatorio");
@@ -176,7 +191,7 @@ namespace tiempo_libre.Services
                         FechaProgramacion = v.FechaProgramacion,
                         Observaciones = v.Observaciones
                     })
-                    .ToListAsync();
+                    .ToListAsync(ct);
 
                 var response = new VacacionesAsignadasEmpresaResponse
                 {
@@ -199,16 +214,21 @@ namespace tiempo_libre.Services
         public async Task<ApiResponse<EmpleadosEnVacacionesResponse>> ObtenerEmpleadosEnVacacionesAsync(
             DateOnly? fechaConsulta = null,
             int? areaId = null,
-            int? grupoId = null)
+            int? grupoId = null,
+            CancellationToken ct = default)
         {
             try
             {
+                // Antes heredaba el timeout 0 que ponía el constructor.
+                _db.Database.SetCommandTimeout(TimeoutReportesSegundos);
+
                 var fecha = fechaConsulta ?? DateOnly.FromDateTime(DateTime.Now);
 
                 _logger.LogInformation("Obteniendo empleados en vacaciones para fecha {Fecha} (Area={AreaId}, Grupo={GrupoId})",
                     fecha, areaId?.ToString() ?? "Todos", grupoId?.ToString() ?? "Todos");
 
                 var query = _db.VacacionesProgramadas
+                    .AsNoTracking()
                     .Include(v => v.Empleado)
                         .ThenInclude(e => e.Area)
                     .Include(v => v.Empleado)
@@ -247,7 +267,7 @@ namespace tiempo_libre.Services
                         PeriodoProgramacion = v.PeriodoProgramacion,
                         Observaciones = v.Observaciones
                     })
-                    .ToListAsync();
+                    .ToListAsync(ct);
 
                 var response = new EmpleadosEnVacacionesResponse
                 {

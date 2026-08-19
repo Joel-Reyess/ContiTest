@@ -274,6 +274,9 @@ const MisPermutas = () => {
                                             <Calendar className="w-4 h-4 text-gray-500" />
                                             <span className="text-sm font-medium text-gray-700">
                                                 {formatDate(permuta.fechaPermuta)}
+                                                {permuta.fechaDestino && (
+                                                    <span className="text-amber-700"> → se presenta el {formatDate(permuta.fechaDestino)}</span>
+                                                )}
                                             </span>
                                             {/* 🆕 Badge mejorado para identificar al solicitante */}
                                             {isDelegadoSindical && (
