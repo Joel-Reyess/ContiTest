@@ -37,6 +37,7 @@ import type { AusenciasPorFecha } from '../../interfaces/Ausencias.interface';
 import type { Grupo } from '@/interfaces/Areas.interface';
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/interfaces/User.interface';
+import { getSAPEntry } from '@/utils/sapNomenclatura';
 
 // ─── Cobertura de operadores ausentes ────────────────────────────────────────
 // En la vista diaria el jefe de área marca qué operador disponible cubre a cada
@@ -625,7 +626,17 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                                                             </div>
                                                             <div className="font-semibold text-gray-800 leading-tight">{persona.nomina}</div>
                                                             <div className="text-sm text-gray-600">ID: {persona.id}</div>
-                                                            <div className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded mt-1 inline-block">
+                                                            <div className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded mt-1 inline-flex items-center gap-1.5">
+                                                                {/* Nomenclatura SAP del motivo, para que el sindicato
+                                                                    vea la letra (E, P, G, V...) igual que en el rol. */}
+                                                                {(() => {
+                                                                    const sap = getSAPEntry(persona.motivo);
+                                                                    return sap ? (
+                                                                        <span className={`inline-flex items-center justify-center rounded-full px-1.5 font-bold ${sap.chipBg} ${sap.chipFg}`}>
+                                                                            {sap.codigo}
+                                                                        </span>
+                                                                    ) : null;
+                                                                })()}
                                                                 {persona.motivo}
                                                             </div>
 

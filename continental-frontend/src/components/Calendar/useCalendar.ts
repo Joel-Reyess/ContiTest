@@ -150,9 +150,17 @@ export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; us
                         let finalEventType = eventType;
                         if (ausenciasDelDia) {
                             if (ausenciasDelDia.excedeLimite || !ausenciasDelDia.puedeReservar) {
-                                razon = "Día no disponible";
-                                // Día con límite excedido - mostrar como inhabilitado si no hay vacacion ese dia
-                                finalEventType = ['holiday-boss', 'holiday', 'not-work', 'rest'].includes(finalEventType) ? finalEventType : "not-work" ;
+                                // "Día no disponible" solo aplica a días que el empleado
+                                // podría reservar. Una incapacidad/permiso propio
+                                // ('inability') NO se degrada: al convertirla en
+                                // "not-work" el calendario perdía la letra SAP (E, P,
+                                // G...) justo los días en que otro compañero del grupo
+                                // también estaba ausente — por eso una incapacidad del
+                                // 23/07 al 19/08 solo pintaba días sueltos.
+                                if (finalEventType !== 'inability') {
+                                    razon = "Día no disponible";
+                                    finalEventType = ['holiday-boss', 'holiday', 'not-work', 'rest'].includes(finalEventType) ? finalEventType : "not-work" ;
+                                }
                             } else if (ausenciasDelDia.porcentajeAusencia >= 4.0) {
                                 // Día con alta ausencia pero sin exceder límite - mantener tipo original pero será visible
                                 // El componente Calendar puede usar esta info para mostrar indicadores visuales

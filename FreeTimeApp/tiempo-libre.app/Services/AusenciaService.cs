@@ -215,7 +215,13 @@ namespace tiempo_libre.Services
                                     NombreCompleto = emp.FullName ?? "",
                                     Nomina = emp.Nomina,
                                     Maquina = emp.Maquina,
-                                    TipoAusencia = (p.ClaseAbsentismo ?? "").Contains("Incapacidad") ? "Incapacidad" : "Permiso",
+                                    // Los textos reales de SAP abrevian "Inc." ("Inc.
+                                    // Enfermedad General"), no traen la palabra completa:
+                                    // con Contains("Incapacidad") toda incapacidad salía
+                                    // etiquetada como "Permiso" en la vista del sindicato.
+                                    TipoAusencia = (p.ClaseAbsentismo ?? "").Contains("Incapacidad") ||
+                                                   (p.ClaseAbsentismo ?? "").Contains("Inc.")
+                                        ? "Incapacidad" : "Permiso",
                                     TipoVacacion = p.ClaseAbsentismo ?? "Permiso"
                                 };
                             })
@@ -560,7 +566,11 @@ namespace tiempo_libre.Services
                     EmpleadoId = pu.Usuario.Id,
                     NombreCompleto = pu.Usuario.FullName ?? "",
                     Nomina = pu.Usuario.Nomina,
-                    TipoAusencia = (pu.Permiso.ClaseAbsentismo ?? "").Contains("Incapacidad") ? "Incapacidad" : "Permiso",
+                    // "Inc." incluido: los textos de SAP abrevian ("Inc. Enfermedad
+                    // General") y con solo "Incapacidad" todo salía como "Permiso".
+                    TipoAusencia = (pu.Permiso.ClaseAbsentismo ?? "").Contains("Incapacidad") ||
+                                   (pu.Permiso.ClaseAbsentismo ?? "").Contains("Inc.")
+                        ? "Incapacidad" : "Permiso",
                     TipoVacacion = pu.Permiso.ClaseAbsentismo ?? "Permiso",
                     Maquina = pu.Usuario.Maquina
                 })
