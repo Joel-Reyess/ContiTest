@@ -136,7 +136,9 @@ namespace tiempo_libre.Services
                     // en preparación (coexistiendo con la reprogramación del vigente).
                     PermiteProgramacionAnual = configuracion.PeriodoActual == "ProgramacionAnual"
                         || configuracion.AnioProgramacionAnual.HasValue,
-                    PermiteReprogramacion = configuracion.PeriodoActual == "Reprogramacion",
+                    // La reprogramación del año vigente sigue abierta mientras se
+                    // prepara el año siguiente: solo "Cerrado" la apaga.
+                    PermiteReprogramacion = configuracion.PeriodoActual != "Cerrado",
                     EstaCerrado = configuracion.PeriodoActual == "Cerrado"
                 };
 
