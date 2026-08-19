@@ -268,6 +268,21 @@ namespace tiempo_libre.Services
                     continue;
                 }
 
+                // Vacación que reporta SAP (1100) y que la app no tiene en
+                // VacacionesProgramadas: el Excel manda, el día se pinta V.
+                // Es el caso de la reprogramación capturada directo en SAP —
+                // sin esto, el día nuevo que traía el Excel quedaba invisible.
+                // Dias == 0 significa que SAP la dejó sin efecto; no se pinta.
+                var vacacionSap = permisosSap.FirstOrDefault(p =>
+                    fechaDia >= p.Desde && fechaDia <= p.Hasta &&
+                    p.ClAbPre == 1100 && (p.Dias == null || p.Dias > 0));
+                if (vacacionSap != null)
+                {
+                    dia.Incidencia = "V";
+                    dia.TipoIncidencia = "anual";
+                    continue;
+                }
+
                 // Verificar incidencias/permisos
                 var incidencia = incidencias.FirstOrDefault(i => i.Fecha == fechaDia);
                 if (incidencia != null)
