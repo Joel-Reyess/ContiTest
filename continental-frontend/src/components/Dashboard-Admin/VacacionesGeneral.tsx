@@ -75,6 +75,9 @@ export const VacacionesGeneral = ({
   const [prepFechaInicioBloques, setPrepFechaInicioBloques] = useState<string>("");
   const [modalesEnPreparacion, setModalesEnPreparacion] = useState(false);
   const [cambiandoPreparacion, setCambiandoPreparacion] = useState(false);
+  // Confirmaciones de los dos botones que cambian el periodo de toda la planta.
+  const [confirmarActivarAnio, setConfirmarActivarAnio] = useState(false);
+  const [confirmarCerrarPeriodo, setConfirmarCerrarPeriodo] = useState(false);
 
   const anioPreparacion = configVacaciones?.anioProgramacionAnual ?? null;
 
@@ -240,9 +243,26 @@ export const VacacionesGeneral = ({
 
   // HU20 "Activar nuevo periodo anual": el año preparado pasa a ser el vigente
   // y su reprogramación queda activa; la preparación se limpia.
+  //
+  // Lo que NO hace, porque es la duda recurrente: no borra ni cierra nada del
+  // año anterior. Las vacaciones ya capturadas siguen ahí y se pueden seguir
+  // reprogramando — la reprogramación sólo depende de que el periodo no esté
+  // "Cerrado" (ReprogramacionService), no del año vigente. Lo que cambia es el
+  // año por omisión de los tableros, los bloques y la constancia del empleado.
   const handleActivarAnioPreparado = async () => {
     if (!configVacaciones?.anioProgramacionAnual) return;
     const anioNuevo = configVacaciones.anioProgramacionAnual;
+    if (!confirmarActivarAnio) {
+      setConfirmarActivarAnio(true);
+      onNotification(
+        "warning",
+        `¿Activar ${anioNuevo} como año vigente?`,
+        `Cambia el año por omisión de tableros, bloques y constancias a ${anioNuevo}, y deja activa su reprogramación. ` +
+          `Las vacaciones y papeletas de ${anioVigente} NO se borran y se pueden seguir reprogramando. ` +
+          `Vuelve a pulsar el botón para confirmar.`
+      );
+      return;
+    }
     try {
       setCambiandoPreparacion(true);
       const updatedConfig = await vacacionesService.updateConfig({
@@ -253,10 +273,11 @@ export const VacacionesGeneral = ({
       });
       setConfigVacaciones(updatedConfig);
       onConfigUpdate?.(updatedConfig);
+      setConfirmarActivarAnio(false);
       onNotification(
         "success",
         `Año ${anioNuevo} activado`,
-        `El año vigente ahora es ${anioNuevo}. La reprogramación de ${anioNuevo} queda activa.`
+        `El año vigente ahora es ${anioNuevo}. La reprogramación de ${anioNuevo} queda activa y las vacaciones de ${anioVigente} siguen consultables y reprogramables.`
       );
     } catch (error) {
       console.error("Error al activar el año preparado:", error);
@@ -537,11 +558,16 @@ export const VacacionesGeneral = ({
               </ul>
             </div>
 
-            <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
-              <div>
+            <div className="flex justify-between items-start bg-gray-50 p-4 rounded-lg gap-4 flex-wrap">
+              <div className="max-w-xl">
                 <p className="text-sm font-medium text-gray-700">Acciones disponibles</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Puedes regresar a la programación anual o concluir el periodo de reprogramación
+                  <strong>Regresar a Programación Anual</strong> reabre la captura de bloques de{" "}
+                  {anioVigente} (no hace falta para preparar el año siguiente: eso va en la sección
+                  amarilla de abajo).{" "}
+                  <strong>Concluir Reprogramación</strong> cierra el periodo: a partir de ahí
+                  <strong> nadie</strong> puede capturar papeletas ni reprogramar días, ni de{" "}
+                  {anioVigente} ni de ningún año. Normalmente esto sólo se hace al final del ciclo.
                 </p>
               </div>
               <div className="flex gap-3">
@@ -591,6 +617,19 @@ export const VacacionesGeneral = ({
                     try {
                       if (!configVacaciones) return;
 
+                      // Cerrar apaga la captura para TODA la planta (el único
+                      // valor de periodo que bloquea reprogramaciones), así que
+                      // se pide confirmación antes de tocarlo.
+                      if (!confirmarCerrarPeriodo) {
+                        setConfirmarCerrarPeriodo(true);
+                        onNotification(
+                          "warning",
+                          "¿Cerrar el periodo?",
+                          `Con el periodo cerrado, delegados y jefes dejan de poder capturar papeletas y reprogramar días de ${anioVigente}. Vuelve a pulsar el botón para confirmar.`
+                        );
+                        return;
+                      }
+
                       onNotification(
                         "info",
                         "Concluyendo Reprogramación",
@@ -606,6 +645,7 @@ export const VacacionesGeneral = ({
 
                       setConfigVacaciones(updatedConfig);
                       onConfigUpdate?.(updatedConfig);
+                      setConfirmarCerrarPeriodo(false);
                       onNotification(
                         "success",
                         "Reprogramación concluida",
@@ -620,12 +660,21 @@ export const VacacionesGeneral = ({
                       );
                     }
                   }}
-                  variant="continental"
-                  className="flex items-center gap-2"
+                  variant={confirmarCerrarPeriodo ? "outline" : "continental"}
+                  className={`flex items-center gap-2 ${confirmarCerrarPeriodo ? "border-red-300 text-red-600 hover:bg-red-50" : ""}`}
                 >
                   <XCircle className="w-4 h-4" />
-                  Concluir Reprogramación
+                  {confirmarCerrarPeriodo ? "Sí, cerrar el periodo" : "Concluir Reprogramación"}
                 </Button>
+                {confirmarCerrarPeriodo && (
+                  <Button
+                    variant="outline"
+                    className="flex items-center gap-2"
+                    onClick={() => setConfirmarCerrarPeriodo(false)}
+                  >
+                    No, mantener abierto
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -705,17 +754,50 @@ export const VacacionesGeneral = ({
                   />
                 </div>
 
-                <div className="flex flex-wrap gap-3 pt-2 border-t">
+                <div className="pt-2 border-t space-y-3">
+                  <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-3 space-y-1">
+                    <p className="font-medium text-gray-800">
+                      Cuando termines de preparar {anioPreparacion} (normalmente al arrancar el año):
+                    </p>
+                    <p>
+                      <strong>Activar {anioPreparacion} como año vigente</strong> cambia el año por
+                      omisión de tableros, bloques y constancias, y deja activa la reprogramación de{" "}
+                      {anioPreparacion}.
+                    </p>
+                    <p>
+                      Lo de {anioVigente} <strong>no se borra ni se cierra</strong>: sus vacaciones
+                      siguen consultables y se pueden seguir reprogramando, porque la reprogramación
+                      sólo se apaga con el periodo <em>Cerrado</em>, no al cambiar de año.
+                    </p>
+                    <p>
+                      <strong>No tienes que pulsar «Concluir Reprogramación»</strong> para esto —
+                      ese botón cierra la captura de toda la planta y se usa al final del ciclo.
+                      Tampoco «Concluir Programación Anual», que pertenece al periodo de captura de
+                      bloques del año vigente.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
                   <Button
-                    variant="continental"
+                    variant={confirmarActivarAnio ? "outline" : "continental"}
                     disabled={cambiandoPreparacion}
                     onClick={handleActivarAnioPreparado}
-                    className="flex items-center gap-2"
-                    title={`El año vigente pasa a ser ${anioPreparacion} y su reprogramación queda activa`}
+                    className={`flex items-center gap-2 ${confirmarActivarAnio ? "border-amber-400 text-amber-700 hover:bg-amber-50" : ""}`}
+                    title={`El año vigente pasa a ser ${anioPreparacion} y su reprogramación queda activa; ${anioVigente} no se cierra`}
                   >
                     <CheckCircle className="w-4 h-4" />
-                    Activar {anioPreparacion} como año vigente
+                    {confirmarActivarAnio
+                      ? `Sí, activar ${anioPreparacion}`
+                      : `Activar ${anioPreparacion} como año vigente`}
                   </Button>
+                  {confirmarActivarAnio && (
+                    <Button
+                      variant="outline"
+                      disabled={cambiandoPreparacion}
+                      onClick={() => setConfirmarActivarAnio(false)}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     disabled={cambiandoPreparacion}
@@ -729,6 +811,7 @@ export const VacacionesGeneral = ({
                   >
                     Cancelar preparación
                   </Button>
+                  </div>
                 </div>
               </>
             )}

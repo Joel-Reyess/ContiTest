@@ -494,7 +494,13 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
         <div className="flex flex-col">
           <h3 className="font-medium text-gray-900 mb-2">Acciones de Programación</h3>
           <p className="text-sm text-gray-600">
-            Puedes cancelar la programación anual para reiniciar el proceso o concluirla para pasar al periodo de reprogramación.
+            Puedes cancelar la programación anual de {anioVigente} para reiniciar el proceso, o
+            concluirla para pasar al periodo de reprogramación de {anioVigente}.
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Ojo: estos botones son del año vigente ({anioVigente}). Preparar el año siguiente no
+            necesita ninguno de los dos — eso se hace desde la sección de preparación mientras la
+            reprogramación de {anioVigente} sigue corriendo.
           </p>
         </div>
 
