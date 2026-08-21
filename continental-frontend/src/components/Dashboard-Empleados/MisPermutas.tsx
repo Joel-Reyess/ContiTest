@@ -273,10 +273,11 @@ const MisPermutas = () => {
                                         <div className="flex items-center gap-2 mb-3">
                                             <Calendar className="w-4 h-4 text-gray-500" />
                                             <span className="text-sm font-medium text-gray-700">
-                                                {permuta.fechaDestino ? "Descansa el " : ""}{formatDate(permuta.fechaPermuta)}
-                                                {permuta.fechaDestino && (
-                                                    <span className="text-amber-700"> → se presenta el {formatDate(permuta.fechaDestino)}</span>
-                                                )}
+                                                {permuta.fechaDestino
+                                                    ? <>Descansa el {formatDate(permuta.fechaDestino)}
+                                                        <span className="text-amber-700"> → se presenta el {formatDate(permuta.fechaPermuta)}</span>
+                                                      </>
+                                                    : formatDate(permuta.fechaPermuta)}
                                             </span>
                                             {/* 🆕 Badge mejorado para identificar al solicitante */}
                                             {isDelegadoSindical && (

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -165,16 +165,15 @@ namespace tiempo_libre.Services
 
                 if (!permuta.EmpleadoDestinoId.HasValue && permuta.FechaDestino.HasValue)
                 {
-                    // Cambio individual con cambio de día (papeleta GT-67 con
-                    // "fecha del rol" y "fecha del cambio"): el día del rol es el
-                    // descanso que el operador conserva, y en la fecha del cambio
-                    // se presenta a laborar con el turno capturado
-                    // (TurnoEmpleadoOrigen). Ej.: descanso el 07/09 y se presenta
-                    // el 17/08 al turno elegido.
-                    permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = "D";
+                    // Cambio individual con cambio de día (papeleta GT-67 de dos
+                    // fechas): el operador SE PRESENTA a laborar en FechaPermuta
+                    // —con el turno capturado (TurnoEmpleadoOrigen)— y su descanso
+                    // se recorre a FechaDestino. Ej.: se presenta el 07/09 y
+                    // descansa el 12/09.
+                    permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] =
+                        permuta.TurnoEmpleadoOrigen;
                     permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId]
-                        [permuta.FechaDestino.Value.ToString("yyyy-MM-dd")] =
-                            permuta.TurnoEmpleadoOrigen;
+                        [permuta.FechaDestino.Value.ToString("yyyy-MM-dd")] = "D";
                 }
                 else if (permuta.EmpleadoDestinoId.HasValue && !string.IsNullOrEmpty(permuta.TurnoEmpleadoDestino))
                     permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = permuta.TurnoEmpleadoDestino;

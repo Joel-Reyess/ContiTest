@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text;
@@ -452,24 +452,24 @@ namespace tiempo_libre.Services
                 foreach (var permuta in permutasRaw)
                 {
                     // Cambio individual con cambio de día (papeleta GT-67 de dos
-                    // fechas): dos renglones — el día del rol es el descanso que
-                    // conserva y en la fecha del cambio se presenta al turno
-                    // capturado.
+                    // fechas): dos renglones — en FechaPermuta se presenta a
+                    // laborar con el turno capturado, y su descanso se recorre a
+                    // FechaDestino.
                     if (permuta.EsCambioIndividual && permuta.FechaDestino.HasValue)
                     {
-                        var fechaRolStr = permuta.Fecha.ToString("ddMMyyyy");
-                        var fechaCambioStr = permuta.FechaDestino.Value.ToString("ddMMyyyy");
+                        var fechaSePresentaStr = permuta.Fecha.ToString("ddMMyyyy");
+                        var fechaDescansoStr = permuta.FechaDestino.Value.ToString("ddMMyyyy");
 
                         sb.Append(permuta.NominaOrigen).Append(',')
-                          .Append(fechaRolStr).Append(',')
-                          .Append(fechaRolStr).Append(",,,,,")
-                          .Append("D")
+                          .Append(fechaSePresentaStr).Append(',')
+                          .Append(fechaSePresentaStr).Append(",,,,,")
+                          .Append(permuta.TurnoNuevoCapturado ?? "")
                           .Append('\n');
 
                         sb.Append(permuta.NominaOrigen).Append(',')
-                          .Append(fechaCambioStr).Append(',')
-                          .Append(fechaCambioStr).Append(",,,,,")
-                          .Append(permuta.TurnoNuevoCapturado ?? "")
+                          .Append(fechaDescansoStr).Append(',')
+                          .Append(fechaDescansoStr).Append(",,,,,")
+                          .Append("D")
                           .Append('\n');
 
                         continue;
