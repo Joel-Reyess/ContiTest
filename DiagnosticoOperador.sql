@@ -188,3 +188,27 @@ SELECT CASE
     THEN 'EXISTE y está Activo pero SIN GRUPO: no pertenece a ningún rol semanal. Ver bloques 5 y 6 (regla pendiente o grupo inexistente).'
   ELSE 'EXISTE, Activo y con grupo: NO desapareció, está en el grupo/área del bloque 7. Compararlo con el área donde lo estaban buscando.'
 END AS Veredicto;
+
+-- =============================================================================
+-- ANEXO: ¿qué turno quedó guardado en una permuta de dos fechas?
+-- Úsalo cuando el rol semanal muestre el descanso en la fecha destino pero la
+-- fecha en que se presenta salga sin nomenclatura: casi siempre es porque la
+-- papeleta se guardó con el turno vacío o con "D".
+-- =============================================================================
+PRINT '=== (14) Permutas de dos fechas del operador ===';
+SELECT p.Id, p.EstadoSolicitud,
+       p.FechaPermuta   AS SePresentaEl,
+       p.FechaDestino   AS DescansaEl,
+       p.TurnoEmpleadoOrigen  AS TurnoConQueSePresenta,
+       p.TurnoEmpleadoDestino AS TurnoCapturadoEnElOtroCampo,
+       CASE
+         WHEN p.TurnoEmpleadoOrigen IS NULL OR LTRIM(RTRIM(p.TurnoEmpleadoOrigen)) IN ('', 'D', '0')
+          AND (p.TurnoEmpleadoDestino IS NULL OR LTRIM(RTRIM(p.TurnoEmpleadoDestino)) IN ('', 'D', '0'))
+           THEN 'SIN TURNO: por eso la fecha en que se presenta no cambia de nomenclatura'
+         ELSE 'OK: hay turno con el que presentarse'
+       END AS Diagnostico,
+       p.Motivo, p.FechaSolicitud, p.FechaRespuesta
+FROM dbo.Permutas p
+WHERE p.EmpleadoOrigenId = (SELECT TOP 1 u.Id FROM dbo.Users u WHERE u.Nomina = @Nomina)
+  AND p.FechaDestino IS NOT NULL
+ORDER BY p.FechaSolicitud DESC;

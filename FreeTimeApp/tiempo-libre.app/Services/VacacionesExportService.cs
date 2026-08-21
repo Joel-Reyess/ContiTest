@@ -460,10 +460,23 @@ namespace tiempo_libre.Services
                         var fechaSePresentaStr = permuta.Fecha.ToString("ddMMyyyy");
                         var fechaDescansoStr = permuta.FechaDestino.Value.ToString("ddMMyyyy");
 
+                        // El turno con el que se presenta: el capturado en la
+                        // papeleta y, si vino vacío o como "D" (descanso), el
+                        // turno estándar que reporta el archivo de roles de SAP.
+                        // Sin esto el renglón salía sin turno y SAP no registraba
+                        // el día que sí viene a laborar.
+                        var turnoSePresenta = EsTurnoReal(permuta.TurnoNuevoCapturado)
+                            ? permuta.TurnoNuevoCapturado!
+                            : (permuta.NominaOrigen.HasValue
+                                && turnosPorNomina.TryGetValue(permuta.NominaOrigen.Value, out var turnoSap)
+                                && EsTurnoReal(turnoSap)
+                                    ? turnoSap
+                                    : "");
+
                         sb.Append(permuta.NominaOrigen).Append(',')
                           .Append(fechaSePresentaStr).Append(',')
                           .Append(fechaSePresentaStr).Append(",,,,,")
-                          .Append(permuta.TurnoNuevoCapturado ?? "")
+                          .Append(turnoSePresenta)
                           .Append('\n');
 
                         sb.Append(permuta.NominaOrigen).Append(',')
@@ -768,5 +781,17 @@ namespace tiempo_libre.Services
 
             return string.IsNullOrWhiteSpace(sanitized) ? "Hoja" : sanitized;
         }
+
+        /// <summary>
+        /// Un turno "real" es aquel al que alguien se presenta a laborar: 1, 2 o 3.
+        /// "D", "0" o vacío son descanso o dato faltante.
+        /// </summary>
+        private static bool EsTurnoReal(string? turno)
+        {
+            if (string.IsNullOrWhiteSpace(turno)) return false;
+            var t = turno.Trim().ToUpperInvariant();
+            return t != "D" && t != "0";
+        }
+
     }
 }

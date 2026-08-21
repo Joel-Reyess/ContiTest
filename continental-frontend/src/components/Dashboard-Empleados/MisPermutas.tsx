@@ -275,7 +275,16 @@ const MisPermutas = () => {
                                             <span className="text-sm font-medium text-gray-700">
                                                 {permuta.fechaDestino
                                                     ? <>Descansa el {formatDate(permuta.fechaDestino)}
-                                                        <span className="text-amber-700"> → se presenta el {formatDate(permuta.fechaPermuta)}</span>
+                                                        <span className="text-amber-700">
+                                                            {" "}→ se presenta el {formatDate(permuta.fechaPermuta)}
+                                                            {/* El turno capturado: si sale vacío o "D", la papeleta
+                                                                se guardó sin turno y el rol semanal no puede pintar
+                                                                el día que viene a laborar. */}
+                                                            {permuta.turnoEmpleadoOrigen &&
+                                                             permuta.turnoEmpleadoOrigen.trim().toUpperCase() !== "D"
+                                                                ? ` (turno ${permuta.turnoEmpleadoOrigen})`
+                                                                : " (sin turno capturado)"}
+                                                        </span>
                                                       </>
                                                     : formatDate(permuta.fechaPermuta)}
                                             </span>

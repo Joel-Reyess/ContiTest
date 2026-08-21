@@ -170,8 +170,21 @@ namespace tiempo_libre.Services
                     // —con el turno capturado (TurnoEmpleadoOrigen)— y su descanso
                     // se recorre a FechaDestino. Ej.: se presenta el 07/09 y
                     // descansa el 12/09.
-                    permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] =
-                        permuta.TurnoEmpleadoOrigen;
+                    // El turno con el que se presenta puede haber quedado en
+                    // cualquiera de las dos columnas según cómo se capturó la
+                    // papeleta (TurnoEmpleadoOrigen es el que llena el modal hoy;
+                    // TurnoEmpleadoDestino, el que se llenaba antes). Si ninguna
+                    // trae un turno real —viene vacía o dice "D"— pintarla
+                    // dejaría el día como descanso y parecería que la permuta no
+                    // se aplicó en la fecha en que sí viene a laborar.
+                    var turnoSePresenta = EsTurnoReal(permuta.TurnoEmpleadoOrigen)
+                        ? permuta.TurnoEmpleadoOrigen
+                        : (EsTurnoReal(permuta.TurnoEmpleadoDestino)
+                            ? permuta.TurnoEmpleadoDestino!
+                            : null);
+
+                    if (turnoSePresenta != null)
+                        permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = turnoSePresenta;
                     permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId]
                         [permuta.FechaDestino.Value.ToString("yyyy-MM-dd")] = "D";
                 }
@@ -292,6 +305,17 @@ namespace tiempo_libre.Services
                 return "V";
 
             return TurnosHelper.ObtenerTurnoParaFecha(rolGrupo, fecha);
+        }
+
+        /// <summary>
+        /// Un turno "real" es aquel al que alguien se presenta a laborar: 1, 2 o 3.
+        /// "D", "0" o vacío son descanso o dato faltante.
+        /// </summary>
+        private static bool EsTurnoReal(string? turno)
+        {
+            if (string.IsNullOrWhiteSpace(turno)) return false;
+            var t = turno.Trim().ToUpperInvariant();
+            return t != "D" && t != "0";
         }
 
         private static string MapearClaveVisualizacion(string clAbPre, string? claseAbsentismo)
