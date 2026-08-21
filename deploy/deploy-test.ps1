@@ -1,10 +1,17 @@
 <#
 .SYNOPSIS
-    Despliega la rama de pruebas al entorno de pruebas de IIS.
+    Despliega la rama de pruebas al entorno de pruebas de IIS. Para correrse
+    EN EL SERVIDOR (compila ahi mismo).
 
 .DESCRIPTION
     Publica el backend en el puerto 6050 y el frontend en el 6173, contra la
     base FreeTime_Test. NO toca producción (5173 / 5050 / FreeTime).
+
+    OJO: este script compila en la maquina donde se ejecuta, asi que requiere
+    el SDK de .NET y Node en el servidor. Si compilas en TU equipo y envias los
+    archivos (el flujo habitual), usa deploy\compilar-para-enviar.ps1 y copia
+    las carpetas resultantes; aqui solo aplican los pasos de Stop/Start-Website
+    y el health check.
 
     Convención de puertos del servidor: 5xxx = producción, 6xxx = pruebas.
     Ocupados: 5050/5173 vacaciones, 5110/5174 mantenimiento, 5200/5175 fugas.

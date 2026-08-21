@@ -231,7 +231,7 @@ robocopy .\build C:\inetpub\vacaciones-test-frontend /MIR /XF web.config
 
 ---
 
-## Checklist anti-cruce (lo que faltó la vez que se cruzaron)
+## Checklist anti-cruce (compilando en tu máquina)
 
 El cruce de agosto 2026 fue este: el "sitio de pruebas" se compiló con
 `npm run build` (modo producción) o en una copia del repo sin `.env.test`, así
@@ -239,61 +239,92 @@ que el bundle tomó el fallback `http://localhost:5050` de `src/config/env.ts`
 — que es la API **productiva** — y además no traía el distintivo TEST. Al
 activar la programación anual "en pruebas" se activó en producción.
 
-Desde ahora `npm run build:test` **aborta solo** si el bundle trae 5050 o no
-trae 6050 (`scripts/verificar-build.mjs`), y `npm run build` hace lo inverso.
-Aun así, estos son los comandos, en orden, y lo que tiene que salir en cada uno:
+El flujo real es: **se compila en la máquina del desarrollador y se envían los
+archivos al servidor**; en slas052a no se compila nada. Por eso los comandos
+van en dos bloques: lo que corres en tu equipo y lo que corres en el servidor.
+
+### En TU máquina
 
 ```powershell
-# 0. Estar en la rama de pruebas y al día
 cd C:\ruta\ContiTest
 git checkout fix/punchlist-batch-1
 git pull
-git log --oneline -1            # el commit debe ser el que acabas de subir
+git log --oneline -1                  # confirma el commit que vas a mandar
 
-# 1. Backend de pruebas (puerto 6050, base FreeTime_Test)
-Import-Module WebAdministration
-Stop-Website -Name "vacaciones-test-backend"
-dotnet publish .\FreeTimeApp\tiempo-libre.app -c Release -o C:\inetpub\vacaciones-test-backend
-Start-Website -Name "vacaciones-test-backend"
-
-#    Confirmar que es el de pruebas (environment = Test). Si dice Production, PARA:
-Invoke-RestMethod http://localhost:6050/api/Health/status | Select-Object environment, status
-
-#    Si no dice Test, la variable no está puesta; ponla y reinicia el sitio:
-Add-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/vacaciones-test-backend" `
-  -filter "system.webServer/aspNetCore/environmentVariables" -name "." `
-  -value @{ name='ASPNETCORE_ENVIRONMENT'; value='Test' }
-Restart-WebAppPool -Name "vacaciones-test-backend"
-
-# 2. Frontend de pruebas (puerto 6173, apunta a 6050)
-cd .\continental-frontend
-Test-Path .env.test              # debe ser True; si es False el build cae al fallback 5050
-npm ci
-npm run build:test               # termina con "✔ Build TEST correcto: API en puerto 6050"
-robocopy .\build C:\inetpub\vacaciones-test-frontend /MIR /XF web.config
-
-# 3. En el navegador: http://slas052a:6173
-#    - distintivo rojo TEST junto a "Vacaciones"
-#    - F12 → Network: las llamadas van a slas052a:6050 (NUNCA 5050 ni localhost:5050)
+.\deploy\compilar-para-enviar.ps1                 # pruebas
+# .\deploy\compilar-para-enviar.ps1 -Ambiente prod  # producción (desde main)
+# agrega -Zip si prefieres mandar dos .zip
 ```
 
-Y para **producción** es el espejo, nunca el mismo build:
+Eso deja, listo para enviar:
+
+```
+envio\test\backend     ->  C:\inetpub\vacaciones-test-backend
+envio\test\frontend    ->  C:\inetpub\vacaciones-test-frontend
+```
+
+El script compila el front con el `.env` que toca, le pone el `web.config` del
+SPA y **verifica el paquete**: si el bundle trae el puerto del otro ambiente
+aborta y no te deja un paquete cruzado. Lo mismo hacen ya `npm run build:test`
+y `npm run build` por su cuenta.
+
+> El **backend publicado es el mismo binario** para pruebas y producción. Lo
+> que decide a qué base se conecta es `ASPNETCORE_ENVIRONMENT` en el IIS del
+> servidor, no la carpeta que envías: no hay que editar ningún `appsettings`
+> antes de mandarlo.
+
+### En el SERVIDOR (RDP o PowerShell remoto)
+
+IIS mantiene los DLL bloqueados, así que el sitio del backend se detiene antes
+de copiar:
 
 ```powershell
-git checkout main
-git pull
-dotnet publish .\FreeTimeApp\tiempo-libre.app -c Release -o <carpeta del backend productivo>
-cd .\continental-frontend
-npm run build                    # termina con "✔ Build PROD correcto: API en puerto 5050"
-robocopy .\build <carpeta del frontend productivo> /MIR /XF web.config
+Import-Module WebAdministration
+Stop-Website -Name "vacaciones-test-backend"
+
+#  ... aquí copias las dos carpetas que trajiste ...
+#      envio\test\backend   -> C:\inetpub\vacaciones-test-backend
+#      envio\test\frontend  -> C:\inetpub\vacaciones-test-frontend
+#      (el frontend ya trae su web.config; si copias con /MIR usa /XF web.config)
+
+Start-Website -Name "vacaciones-test-backend"
+
+# La comprobación que NO hay que saltarse:
+Invoke-RestMethod http://localhost:6050/api/Health/status | Select-Object environment, status
+#   environment debe decir Test. Si dice Production, ese backend está
+#   escribiendo en FreeTime (PRODUCCIÓN): ponle la variable y reinicia el pool.
 ```
 
-> Regla de oro: **una carpeta `build` por ambiente, nunca copiar la misma a
-> los dos sitios.** Si tienes duda de qué hay desplegado, corre
-> `node scripts/verificar-build.mjs test` (o `prod`) sobre la carpeta del
-> sitio: `Copy-Item C:\inetpub\vacaciones-test-frontend\assets .\build\assets -Recurse -Force`
-> y luego el script, o simplemente busca el puerto:
-> `Select-String -Path C:\inetpub\vacaciones-test-frontend\assets\*.js -Pattern "(slas052a|localhost):\d+" | % { $_.Matches.Value } | sort -Unique`
+Si el equipo tiene visibilidad de red al servidor, el envío se puede hacer en
+un solo paso desde tu máquina con una ruta UNC (requiere permisos de admin en
+el recurso):
+
+```powershell
+robocopy .\envio\test\backend  \\slas052a\c$\inetpub\vacaciones-test-backend  /MIR
+robocopy .\envio\test\frontend \\slas052a\c$\inetpub\vacaciones-test-frontend /MIR /XF web.config
+```
+
+Aun así el `Stop-Website` / `Start-Website` y el health check se ejecutan **en
+el servidor** (o con `Invoke-Command -ComputerName slas052a` si tienes WinRM).
+
+### Para saber qué está desplegado ahora mismo
+
+Sobre la carpeta del sitio, sin recompilar nada:
+
+```powershell
+node continental-frontend\scripts\verificar-build.mjs test \\slas052a\c$\inetpub\vacaciones-test-frontend
+node continental-frontend\scripts\verificar-build.mjs prod \\slas052a\c$\inetpub\vacaciones-frontend
+```
+
+O a ojo, buscando el puerto en el bundle:
+
+```powershell
+Select-String -Path C:\inetpub\vacaciones-test-frontend\assets\*.js -Pattern "(slas052a|localhost):\d+" |
+    ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
+```
+
+> Regla de oro: **un paquete por ambiente, nunca copiar el mismo a los dos
+> sitios.** Por eso `envio\test\` y `envio\prod\` son carpetas separadas.
 
 ---
 
