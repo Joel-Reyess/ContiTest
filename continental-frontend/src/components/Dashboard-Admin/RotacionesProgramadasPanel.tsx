@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-    CalendarClock, Loader2, PlayCircle, X, RotateCcw, Pencil,
+    CalendarClock, Loader2, PlayCircle, X, RotateCcw, Pencil, Repeat,
     CheckCircle2, Circle, AlertTriangle, Eye, EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
 import type { ReglaTurno, RotacionProgramada, EstadoRotacionProgramada } from "@/interfaces/Api.interface";
 import { AgendarRotacionModal } from "./AgendarRotacionModal";
-import { SubGruposDerivados } from "./ReglasTurnos";
+import { SubGruposDerivados, rotarPatronLocal } from "./ReglasTurnos";
 
 /**
  * Fechas de arranque por regla — misma lectura que la pestaña "Reglas de
@@ -21,9 +21,13 @@ import { SubGruposDerivados } from "./ReglasTurnos";
  * (el caso típico: todas arrancan el primer lunes de enero y otra vez en
  * Semana Santa).
  *
- * El arranque usa el patrón VIGENTE de la regla tal como se ve en la tarjeta.
- * Si para un arranque concreto el patrón debe ser distinto, "Editar patrón…"
- * abre el modo avanzado (el modal de siempre) ya posicionado en esa regla.
+ * El arranque usa el patrón VIGENTE de la regla y se ajusta con "Recorrer 7",
+ * igual que en Reglas de turnos: cada sub-grupo pasa a ver el horario que antes
+ * tenía el sub-grupo siguiente del ciclo. La diferencia es que aquí el
+ * recorrido NO se aplica de inmediato a la regla: queda guardado en el arranque
+ * y entra en vigor el día agendado. Capturar celda por celda quedó sólo en el
+ * "Modo avanzado" (el modal de siempre), para las reglas que aún no tienen
+ * patrón.
  *
  * Antes esto era sólo un modal: una regla a la vez, mini-calendario y patrón
  * editable, y sin ver qué reglas ya tenían arranque y cuáles no. Con 30+
@@ -67,6 +71,9 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
     const [fechaLote, setFechaLote] = useState<string>("");
     const [notasLote, setNotasLote] = useState<string>("");
     const [fechaPorRegla, setFechaPorRegla] = useState<Record<string, string>>({});
+    // Días de recorrido que se aplicarán al patrón de cada regla EN el arranque
+    // (múltiplos de 7, como en Reglas de turnos). 0 = arranca con el vigente.
+    const [recorridoPorRegla, setRecorridoPorRegla] = useState<Record<string, number>>({});
     const [agendando, setAgendando] = useState<string | null>(null); // codigo o "__lote__"
     const [cancelando, setCancelando] = useState<number | null>(null);
     const [aplicando, setAplicando] = useState(false);
@@ -137,6 +144,30 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
 
     const fechaValida = (iso: string) => /^\d{4}-\d{2}-\d{2}$/.test(iso) && iso >= minIso;
 
+    /** Patrón con el que arrancará la regla: el vigente, recorrido N días. */
+    const patronDeArranque = (regla: ReglaTurno): string[] => {
+        const dias = recorridoPorRegla[regla.codigo] ?? 0;
+        if (!regla.patron || regla.patron.length === 0) return [];
+        return dias === 0 ? regla.patron : rotarPatronLocal(regla.patron, dias);
+    };
+
+    const cambiarRecorrido = (codigo: string, delta: number) => {
+        setRecorridoPorRegla(prev => {
+            const regla = reglas.find(r => r.codigo === codigo);
+            const n = regla?.patron.length ?? 0;
+            if (n === 0) return prev;
+            // El recorrido es cíclico: recorrer el largo completo del patrón
+            // deja todo igual, así que se normaliza a [0, n).
+            const bruto = (prev[codigo] ?? 0) + delta;
+            const norm = ((bruto % n) + n) % n;
+            return { ...prev, [codigo]: norm };
+        });
+    };
+
+    /** La fecha de arriba manda sobre las reglas marcadas; la tarjeta puede sobreescribirla. */
+    const fechaDeTarjeta = (codigo: string): string =>
+        fechaPorRegla[codigo] ?? (seleccionadas.has(codigo) ? fechaLote : "");
+
     /**
      * Agenda el arranque de una o varias reglas en la misma fecha, con el
      * patrón vigente de cada una. Una petición por regla (el endpoint es por
@@ -160,12 +191,16 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
                     sinPatron.push(codigo);
                     continue;
                 }
+                const patron = patronDeArranque(regla);
+                const recorrido = recorridoPorRegla[codigo] ?? 0;
+                const notaFinal = [notas.trim(), recorrido !== 0 ? `recorrido ${recorrido > 0 ? "+" : ""}${recorrido} días` : ""]
+                    .filter(Boolean).join(" · ");
                 try {
                     const resp = await reglasTurnoService.agendarRotaciones({
                         codigoRegla: codigo,
                         fechas: [fechaIso],
-                        patronBaseline: regla.patron.map(c => (c || "").trim().toUpperCase()),
-                        notas: notas.trim() || undefined,
+                        patronBaseline: patron.map(c => (c || "").trim().toUpperCase()),
+                        notas: notaFinal || undefined,
                     });
                     creadas += resp.creadas?.length ?? 0;
                     if (resp.omitidas?.length) omitidas.push(...resp.omitidas);
@@ -293,7 +328,9 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
             <div className="p-4 space-y-4">
                 <p className="text-xs text-continental-gray-1">
                     En cada regla elige la fecha en la que arranca su patrón para {anio} (enero, Semana Santa, etc.)
-                    y pulsa <strong>Agendar</strong>; o marca varias reglas y agéndales la misma fecha abajo.
+                    y pulsa <strong>Agendar</strong>; o marca varias reglas, pon la fecha arriba y agéndalas todas juntas.
+                    Si el año arranca con el rol recorrido, usa <strong>Recorrer 7</strong> en la tarjeta: es el mismo
+                    movimiento de <em>Reglas de turnos</em>, sólo que entra en vigor el día del arranque.
                     Al llegar la fecha el patrón que ves en la tarjeta queda fijado como rol de esa regla.
                     No mueve empleados de grupo ni cambia SAP.
                 </p>
@@ -332,7 +369,7 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
                         </label>
                     </div>
                     <div>
-                        <Label htmlFor="fecha-lote" className="text-xs">Fecha de arranque para las seleccionadas</Label>
+                        <Label htmlFor="fecha-lote" className="text-xs">Fecha de arranque para TODAS las seleccionadas</Label>
                         <input
                             id="fecha-lote"
                             type="date"
@@ -360,8 +397,13 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
                         title={totalSeleccionadas === 0 ? "Marca al menos una regla" : !fechaValida(fechaLote) ? "Elige una fecha de hoy en adelante" : ""}
                     >
                         {agendando === "__lote__" ? <Loader2 className="size-4 animate-spin mr-1" /> : <CalendarClock className="size-4 mr-1" />}
-                        Agendar en {totalSeleccionadas} seleccionada{totalSeleccionadas === 1 ? "" : "s"}
+                        Agendar {totalSeleccionadas} seleccionada{totalSeleccionadas === 1 ? "" : "s"}
+                        {fechaValida(fechaLote) ? ` el ${formatDate(fechaLote)}` : ""}
                     </Button>
+                    <p className="w-full text-[11px] text-continental-gray-1 -mt-1">
+                        Todas las reglas marcadas arrancan en esta fecha; cada una con su propio patrón
+                        (el vigente, más el recorrido que le hayas puesto en su tarjeta).
+                    </p>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
@@ -414,8 +456,10 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
                             const arranques = arranquesPorRegla.get(regla.codigo) ?? [];
                             const tiene = arranques.length > 0;
                             const sinPatron = !regla.patron || regla.patron.length === 0;
-                            const fechaCard = fechaPorRegla[regla.codigo] ?? "";
+                            const fechaCard = fechaDeTarjeta(regla.codigo);
                             const ocupado = agendando === regla.codigo;
+                            const recorrido = recorridoPorRegla[regla.codigo] ?? 0;
+                            const patronArranque = patronDeArranque(regla);
                             return (
                                 <Card key={regla.codigo} className={`overflow-hidden ${tiene ? "border-green-200" : ""}`}>
                                     <CardHeader className="pb-3">
@@ -440,14 +484,16 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
                                                     </Badge>
                                                 )}
                                             </div>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => setModalAvanzado({ codigo: regla.codigo })}
-                                                title="Agendar con un patrón distinto al vigente (modo avanzado)"
-                                            >
-                                                <Pencil className="size-3.5 mr-1" /> Editar patrón…
-                                            </Button>
+                                            {sinPatron && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => setModalAvanzado({ codigo: regla.codigo })}
+                                                    title="Esta regla no tiene patrón: captúralo aquí (modo avanzado)"
+                                                >
+                                                    <Pencil className="size-3.5 mr-1" /> Capturar patrón…
+                                                </Button>
+                                            )}
                                         </div>
                                         <div className="text-[11px] text-continental-gray-1 flex flex-wrap gap-x-3 gap-y-0.5">
                                             <span>
@@ -513,28 +559,77 @@ export function RotacionesProgramadasPanel({ anioInicial }: Props) {
                                                     onChange={(e) => setFechaPorRegla(prev => ({ ...prev, [regla.codigo]: e.target.value }))}
                                                     className="block border rounded px-2 py-1.5 text-sm"
                                                 />
+                                                {!fechaPorRegla[regla.codigo] && seleccionadas.has(regla.codigo) && fechaValida(fechaLote) && (
+                                                    <span className="text-[10px] text-continental-gray-1">viene de la fecha de arriba</span>
+                                                )}
                                             </div>
                                             <Button
                                                 size="sm"
                                                 onClick={() => agendar([regla.codigo], fechaCard, "", regla.codigo)}
                                                 disabled={sinPatron || !fechaValida(fechaCard) || agendando !== null}
                                                 title={sinPatron
-                                                    ? "Esta regla no tiene patrón; captúralo en Reglas de turnos o usa Editar patrón…"
-                                                    : !fechaValida(fechaCard) ? "Elige una fecha de hoy en adelante" : "Agendar con el patrón vigente"}
+                                                    ? "Esta regla no tiene patrón; captúralo en Reglas de turnos o con Capturar patrón…"
+                                                    : !fechaValida(fechaCard) ? "Elige una fecha de hoy en adelante" : "Agendar con el patrón de abajo"}
                                             >
                                                 {ocupado ? <Loader2 className="size-4 animate-spin mr-1" /> : <CalendarClock className="size-4 mr-1" />}
                                                 Agendar
                                             </Button>
                                         </div>
 
+                                        {/* Recorrido del patrón — misma semántica que Reglas de turnos,
+                                            pero aplicado al arranque, no a la regla de hoy. */}
+                                        {!sinPatron && (
+                                            <div className="flex items-center gap-2 flex-wrap text-xs">
+                                                <span className="text-continental-gray-1">Patrón del arranque:</span>
+                                                {recorrido === 0 ? (
+                                                    <Badge variant="outline" className="text-[10px]">vigente</Badge>
+                                                ) : (
+                                                    <Badge className="bg-continental-yellow text-black text-[10px]">
+                                                        recorrido +{recorrido} días
+                                                    </Badge>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => cambiarRecorrido(regla.codigo, 7)}
+                                                    disabled={regla.patron.length <= 7}
+                                                    title={regla.patron.length <= 7
+                                                        ? "La regla tiene una sola semana: recorrer 7 días la deja igual"
+                                                        : "Cada sub-grupo pasa a ver el horario que ahora tiene el siguiente del ciclo"}
+                                                >
+                                                    <Repeat className="size-3 mr-1" /> Recorrer 7
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => cambiarRecorrido(regla.codigo, -7)}
+                                                    disabled={regla.patron.length <= 7 || recorrido === 0}
+                                                    title="Deshacer un recorrido"
+                                                >
+                                                    − 7
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setRecorridoPorRegla(prev => ({ ...prev, [regla.codigo]: 0 }))}
+                                                    disabled={recorrido === 0}
+                                                    title="Volver al patrón vigente"
+                                                >
+                                                    <RotateCcw className="size-3 mr-1" /> Vigente
+                                                </Button>
+                                            </div>
+                                        )}
+
                                         {mostrarPatrones && (
                                             sinPatron ? (
                                                 <p className="text-xs text-amber-700">
-                                                    Sin patrón capturado. Usa <strong>Editar patrón…</strong> para capturarlo en el arranque,
+                                                    Sin patrón capturado. Usa <strong>Capturar patrón…</strong> aquí arriba,
                                                     o captúralo en <em>Reglas de turnos</em>.
                                                 </p>
                                             ) : (
-                                                <SubGruposDerivados regla={regla} />
+                                                <SubGruposDerivados
+                                                    regla={recorrido === 0 ? regla : { ...regla, patron: patronArranque }}
+                                                />
                                             )
                                         )}
                                     </CardContent>

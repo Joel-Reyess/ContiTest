@@ -65,7 +65,7 @@ export const crearRolLocal = (patron: string[], gpoRef: number): string[] => {
 
 // Espejo del helper RotarPatron del backend: dias positivo = la semana se adelanta,
 // cada sub-grupo recibe el slice que antes tenía el sub-grupo SIGUIENTE del ciclo.
-const rotarPatronLocal = (patron: string[], dias: number): string[] => {
+export const rotarPatronLocal = (patron: string[], dias: number): string[] => {
     const n = patron.length;
     if (n === 0) return [];
     const shift = ((dias % n) + n) % n;

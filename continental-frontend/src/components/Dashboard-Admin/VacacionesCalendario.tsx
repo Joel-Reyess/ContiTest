@@ -395,6 +395,16 @@ export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({
     });
   };
 
+  // Salto de año: cargar los inhábiles de 2027 o 2028 a golpe de "›" (12 clics
+  // por año) era la razón por la que "no se podían crear los del siguiente año".
+  const navigateYear = (direction: 'prev' | 'next') => {
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setFullYear(prev.getFullYear() + (direction === 'prev' ? -1 : 1));
+      return newDate;
+    });
+  };
+
   // Format date range for display - used in the holiday list
   const formatDateRange = (startDate: string, endDate: string): string => {
     const start = parseLocalDate(startDate);
@@ -598,18 +608,34 @@ export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({
               <h3 className="text-lg font-medium text-continental-black">
                 {getMonthName(currentDate)} {currentDate.getFullYear()}
               </h3>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => navigateYear('prev')}
+                  title="Año anterior"
+                  className="px-2 py-1 text-sm text-continental-gray-1 hover:bg-gray-100 rounded"
+                >
+                  « {currentDate.getFullYear() - 1}
+                </button>
                 <button
                   onClick={() => navigateMonth('prev')}
+                  title="Mes anterior"
                   className="p-1 hover:bg-gray-100 rounded"
                 >
                   <span className="text-continental-gray-1 text-4xl cursor-pointer">‹</span>
                 </button>
                 <button
                   onClick={() => navigateMonth('next')}
+                  title="Mes siguiente"
                   className="p-1 hover:bg-gray-100 rounded"
                 >
                   <span className="text-continental-gray-1 text-4xl cursor-pointer">›</span>
+                </button>
+                <button
+                  onClick={() => navigateYear('next')}
+                  title="Año siguiente"
+                  className="px-2 py-1 text-sm text-continental-gray-1 hover:bg-gray-100 rounded"
+                >
+                  {currentDate.getFullYear() + 1} »
                 </button>
               </div>
             </div>
