@@ -254,7 +254,13 @@ namespace tiempo_libre.Services
 
                 if (semanaEncontrada == null)
                 {
-                    resultado.MotivoFallo = "No se encontró una semana disponible que cumpla con los criterios";
+                    // Con el grupo y los días pedidos, la advertencia se puede
+                    // triar sin abrir la base: casi siempre es un grupo chico
+                    // (menos del mínimo para aplicar porcentaje, así que admite
+                    // una sola ausencia por día) o uno ya saturado.
+                    resultado.MotivoFallo =
+                        $"No se encontró una semana con {diasAAsignar} día(s) disponibles en el grupo " +
+                        $"{resultado.NombreGrupo} (todas las semanas del año quedaron llenas o excluidas)";
                     return resultado;
                 }
 
