@@ -282,7 +282,10 @@ export const Vacaciones = () => {
         )}
 
         {activeTab === 'calendario' && (
-          <VacacionesCalendario onNotification={showNotification} />
+          <VacacionesCalendario
+            onNotification={showNotification}
+            anioArranques={config?.anioProgramacionAnual ?? config?.anioVigente ?? null}
+          />
         )}
       </div>
 

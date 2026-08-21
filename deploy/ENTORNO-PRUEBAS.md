@@ -112,7 +112,24 @@ que no hay que saltarse.
 Queda escrita en `applicationHost.config`, no en la carpeta publicada, así que
 sobrevive a cada republicación.
 
-Verifica: `http://slas052a:6050/swagger` debe abrir.
+Verifica con el health check, **no con swagger**: `Program.cs` monta Swagger solo
+cuando `IsDevelopment()`, así que en pruebas esa ruta da 404 — y ese 404 no es
+falla, es la app contestando.
+
+```powershell
+Invoke-RestMethod http://localhost:6050/api/Health/status | ConvertTo-Json -Depth 5
+```
+
+Es `[AllowAnonymous]` y responde las dos cosas que importan:
+
+- `environment` debe decir **`Test`**. Si dice `Production`, la variable de arriba
+  no quedó y el backend está pegándole a `FreeTime`.
+- `services.database.connected` debe ser **`true`**. Si es `false`, trae el error
+  de conexión en `error`.
+
+Ojo: IIS no arranca el proceso hasta la primera petición HTTP. `Start-Website`
+solo pone a IIS a escuchar, así que hasta que no llames al endpoint no existe ni
+la carpeta `Logs`.
 
 > Requisito del servidor: **ASP.NET Core Hosting Bundle** para .NET 9. Compruébalo
 > con `dotnet --list-runtimes | Select-String "AspNetCore"`. Si ya corre el
@@ -135,7 +152,10 @@ npm ci
 npm run build:test
 ```
 
-Eso deja el sitio compilado en `continental-frontend\build`.
+Eso deja el sitio compilado en `continental-frontend\build`. El script termina
+con `✔ Build TEST correcto: API en puerto 6050`; si el bundle trae 5050 (o no
+trae 6050) **aborta** y no deja build, para que no se pueda subir un front
+cruzado por accidente.
 
 Antes de subirlo, confirma que apunta al backend correcto:
 
@@ -208,6 +228,72 @@ robocopy .\build C:\inetpub\vacaciones-test-frontend /MIR /XF web.config
 ```
 
 > `/XF web.config` evita que el `/MIR` borre el web.config del SPA.
+
+---
+
+## Checklist anti-cruce (lo que faltó la vez que se cruzaron)
+
+El cruce de agosto 2026 fue este: el "sitio de pruebas" se compiló con
+`npm run build` (modo producción) o en una copia del repo sin `.env.test`, así
+que el bundle tomó el fallback `http://localhost:5050` de `src/config/env.ts`
+— que es la API **productiva** — y además no traía el distintivo TEST. Al
+activar la programación anual "en pruebas" se activó en producción.
+
+Desde ahora `npm run build:test` **aborta solo** si el bundle trae 5050 o no
+trae 6050 (`scripts/verificar-build.mjs`), y `npm run build` hace lo inverso.
+Aun así, estos son los comandos, en orden, y lo que tiene que salir en cada uno:
+
+```powershell
+# 0. Estar en la rama de pruebas y al día
+cd C:\ruta\ContiTest
+git checkout fix/punchlist-batch-1
+git pull
+git log --oneline -1            # el commit debe ser el que acabas de subir
+
+# 1. Backend de pruebas (puerto 6050, base FreeTime_Test)
+Import-Module WebAdministration
+Stop-Website -Name "vacaciones-test-backend"
+dotnet publish .\FreeTimeApp\tiempo-libre.app -c Release -o C:\inetpub\vacaciones-test-backend
+Start-Website -Name "vacaciones-test-backend"
+
+#    Confirmar que es el de pruebas (environment = Test). Si dice Production, PARA:
+Invoke-RestMethod http://localhost:6050/api/Health/status | Select-Object environment, status
+
+#    Si no dice Test, la variable no está puesta; ponla y reinicia el sitio:
+Add-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/vacaciones-test-backend" `
+  -filter "system.webServer/aspNetCore/environmentVariables" -name "." `
+  -value @{ name='ASPNETCORE_ENVIRONMENT'; value='Test' }
+Restart-WebAppPool -Name "vacaciones-test-backend"
+
+# 2. Frontend de pruebas (puerto 6173, apunta a 6050)
+cd .\continental-frontend
+Test-Path .env.test              # debe ser True; si es False el build cae al fallback 5050
+npm ci
+npm run build:test               # termina con "✔ Build TEST correcto: API en puerto 6050"
+robocopy .\build C:\inetpub\vacaciones-test-frontend /MIR /XF web.config
+
+# 3. En el navegador: http://slas052a:6173
+#    - distintivo rojo TEST junto a "Vacaciones"
+#    - F12 → Network: las llamadas van a slas052a:6050 (NUNCA 5050 ni localhost:5050)
+```
+
+Y para **producción** es el espejo, nunca el mismo build:
+
+```powershell
+git checkout main
+git pull
+dotnet publish .\FreeTimeApp\tiempo-libre.app -c Release -o <carpeta del backend productivo>
+cd .\continental-frontend
+npm run build                    # termina con "✔ Build PROD correcto: API en puerto 5050"
+robocopy .\build <carpeta del frontend productivo> /MIR /XF web.config
+```
+
+> Regla de oro: **una carpeta `build` por ambiente, nunca copiar la misma a
+> los dos sitios.** Si tienes duda de qué hay desplegado, corre
+> `node scripts/verificar-build.mjs test` (o `prod`) sobre la carpeta del
+> sitio: `Copy-Item C:\inetpub\vacaciones-test-frontend\assets .\build\assets -Recurse -Force`
+> y luego el script, o simplemente busca el puerto:
+> `Select-String -Path C:\inetpub\vacaciones-test-frontend\assets\*.js -Pattern "(slas052a|localhost):\d+" | % { $_.Matches.Value } | sort -Unique`
 
 ---
 

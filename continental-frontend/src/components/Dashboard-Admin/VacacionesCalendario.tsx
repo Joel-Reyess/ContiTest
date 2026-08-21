@@ -29,10 +29,14 @@ export type NotificationType = 'success' | 'info' | 'warning' | 'error';
 
 export interface VacacionesCalendarioProps {
   onNotification?: (type: NotificationType, title: string, message?: string, duration?: number) => void;
+  /** Año con el que abre la sección "Fechas de arranque por regla" (el que se
+   *  está preparando en la programación anual, o el vigente). */
+  anioArranques?: number | null;
 }
 
 export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({ 
-  onNotification = () => {} 
+  onNotification = () => {},
+  anioArranques = null,
 }) => {
   const [motivoDescanso, setMotivoDescanso] = useState<string>('');
   const [fechaInicioInhabil, setFechaInicioInhabil] = useState<string>('');
@@ -273,25 +277,54 @@ export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Create each day as a separate holiday
-      const requests = dates.map(date => {
+      // Un registro por día (así cada día se puede borrar por separado), pero
+      // en SECUENCIA y tolerando los que ya existen: antes iban todos en
+      // paralelo con Promise.all y bastaba un 409 (p. ej. el 25-dic ya cargado
+      // dentro de un periodo 24-dic → 2-ene) para que el lote entero "fallara"
+      // con un mensaje genérico, aunque los demás días sí se hubieran creado.
+      const creadas: string[] = [];
+      const omitidas: string[] = [];
+      const fallidas: { fecha: string; motivo: string }[] = [];
+      for (const date of dates) {
         const request: CreateDiaInhabilRequest = {
           fechaInicial: date,
           fechaFinal: date,
-          detalles: motivoDescanso,
+          detalles: motivoDescanso.trim(),
           tipoActividadDelDia: parseInt(tipoDescanso)
         };
-        return diasInhabilesService.createDiasInhabiles(request);
-      });
+        try {
+          await diasInhabilesService.createDiasInhabiles(request);
+          creadas.push(date);
+        } catch (e: any) {
+          if (e?.status === 409) {
+            omitidas.push(date);
+          } else {
+            fallidas.push({ fecha: date, motivo: e?.message ?? 'error desconocido' });
+          }
+        }
+      }
 
-      await Promise.all(requests);
+      const fmt = (d: string) => parseLocalDate(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+      const partes: string[] = [];
+      if (creadas.length) partes.push(`${creadas.length} día(s) creado(s)`);
+      if (omitidas.length) partes.push(`${omitidas.length} ya existía(n) con ese motivo y se omitieron (${omitidas.map(fmt).join(', ')})`);
+      if (fallidas.length) partes.push(`${fallidas.length} fallaron: ${fallidas.map(f => `${fmt(f.fecha)} — ${f.motivo}`).join('; ')}`);
 
-      onNotification('success', 'Éxito', 'Días inhábiles creados correctamente');
-      refetchDiasInhabiles();
-      handleCancel();
-    } catch (error) {
+      if (creadas.length > 0 && fallidas.length === 0) {
+        onNotification('success', 'Días inhábiles guardados', partes.join('. '));
+        refetchDiasInhabiles();
+        handleCancel();
+      } else if (creadas.length > 0) {
+        onNotification('warning', 'Guardado parcial', partes.join('. '));
+        refetchDiasInhabiles();
+      } else if (omitidas.length > 0 && fallidas.length === 0) {
+        onNotification('info', 'Sin cambios', `Todos esos días ya estaban cargados con el motivo "${motivoDescanso.trim()}".`);
+      } else {
+        onNotification('error', 'No se pudieron crear los días inhábiles', partes.join('. '));
+      }
+    } catch (error: any) {
       console.error('Error creating dias inhabiles:', error);
-      onNotification('error', 'Error', 'No se pudieron crear los días inhábiles');
+      onNotification('error', 'No se pudieron crear los días inhábiles', error?.message ?? 'Error desconocido');
     } finally {
       setIsCreatingDiasInhabiles(false);
     }
@@ -306,16 +339,22 @@ export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({
       return;
     }
     
-    try {
-      await Promise.all(period.ids.map(id => 
-        diasInhabilesService.deleteDiaInhabil(id)
-      ));
+    // Tolerante: el backend borra en grupo (mismo motivo + mismo rango), así
+    // que al borrar un periodo cargado como rango el primer DELETE ya se lleva
+    // a los demás y los siguientes contestan 404. Eso no es un error.
+    const resultados = await Promise.allSettled(
+      period.ids.map(id => diasInhabilesService.deleteDiaInhabil(id))
+    );
+    const fallos = resultados.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected' && (r.reason?.status ?? 0) !== 404
+    );
+    if (fallos.length === 0) {
       toast.success(`Se eliminaron ${period.ids.length} día(s) del período`);
-      refetchDiasInhabiles();
-    } catch (error) {
-      console.error('Error deleting period:', error);
-      toast.error('Error al eliminar el período');
+    } else {
+      console.error('Error deleting period:', fallos.map(f => f.reason));
+      toast.error(`No se pudieron eliminar ${fallos.length} día(s): ${fallos[0].reason?.message ?? 'error desconocido'}`);
     }
+    refetchDiasInhabiles();
   };
 
   // Calendar utility functions
@@ -738,7 +777,7 @@ export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({
       </div>
 
       {/* Rotaciones programadas de reglas — feature independiente de la pestaña Reglas de turnos */}
-      <RotacionesProgramadasPanel />
+      <RotacionesProgramadasPanel anioInicial={anioArranques ?? undefined} />
     </div>
   );
 };

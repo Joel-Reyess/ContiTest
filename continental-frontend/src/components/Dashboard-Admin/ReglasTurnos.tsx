@@ -56,7 +56,7 @@ const formatFecha = (iso?: string | null): string => {
 // Equivalente al CrearRol del backend (TurnosHelper.cs): el sub-grupo N lee el
 // mismo patrón base pero con offset (N-1)*7. La salida tiene la misma longitud
 // que el patrón original.
-const crearRolLocal = (patron: string[], gpoRef: number): string[] => {
+export const crearRolLocal = (patron: string[], gpoRef: number): string[] => {
     const n = patron.length;
     if (n === 0) return [];
     const offset = ((gpoRef - 1) * 7) % n;
@@ -74,14 +74,14 @@ const rotarPatronLocal = (patron: string[], dias: number): string[] => {
 
 // Convención del proyecto: sub-grupo 1 = sin sufijo (R0144), sub-grupo 2 = R0144_02,
 // sub-grupo 3 = R0144_03, etc. Coincide con el seed de Grupos en CreateGruposWithConfig.sql.
-const nombreSubGrupo = (codigoBase: string, gpoRef: number): string =>
+export const nombreSubGrupo = (codigoBase: string, gpoRef: number): string =>
     gpoRef === 1 ? codigoBase : `${codigoBase}_${String(gpoRef).padStart(2, "0")}`;
 
 interface PatronGridProps {
     patron: string[];
     titulo?: string;
 }
-const PatronGrid = ({ patron, titulo }: PatronGridProps) => {
+export const PatronGrid = ({ patron, titulo }: PatronGridProps) => {
     const semanas = Math.max(1, Math.floor(patron.length / 7));
     return (
         <div className="space-y-1">
@@ -126,7 +126,7 @@ const FragmentRow = ({ sem, patron }: { sem: number; patron: string[] }) => (
 interface SubGruposDerivadosProps {
     regla: ReglaTurno;
 }
-const SubGruposDerivados = ({ regla }: SubGruposDerivadosProps) => {
+export const SubGruposDerivados = ({ regla }: SubGruposDerivadosProps) => {
     const numGrupos = Math.max(1, Math.floor(regla.patron.length / 7));
     if (numGrupos === 1) {
         return (

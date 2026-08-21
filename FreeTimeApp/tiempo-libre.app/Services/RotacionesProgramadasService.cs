@@ -78,16 +78,24 @@ namespace tiempo_libre.Services
                 throw new InvalidOperationException(
                     $"La regla '{request.CodigoRegla}' está en estado '{regla.Estado}'. Sólo se pueden agendar rotaciones sobre reglas Activas.");
 
-            var hoy = DateTime.UtcNow.Date;
+            // Se admite HOY como fecha de arranque (antes sólo "> hoy"). Con el
+            // límite anterior, en el entorno de pruebas —donde el proceso en
+            // segundo plano está apagado— no había forma de agendar un arranque
+            // y aplicarlo el mismo día con "Aplicar vencidos": la captura exigía
+            // mañana y la ejecución exigía que la fecha ya hubiera llegado.
+            // Se compara contra la fecha local del servidor, no UTC: pasadas las
+            // 18:00 hora de la planta, UtcNow.Date ya es "mañana" y rechazaba la
+            // fecha de hoy.
+            var hoy = DateTime.Now.Date;
             var fechas = request.Fechas
                 .Select(f => f.Date)
-                .Where(f => f > hoy)
+                .Where(f => f >= hoy)
                 .Distinct()
                 .OrderBy(f => f)
                 .ToList();
 
             if (fechas.Count == 0)
-                throw new InvalidOperationException("Debes indicar al menos una fecha futura (posterior a hoy).");
+                throw new InvalidOperationException("Debes indicar al menos una fecha de hoy en adelante.");
 
             var yaAgendadas = await _db.RotacionesReglaProgramadas
                 .Where(r => r.CodigoRegla == request.CodigoRegla

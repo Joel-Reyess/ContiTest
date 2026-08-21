@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:test": "tsc -b && vite build --mode test",
+    "build": "tsc -b && vite build && node scripts/verificar-build.mjs prod",
+    "build:test": "tsc -b && vite build --mode test && node scripts/verificar-build.mjs test",
+    "verificar:test": "node scripts/verificar-build.mjs test",
+    "verificar:prod": "node scripts/verificar-build.mjs prod",
     "lint": "eslint .",
     "preview": "vite preview"
   },

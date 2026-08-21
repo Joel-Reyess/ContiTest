@@ -114,8 +114,22 @@ if (-not $SoloBackend) {
 
 Write-Host "Despliegue de pruebas terminado ($commit)." -ForegroundColor Green
 Write-Host "  Front: http://slas052a:6173"
-Write-Host "  API:   http://slas052a:6050/swagger"
+Write-Host "  API:   http://slas052a:6050/api/Health/status  (swagger NO existe fuera de Development)"
 Write-Host ""
-Write-Host "Verifica en el log del backend que aparezca 'MODO SIMULACRO'." -ForegroundColor Yellow
-Write-Host "Si no aparece, ASPNETCORE_ENVIRONMENT=Test no esta puesto y estarias" -ForegroundColor Yellow
-Write-Host "escribiendo en la base de PRODUCCION." -ForegroundColor Yellow
+
+# Comprobacion automatica de que el backend de pruebas es el de pruebas.
+try {
+    $h = Invoke-RestMethod "http://localhost:6050/api/Health/status" -TimeoutSec 60
+    if ($h.environment -eq "Test") {
+        Write-Host "OK: el backend 6050 corre con ASPNETCORE_ENVIRONMENT=Test." -ForegroundColor Green
+    } else {
+        Write-Host "ALTO: el backend 6050 reporta environment='$($h.environment)'." -ForegroundColor Red
+        Write-Host "ASPNETCORE_ENVIRONMENT=Test no esta puesto: ese backend esta pegandole a la base de PRODUCCION." -ForegroundColor Red
+        Write-Host "Revisa el paso 2 de deploy\ENTORNO-PRUEBAS.md antes de usar el sitio de pruebas." -ForegroundColor Red
+    }
+} catch {
+    Write-Host "No se pudo consultar el health check del backend 6050: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "Verificalo a mano: Invoke-RestMethod http://localhost:6050/api/Health/status" -ForegroundColor Yellow
+}
+Write-Host ""
+Write-Host "Y en el log del backend debe aparecer 'MODO SIMULACRO' al arrancar." -ForegroundColor Yellow

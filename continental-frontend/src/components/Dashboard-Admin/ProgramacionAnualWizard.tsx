@@ -173,7 +173,7 @@ export const ProgramacionAnualWizard = ({
           numero: 1,
           titulo: `Cargar el rol (arranques ${anio})`,
           descripcion:
-            "Define cómo inician los roles del año: agenda los arranques (ej. enero y abril) con su fecha de inicio en la pestaña Calendario. Al elegir una regla verás sus subreglas (R0144, R0144_02…) con el patrón establecido. Desde la fecha agendada el calendario se calcula con ese patrón, así que conviene revisarlo antes de seguir.",
+            `Define cómo inician los roles del año. En la pestaña Calendario, sección "Fechas de arranque por regla", elige el año ${anio}: verás una tarjeta por regla con su patrón y sus subreglas (R0144, R0144_02…). Pon la fecha de arranque en cada regla, o marca varias y agéndales la misma fecha (ej. enero y otra vez en Semana Santa). Desde esa fecha el calendario se calcula con ese patrón. Se puede agendar desde hoy mismo; en pruebas, "Aplicar vencidos" lo aplica sin esperar.`,
           estado: estado.arranques,
           acciones: [
             ...(onIrACalendario
@@ -189,7 +189,7 @@ export const ProgramacionAnualWizard = ({
           numero: 2,
           titulo: `Cargar festivos / días inhábiles ${anio}`,
           descripcion:
-            "Captura los días inhábiles por ley y por Continental para el año, también en la pestaña Calendario.",
+            `Captura los días inhábiles por ley y por Continental de ${anio}, también en la pestaña Calendario. Se pueden cargar aunque ya existan los del año anterior: si un día ya estaba con el mismo motivo se omite y los demás se guardan.`,
           estado: estado.festivos,
           acciones: onIrACalendario
             ? [{ etiqueta: "Ir a Calendario", onClick: onIrACalendario }]

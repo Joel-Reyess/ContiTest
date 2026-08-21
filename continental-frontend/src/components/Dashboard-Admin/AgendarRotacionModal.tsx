@@ -65,7 +65,9 @@ interface ArranquePlan {
     semanas: number;
 }
 
-const MIN_ISO = toIso(todayPlusDays(1));
+// Hoy incluido (el backend también lo admite): en pruebas, sin el proceso en
+// segundo plano, es la única forma de agendar y aplicar el arranque el mismo día.
+const MIN_ISO = toIso(todayPlusDays(0));
 
 function nuevoArranque(fechaIso: string, patronSemilla: string[]): ArranquePlan {
     const patron = patronSemilla.length > 0 ? [...patronSemilla] : Array(4 * 7).fill("D");
@@ -131,7 +133,7 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
         const usadas = new Set(arranques.map(a => a.fechaIso));
         // Sugerimos una fecha 30 días después del último arranque.
         const last = arranques[arranques.length - 1];
-        let sugerida = last ? isoToDate(last.fechaIso) : todayPlusDays(1);
+        let sugerida = last ? isoToDate(last.fechaIso) : todayPlusDays(0);
         sugerida.setDate(sugerida.getDate() + 30);
         while (usadas.has(toIso(sugerida))) {
             sugerida.setDate(sugerida.getDate() + 1);
@@ -220,7 +222,7 @@ export function AgendarRotacionModal({ onClose, onCreada, codigoInicial }: Props
     const handleSubmit = async () => {
         if (!codigoRegla) { toast.error("Selecciona una regla."); return; }
         if (!arranquesValidos) {
-            toast.error("Cada arranque debe tener fecha ≥ mañana y patrón completo (múltiplo de 7).");
+            toast.error("Cada arranque debe tener fecha de hoy en adelante y patrón completo (múltiplo de 7).");
             return;
         }
 
@@ -496,7 +498,7 @@ const MiniCalendar = ({ fechaIso, onPick, fechasBloqueadas }: MiniCalendarProps)
                             ].join(" ")}
                             title={
                                 bloqueada ? "Otro arranque ya usa esta fecha"
-                                : antesDeMinimo ? "Debe ser posterior a hoy"
+                                : antesDeMinimo ? "Debe ser de hoy en adelante"
                                 : ""
                             }
                         >

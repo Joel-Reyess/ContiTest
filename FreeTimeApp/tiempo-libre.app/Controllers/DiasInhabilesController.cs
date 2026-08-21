@@ -19,7 +19,7 @@ public class DiasInhabilesController : ControllerBase
 		_logger = logger;
 	}
 	[HttpPost]
-	[Authorize(Roles = "SuperUsuario")]
+	[Authorize(Roles = "SuperUsuario,Super Usuario")]
 	public IActionResult CreateDiasInhabiles([FromBody] DiasInhabilesCreateRequest request, [FromServices] FreeTimeDbContext db)
 	{
 		_logger.LogInformation("Intentando crear días inhábiles: {@Request}", request);
@@ -39,28 +39,39 @@ public class DiasInhabilesController : ControllerBase
 			_logger.LogWarning("Detalles excede el máximo de 250 caracteres");
 			return base.BadRequest(new ApiResponse<object>(false, null, "Detalles excede el máximo de 250 caracteres"));
 		}
-		// Validar duplicidad en Detalles con fechas superpuestas
-		var existingWithSameDetalles = db.DiasInhabiles
-			.Where(d => d.Detalles.ToUpper() == request.Detalles.ToUpper())
-			.Where(d => (d.Fecha >= request.FechaInicial && d.Fecha <= request.FechaFinal) ||
-						(request.FechaInicial >= d.FechaInicial && request.FechaInicial <= d.FechaFinal) ||
-						(request.FechaFinal >= d.FechaInicial && request.FechaFinal <= d.FechaFinal))
-			.Any();
-
-		if (existingWithSameDetalles)
-		{
-			_logger.LogWarning("Intento de duplicidad en Detalles con fechas superpuestas: {Detalles}", request.Detalles);
-			return Conflict(new ApiResponse<object>(false, null, "Ya existe un día inhábil con ese valor en Detalles en el rango de fechas especificado"));
-		}
-		var tipoActividad = (TipoActividadDelDiaEnum)request.TipoActividadDelDia;
-		var dias = new List<DiasInhabiles>();
 		if (request.FechaInicial > request.FechaFinal)
 		{
 			_logger.LogWarning("La fecha inicial {FechaInicial} es mayor que la fecha final {FechaFinal}", request.FechaInicial, request.FechaFinal);
 			return base.BadRequest(new ApiResponse<object>(false, null, "La fecha inicial no puede ser mayor que la fecha final"));
 		}
+
+		// Duplicados: antes se comparaba el motivo contra CUALQUIER registro cuyo
+		// rango se traslapara y, si había uno, se rechazaba la petición completa
+		// con 409. Como el front manda un día por petición, al cargar un periodo
+		// (p. ej. 24-dic-2026 → 2-ene-2027) bastaba con que UN día ya existiera
+		// (el 25-dic) para que todo el lote "fallara" con un mensaje genérico, y el
+		// reintento volvía a chocar con los días que sí se habían creado. Ahora
+		// el duplicado se define como el mismo motivo en la misma fecha: esos
+		// días se omiten y los demás se crean. Así se pueden cargar los festivos
+		// de 2027 aunque ya estén los de 2026, y repetir la carga es inofensivo.
+		var detallesNorm = request.Detalles.Trim().ToUpper();
+		var yaExistentes = db.DiasInhabiles
+			.Where(d => d.Detalles.ToUpper() == detallesNorm)
+			.Where(d => d.Fecha >= request.FechaInicial && d.Fecha <= request.FechaFinal)
+			.Select(d => d.Fecha)
+			.ToList()
+			.ToHashSet();
+
+		var tipoActividad = (TipoActividadDelDiaEnum)request.TipoActividadDelDia;
+		var dias = new List<DiasInhabiles>();
+		var omitidas = new List<string>();
 		for (var fecha = request.FechaInicial; fecha <= request.FechaFinal; fecha = fecha.AddDays(1))
 		{
+			if (yaExistentes.Contains(fecha))
+			{
+				omitidas.Add(fecha.ToString("yyyy-MM-dd"));
+				continue;
+			}
 			dias.Add(new DiasInhabiles
 			{
 				Fecha = fecha,
@@ -72,22 +83,34 @@ public class DiasInhabilesController : ControllerBase
 				AnioFechaFinal = request.FechaFinal.Year,
 				MesFechaFinal = request.FechaFinal.Month,
 				DiaFechaFinal = request.FechaFinal.Day,
-				Detalles = request.Detalles ?? string.Empty,
+				Detalles = request.Detalles.Trim(),
 				TipoActividadDelDia = tipoActividad
 			});
 		}
+
+		if (dias.Count == 0)
+		{
+			_logger.LogWarning("Todos los días del rango ya existían con el motivo {Detalles}: {Fechas}", request.Detalles, string.Join(", ", omitidas));
+			return Conflict(new ApiResponse<object>(false, null,
+				$"Ya existe un día inhábil \"{request.Detalles.Trim()}\" en {(omitidas.Count == 1 ? "esa fecha" : "todas esas fechas")} ({string.Join(", ", omitidas)})"));
+		}
+
 		_logger.LogInformation("Agregando {Count} días inhábiles", dias.Count);
 		try
 		{
 			db.DiasInhabiles.AddRange(dias);
 			db.SaveChanges();
 			_logger.LogInformation("Días inhábiles creados correctamente: {Ids}", dias.Select(d => d.Id).ToList());
-			return base.Ok(new ApiResponse<object>(true, dias.Select(d => d.Id).ToList(), "Días inhábiles creados correctamente"));
+			var mensaje = omitidas.Count == 0
+				? "Días inhábiles creados correctamente"
+				: $"{dias.Count} día(s) creado(s); {omitidas.Count} ya existía(n) con ese motivo y se omitieron ({string.Join(", ", omitidas)})";
+			return base.Ok(new ApiResponse<object>(true, dias.Select(d => d.Id).ToList(), mensaje));
 		}
 		catch (Exception ex)
 		{
 			_logger.LogError(ex, "Error al crear días inhábiles en la base de datos");
-			return StatusCode(500, new ApiResponse<object>(false, null, "Error interno al crear los días inhábiles"));
+			var detalle = ex.InnerException?.Message ?? ex.Message;
+			return StatusCode(500, new ApiResponse<object>(false, null, $"Error interno al crear los días inhábiles: {detalle}"));
 		}
 	}
 
@@ -144,7 +167,7 @@ public class DiasInhabilesController : ControllerBase
 	}
 
 	[HttpDelete("{id}")]
-	[Authorize(Roles = "SuperUsuario")]
+	[Authorize(Roles = "SuperUsuario,Super Usuario")]
 	public IActionResult DeleteDiasInhabil(int id, [FromServices] FreeTimeDbContext db)
 	{
 		try
