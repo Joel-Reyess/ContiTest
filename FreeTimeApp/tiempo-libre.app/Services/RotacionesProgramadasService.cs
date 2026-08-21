@@ -174,7 +174,12 @@ namespace tiempo_libre.Services
         /// </summary>
         public async Task<int> EjecutarPendientesAsync()
         {
-            var hoy = DateTime.UtcNow.Date;
+            // Fecha LOCAL del servidor, igual que al agendar (CrearAsync). Con
+            // UtcNow, en la tarde de la planta (UTC-6) el "hoy" del servidor ya
+            // era el día siguiente y un arranque agendado para mañana se podía
+            // aplicar hoy — el patrón entraba en vigor un día antes de lo que
+            // se veía en pantalla.
+            var hoy = DateTime.Now.Date;
 
             var pendientes = await _db.RotacionesReglaProgramadas
                 .Where(r => r.Estado == "Pendiente" && r.FechaEjecucion <= hoy)
