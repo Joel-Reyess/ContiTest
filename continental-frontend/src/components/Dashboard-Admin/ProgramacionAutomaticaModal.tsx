@@ -224,7 +224,11 @@ export const ProgramacionAutomaticaModal = ({
             <div className="text-sm text-blue-800">
               <p className="font-medium mb-1">Información importante:</p>
               <ul className="space-y-1 list-disc list-inside">
-                <li>Este proceso puede tardar hasta 5 minutos</li>
+                <li>
+                  El proceso tarda varios minutos (con toda la planta puede pasar de
+                  15). Si el navegador se cansa de esperar, lo ya asignado se
+                  conserva: vuelve a ejecutarlo y continúa donde se quedó.
+                </li>
                 <li>No cierre la pestaña o el navegador durante el proceso</li>
                 <li>Se procesarán todos los empleados automáticamente</li>
               </ul>
@@ -322,7 +326,7 @@ export const ProgramacionAutomaticaModal = ({
           Configurando vacaciones para el año {anio}...
         </p>
         <p className="text-sm text-gray-500">
-          Este proceso puede tardar hasta 5 minutos dependiendo de la cantidad de empleados. Por favor no cierre esta ventana.
+          Puede tardar varios minutos según cuántos empleados haya (con la planta completa, más de 15). No cierres esta ventana. Si se corta, lo asignado hasta ese momento queda guardado y al volver a ejecutarlo continúa donde se quedó.
         </p>
         <div className="text-xs text-gray-400 bg-gray-50 p-2 rounded">
           <p>• Procesando empleados por grupos</p>

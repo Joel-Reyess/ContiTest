@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -20,6 +20,12 @@ namespace tiempo_libre.Services
         private readonly AusenciaService _ausenciaService;
         private readonly ValidadorPorcentajeService _validadorPorcentaje;
         private readonly ILogger<AsignacionAutomaticaService> _logger;
+
+        /// <summary>
+        /// Memoria de "¿este grupo admite otra ausencia este día?" durante la
+        /// corrida. El servicio es scoped: vive lo que dura la petición.
+        /// </summary>
+        private readonly Dictionary<(int GrupoId, DateOnly Fecha), bool> _disponibilidadPorGrupoYFecha = new();
 
         // Semanas excluidas por defecto (Navidad y Año Nuevo)
         private static readonly List<int> SEMANAS_EXCLUIDAS_DEFAULT = new() { 51, 52, 1, 2 };
@@ -87,6 +93,21 @@ namespace tiempo_libre.Services
                 // Obtener días inhábiles del año
                 var diasInhabiles = await ObtenerDiasInhabilesAsync(request.Anio, ct);
 
+                // Último día de Semana Santa: es el mismo para toda la corrida.
+                // Estaba dentro del ciclo por empleado —una consulta y una línea de
+                // log por cada uno— aunque el resultado nunca cambia.
+                var semanaSantaFechaFinal = await _db.DiasInhabiles
+                    .Where(d => d.Detalles.Contains("Semana Santa") && d.FechaFinal.Year == request.Anio)
+                    .OrderByDescending(d => d.FechaFinal)
+                    .Select(d => (DateOnly?)d.FechaFinal)
+                    .FirstOrDefaultAsync(ct);
+
+                _logger.LogInformation("Semana Santa para año {Anio}: {Fecha}", request.Anio,
+                    semanaSantaFechaFinal?.ToString() ?? "No encontrada");
+
+                var reloj = System.Diagnostics.Stopwatch.StartNew();
+                var procesados = 0;
+
                 // Procesar cada empleado
                 foreach (var empleado in empleados)
                 {
@@ -103,8 +124,22 @@ namespace tiempo_libre.Services
                         continue;
                     }
 
-                    var resultado = await ProcesarEmpleadoAsync(empleado, request.Anio, semanasExcluidas, diasInhabiles);
+                    var resultado = await ProcesarEmpleadoAsync(
+                        empleado, request.Anio, semanasExcluidas, diasInhabiles, semanaSantaFechaFinal);
                     response.ResultadosPorEmpleado.Add(resultado);
+
+                    // Traza de avance: sin esto, una corrida larga se ve idéntica a
+                    // un proceso colgado. Cada 25 empleados se puede estimar cuánto
+                    // falta mirando el log.
+                    procesados++;
+                    if (procesados % 25 == 0)
+                    {
+                        _logger.LogInformation(
+                            "Asignación automática {Anio}: {Procesados}/{Total} empleados en {Segundos:F0} s ({PorEmpleado:F1} s/empleado)",
+                            request.Anio, procesados, empleados.Count,
+                            reloj.Elapsed.TotalSeconds,
+                            reloj.Elapsed.TotalSeconds / procesados);
+                    }
 
                     if (resultado.AsignacionExitosa)
                     {
@@ -179,7 +214,8 @@ namespace tiempo_libre.Services
             User empleado, 
             int anio, 
             List<int> semanasExcluidas, 
-            List<DateOnly> diasInhabiles)
+            List<DateOnly> diasInhabiles,
+            DateOnly? semanaSantaFechaFinal)
         {
             var resultado = new AsignacionEmpleadoResult
             {
@@ -208,15 +244,6 @@ namespace tiempo_libre.Services
                     resultado.MotivoFallo = "El empleado no tiene días de asignación automática";
                     return resultado;
                 }
-
-                // Get the LAST day (max FechaFinal) of Semana Santa for this year
-                var semanaSantaFechaFinal = await _db.DiasInhabiles
-                    .Where(d => d.Detalles.Contains("Semana Santa") && d.FechaFinal.Year == anio)
-                    .OrderByDescending(d => d.FechaFinal) // Get the LAST day of Semana Santa
-                    .Select(d => (DateOnly?)d.FechaFinal)
-                    .FirstOrDefaultAsync();
-
-                _logger.LogInformation("Semana Santa para año {Anio}: {Fecha}", anio, semanaSantaFechaFinal?.ToString() ?? "No encontrada");
 
                 // Limitar a máximo permitido
                 var diasAAsignar = Math.Min(resultado.DiasCorrespondientes, MAX_DIAS_AUTOMATICOS);
@@ -288,13 +315,11 @@ namespace tiempo_libre.Services
                 if (semana.FechaInicio > semana.FechaFin)
                     continue;
 
-                // Obtener calendario del empleado para esa semana
-                var calendarioResponse = await _calendarioService.ObtenerCalendarioGrupoAsync(
-                    empleado.GrupoId ?? 0, semana.FechaInicio.ToDateTime(TimeOnly.MinValue), 
-                    semana.FechaFin.ToDateTime(TimeOnly.MinValue));
-
-                if (!calendarioResponse.Success)
-                    continue;
+                // Antes se pedía aquí el calendario completo del grupo para la
+                // semana y el resultado se tiraba: solo se miraba si la llamada
+                // había tenido éxito. Era una consulta pesada por cada semana
+                // candidata y por cada empleado (hasta 52 por persona) que no
+                // aportaba nada a la decisión: quien decide es EsSemanaViableAsync.
 
                 // Validar si la semana es viable
                 if (await EsSemanaViableAsync(empleado, semana, diasAAsignar, diasInhabiles, semanaSantaFechaFinal))
@@ -304,6 +329,40 @@ namespace tiempo_libre.Services
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// ¿El grupo admite una ausencia más ese día?
+        ///
+        /// Se memoriza por (grupo, fecha) durante la corrida. La respuesta que usa
+        /// la búsqueda de semana —DiaDisponible— sale de
+        /// PuedeGrupoTenerAusencias(grupoId, 1, null, fecha), que depende del grupo
+        /// y del día, no del empleado; y cada validación cuesta media docena de
+        /// consultas. Sin memoria, los 30 o 40 empleados de un mismo grupo
+        /// recalculaban exactamente lo mismo para las mismas fechas, hasta 52
+        /// semanas por persona.
+        ///
+        /// La entrada se borra en cuanto se guardan días de ese grupo en esa fecha
+        /// (ver GuardarVacacionesAsignadasAsync): ahí sí cambió la ocupación.
+        /// </summary>
+        private async Task<bool> DiaDisponibleParaGrupoAsync(User empleado, DateOnly fecha)
+        {
+            var grupoId = empleado.GrupoId ?? 0;
+            var clave = (grupoId, fecha);
+
+            if (_disponibilidadPorGrupoYFecha.TryGetValue(clave, out var cacheado))
+                return cacheado;
+
+            var validacionResponse = await _ausenciaService.ValidarDisponibilidadDiaAsync(
+                new ValidacionDisponibilidadRequest
+                {
+                    EmpleadoId = empleado.Id,
+                    Fecha = fecha
+                });
+
+            var disponible = validacionResponse.Success && validacionResponse.Data?.DiaDisponible == true;
+            _disponibilidadPorGrupoYFecha[clave] = disponible;
+            return disponible;
         }
 
         private async Task<bool> EsSemanaViableAsync(
@@ -318,6 +377,14 @@ namespace tiempo_libre.Services
 
             while (fechaActual <= semana.FechaFin && diasDisponibles < diasAAsignar)
             {
+                // Si ni contando todos los días que quedan se alcanza la meta, la
+                // semana ya no puede salir: seguir validándola son consultas tiradas.
+                var diasQueRestan = fechaActual > semana.FechaFin
+                    ? 0
+                    : semana.FechaFin.DayNumber - fechaActual.DayNumber + 1;
+                if (diasDisponibles + diasQueRestan < diasAAsignar)
+                    return false;
+
                 // Verificar si es día inhábil
                 if (diasInhabiles.Contains(fechaActual))
                 {
@@ -331,15 +398,7 @@ namespace tiempo_libre.Services
                 // Si no es descanso, verificar porcentaje de ausencia
                 if (!TurnosHelper.EsDescanso(turno))
                 {
-                    // Validar porcentaje de ausencia incluyendo a este empleado
-                    var validacionResponse = await _ausenciaService.ValidarDisponibilidadDiaAsync(
-                        new ValidacionDisponibilidadRequest
-                        {
-                            EmpleadoId = empleado.Id,
-                            Fecha = fechaActual
-                        });
-
-                    if (validacionResponse.Success && validacionResponse.Data?.DiaDisponible == true)
+                    if (await DiaDisponibleParaGrupoAsync(empleado, fechaActual))
                     {
                         diasDisponibles++;
                     }
@@ -452,6 +511,10 @@ namespace tiempo_libre.Services
                 };
 
                 _db.VacacionesProgramadas.Add(vacacion);
+
+                // Ese día del grupo acaba de ocuparse un lugar más: lo memorizado
+                // dejó de ser cierto.
+                _disponibilidadPorGrupoYFecha.Remove((resultado.GrupoId, dia.Fecha));
             }
 
             // CancellationToken.None a propósito: si el cliente aborta justo aquí, es
