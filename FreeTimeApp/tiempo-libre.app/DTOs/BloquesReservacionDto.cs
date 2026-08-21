@@ -10,7 +10,7 @@ namespace tiempo_libre.DTOs
         public DateTime FechaInicioGeneracion { get; set; }
 
         [Required]
-        [Range(2024, 2030)]
+        [Range(2024, 2100)]
         public int AnioObjetivo { get; set; }
 
         /// <summary>
@@ -181,7 +181,7 @@ namespace tiempo_libre.DTOs
 
         public int? GrupoId { get; set; }
 
-        [Range(2024, 2030)]
+        [Range(2024, 2100)]
         public int? AnioObjetivo { get; set; }
     }
 

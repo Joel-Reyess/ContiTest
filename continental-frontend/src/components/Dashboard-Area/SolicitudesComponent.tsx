@@ -139,7 +139,21 @@ const SolicitudesComponent: React.FC = () => {
                     </div>
                 )}
 
-                {config?.periodoActual === 'ProgramacionAnual' && <TurnosActuales anioVigente={config?.anioVigente || new Date().getFullYear() + 1} />}
+                {/* Bloques del año que se está capturando. Antes esto solo salía con
+                    el periodo en "ProgramacionAnual" y siempre con el año vigente: al
+                    preparar el año siguiente mientras la reprogramación del vigente
+                    sigue abierta —que es como se opera desde 2026— el jefe de área no
+                    veía NINGÚN bloque, y si los veía eran los del año equivocado.
+                    Ahora manda el año en preparación cuando existe. */}
+                {(config?.periodoActual === 'ProgramacionAnual' || config?.anioProgramacionAnual != null) && (
+                    <TurnosActuales
+                        anioVigente={
+                            config?.anioProgramacionAnual ??
+                            config?.anioVigente ??
+                            new Date().getFullYear() + 1
+                        }
+                    />
+                )}
                 {config?.periodoActual === 'Reprogramacion' && (
                     <>
                         {/* Dropdown selector */}

@@ -17,6 +17,28 @@ import type {
   EmpleadosNoRespondieronResponse
 } from '@/interfaces/Api.interface';
 
+/**
+ * Mensaje real de un error del backend.
+ *
+ * httpClient lanza un OBJETO ApiResponse-error ({message, status, details}),
+ * no una instancia de Error. Los `catch (error) { if (error instanceof Error) }`
+ * de este archivo daban false para esos casos y tapaban el motivo con un
+ * "intente nuevamente": el 400 "La fecha de inicio no puede ser en el pasado"
+ * llegaba al navegador y nunca se mostraba.
+ */
+function mensajeDeError(error: unknown, porOmision: string): string {
+  const e = error as any;
+  const crudo: string | undefined =
+    e?.details?.errorMsg ?? e?.errorMsg ?? e?.message ?? (typeof e === "string" ? e : undefined);
+
+  if (!crudo) return porOmision;
+  if (crudo.includes("timeout") || crudo.includes("Request timeout"))
+    return "La operación tardó más de lo esperado. Vuelve a intentarlo o avisa al administrador.";
+  if (crudo.includes("Network Error") || crudo.includes("Failed to fetch"))
+    return "Error de conexión. Verifica la red e intenta de nuevo.";
+  return crudo;
+}
+
 export class BloquesReservacionService {
   /**
    * Genera bloques de reservación (simulación o real)
@@ -43,19 +65,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en generarBloques:', error);
       
-      let errorMessage = 'Error al generar bloques de reservación. Por favor intente nuevamente.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('timeout') || error.message.includes('Request timeout')) {
-          errorMessage = 'La generación de bloques tardó más de lo esperado. Por favor intente nuevamente o contacte al administrador.';
-        } else if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Error de conexión. Verifique su conexión a internet e intente nuevamente.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al generar bloques de reservación. Por favor intente nuevamente.'));
     }
   }
 
@@ -84,17 +94,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en obtenerEstadisticas:', error);
       
-      let errorMessage = 'Error al obtener estadísticas de bloques. Por favor intente nuevamente.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Error de conexión. Verifique su conexión a internet e intente nuevamente.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al obtener estadísticas de bloques. Por favor intente nuevamente.'));
     }
   }
 
@@ -123,17 +123,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en obtenerBloques:', error);
       
-      let errorMessage = 'Error al obtener bloques de reservación. Por favor intente nuevamente.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Error de conexión. Verifique su conexión a internet e intente nuevamente.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al obtener bloques de reservación. Por favor intente nuevamente.'));
     }
   }
 
@@ -161,19 +151,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en eliminarBloques:', error);
       
-      let errorMessage = 'Error al eliminar bloques de reservación. Por favor intente nuevamente.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('timeout') || error.message.includes('Request timeout')) {
-          errorMessage = 'La eliminación de bloques tardó más de lo esperado. Por favor intente nuevamente o contacte al administrador.';
-        } else if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Error de conexión. Verifique su conexión a internet e intente nuevamente.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al eliminar bloques de reservación. Por favor intente nuevamente.'));
     }
   }
 
@@ -216,17 +194,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en obtenerBloquesPorFecha:', error);
 
-      let errorMessage = 'Error al obtener bloques por fecha. Por favor intente nuevamente.';
-
-      if (error instanceof Error) {
-        if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Error de conexión. Verifique su conexión a internet e intente nuevamente.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al obtener bloques por fecha. Por favor intente nuevamente.'));
     }
   }
 
@@ -259,17 +227,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en obtenerBloquesPorEmpleado:', error);
 
-      let errorMessage = 'Error al obtener bloques del empleado. Por favor intente nuevamente.';
-
-      if (error instanceof Error) {
-        if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Error de conexión. Verifique su conexión a internet e intente nuevamente.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al obtener bloques del empleado. Por favor intente nuevamente.'));
     }
   }
 
@@ -304,12 +262,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en obtenerBloquesPorGrupo:', error);
       
-      let errorMessage = 'Error al obtener bloques por grupo';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al obtener bloques por grupo'));
     }
   }
 
@@ -341,7 +294,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en saltarTurno:', error);
       throw new Error(
-        error instanceof Error ? error.message : 'Error al saltar el turno'
+        mensajeDeError(error, 'Error al saltar el turno')
       );
     }
   }
@@ -368,12 +321,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en cambiarEmpleado:', error);
       
-      let errorMessage = 'Error al cambiar empleado de bloque';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al cambiar empleado de bloque'));
     }
   }
 
@@ -423,17 +371,7 @@ export class BloquesReservacionService {
     } catch (error) {
       console.error('Error en obtenerEmpleadosNoRespondieron:', error);
 
-      let errorMessage = 'Error al obtener empleados que no respondieron. Por favor intente nuevamente.';
-
-      if (error instanceof Error) {
-        if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
-          errorMessage = 'Error de conexión. Verifique su conexión a internet e intente nuevamente.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-
-      throw new Error(errorMessage);
+      throw new Error(mensajeDeError(error, 'Error al obtener empleados que no respondieron. Por favor intente nuevamente.'));
     }
   }
 }

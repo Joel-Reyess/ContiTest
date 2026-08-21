@@ -7,7 +7,7 @@ namespace tiempo_libre.DTOs
     public class AsignacionAutomaticaRequest
     {
         [Required]
-        [Range(2024, 2030, ErrorMessage = "El año debe estar entre 2024 y 2030")]
+        [Range(2024, 2100, ErrorMessage = "El año debe estar entre 2024 y 2100")]
         public int Anio { get; set; }
 
         /// <summary>

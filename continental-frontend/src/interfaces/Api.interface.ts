@@ -476,6 +476,10 @@ export interface VacationConfig {
     porcentajeAusenciaMaximo: number;
     periodoActual: string;
     anioVigente: number;
+    /** Año que se está PREPARANDO mientras el vigente sigue en reprogramación.
+     *  El endpoint ya lo devolvía; faltaba en el tipo, así que las pantallas de
+     *  jefe y empleado no podían distinguir el año de captura del año vigente. */
+    anioProgramacionAnual?: number | null;
     createdAt: string;
     updatedAt: string;
 }

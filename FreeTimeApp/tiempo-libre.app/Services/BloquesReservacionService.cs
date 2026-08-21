@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -114,16 +114,24 @@ namespace tiempo_libre.Services
         /// </summary>
         private async Task<ApiResponse<object>> ValidarRequerimientosGeneracionAsync(GeneracionBloquesRequest request)
         {
-            // Validar fecha inicio
+            // Validar fecha inicio. El mensaje lleva las dos fechas porque el
+            // error típico es teclear el año anterior (22/01/2026 cuando se está
+            // generando el ciclo 2027), y "no puede ser en el pasado" a secas no
+            // deja ver que el problema es el AÑO de la fecha.
             if (request.FechaInicioGeneracion < DateTime.Now.Date)
-                return new ApiResponse<object>(false, null, "La fecha de inicio no puede ser en el pasado");
+                return new ApiResponse<object>(false, null,
+                    $"La fecha de inicio de generación ({request.FechaInicioGeneracion:dd/MM/yyyy}) ya pasó; " +
+                    $"hoy es {DateTime.Now:dd/MM/yyyy}. Revisa el año de esa fecha: la captura de los bloques " +
+                    $"de {request.AnioObjetivo} tiene que arrancar de hoy en adelante.");
 
             // Validar que no existan bloques para el año objetivo
             var bloquesExistentes = await _db.BloquesReservacion
                 .AnyAsync(b => b.AnioGeneracion == request.AnioObjetivo);
 
             if (bloquesExistentes)
-                return new ApiResponse<object>(false, null, $"Ya existen bloques generados para el año {request.AnioObjetivo}");
+                return new ApiResponse<object>(false, null,
+                    $"Ya existen bloques generados para el año {request.AnioObjetivo}. " +
+                    $"Si quieres rehacerlos, primero elimínalos desde la misma pantalla.");
 
             // Validar configuración de grupos
             var gruposInvalidos = await _db.Grupos
