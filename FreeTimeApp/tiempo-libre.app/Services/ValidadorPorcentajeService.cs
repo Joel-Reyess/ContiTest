@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +12,14 @@ namespace tiempo_libre.Services
     {
         private readonly FreeTimeDbContext _db;
         private readonly ILogger<ValidadorPorcentajeService> _logger;
+
+        // Memoria de la petición (el servicio es scoped). Nada de esto cambia
+        // mientras corre una asignación anual, y releerlo era el grueso de las
+        // consultas del paso 3.
+        private ConfiguracionVacaciones? _configCache;
+        private readonly Dictionary<int, Grupo?> _gruposCache = new();
+        private readonly Dictionary<int, int> _totalEmpleadosCache = new();
+        private readonly Dictionary<(int AreaId, int Anio, int Mes), decimal?> _manningCache = new();
 
         public ValidadorPorcentajeService(FreeTimeDbContext db, ILogger<ValidadorPorcentajeService> logger)
         {
@@ -43,6 +51,12 @@ namespace tiempo_libre.Services
         // para que el llamador decida (típicamente fallback a totalEmpleados).
         private async Task<decimal> ObtenerManningAplicableAsync(int areaId, decimal manningBaseArea, DateOnly fecha)
         {
+            // La excepción de manning es por área y por MES: dentro de una misma
+            // petición basta consultarla una vez por cada combinación.
+            var clave = (areaId, fecha.Year, fecha.Month);
+            if (_manningCache.TryGetValue(clave, out var memorizado))
+                return memorizado ?? manningBaseArea;
+
             var excepcion = await _db.ExcepcionesManning
                 .Where(e => e.AreaId == areaId &&
                             e.Anio == fecha.Year &&
@@ -50,6 +64,8 @@ namespace tiempo_libre.Services
                             e.Activa)
                 .Select(e => (int?)e.ManningRequeridoExcepcion)
                 .FirstOrDefaultAsync();
+
+            _manningCache[clave] = excepcion.HasValue ? (decimal)excepcion.Value : (decimal?)null;
             return excepcion ?? manningBaseArea;
         }
 
@@ -71,8 +87,13 @@ namespace tiempo_libre.Services
             try
             {
                 var fechaEvaluada = fecha ?? DateOnly.FromDateTime(DateTime.Today);
-                // Obtener configuración actual
-                var config = await _db.ConfiguracionVacaciones
+
+                // La configuración, el grupo y su plantilla no cambian mientras dura
+                // la petición, pero se releían en CADA validación: durante la
+                // asignación anual son tres consultas por empleado, por día y por
+                // semana candidata. El servicio es scoped, así que recordarlas aquí
+                // vive lo que vive la petición.
+                var config = _configCache ??= await _db.ConfiguracionVacaciones
                     .OrderByDescending(c => c.CreatedAt)
                     .FirstOrDefaultAsync();
 
@@ -82,10 +103,13 @@ namespace tiempo_libre.Services
                     return false;
                 }
 
-                // Obtener información del grupo
-                var grupo = await _db.Grupos
-                    .Include(g => g.Area)
-                    .FirstOrDefaultAsync(g => g.GrupoId == grupoId);
+                if (!_gruposCache.TryGetValue(grupoId, out var grupo))
+                {
+                    grupo = await _db.Grupos
+                        .Include(g => g.Area)
+                        .FirstOrDefaultAsync(g => g.GrupoId == grupoId);
+                    _gruposCache[grupoId] = grupo;
+                }
 
                 if (grupo == null)
                 {
@@ -97,13 +121,21 @@ namespace tiempo_libre.Services
                 var minimoEmpleados = CalcularMinimoEmpleadosParaPorcentaje(config.PorcentajeAusenciaMaximo);
 
                 // Obtener total de empleados activos del grupo
-                var totalEmpleados = await _db.Users
-                    .CountAsync(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo);
+                if (!_totalEmpleadosCache.TryGetValue(grupoId, out var totalEmpleados))
+                {
+                    totalEmpleados = await _db.Users
+                        .CountAsync(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo);
+                    _totalEmpleadosCache[grupoId] = totalEmpleados;
+                }
 
                 // EXCEPCIÓN: Grupos pequeños (menos del mínimo)
                 if (totalEmpleados < minimoEmpleados)
                 {
-                    _logger.LogInformation(
+                    // Debug y no Information: esto se evalúa una vez por grupo, día
+                    // y empleado. Durante la asignación automática del año llenaba el
+                    // log con miles de líneas idénticas por segundo —y escribirlas
+                    // cuesta E/S justo cuando el proceso ya va pesado.
+                    _logger.LogDebug(
                         "Grupo {GrupoId} con {Total} empleados es menor al mínimo ({Minimo}) para aplicar porcentaje. " +
                         "Aplicando regla especial: permitir al menos 1 ausencia",
                         grupoId, totalEmpleados, minimoEmpleados);
@@ -149,7 +181,7 @@ namespace tiempo_libre.Services
 
                 var resultado = porcentajeDeficit <= config.PorcentajeAusenciaMaximo;
 
-                _logger.LogInformation(
+                _logger.LogDebug(
                     "Validación porcentaje Grupo {GrupoId}: Total={Total}, Manning={Manning}, " +
                     "Ausencias={Ausencias}, Déficit={Deficit:F2}%, Máximo={Maximo}%, Resultado={Resultado}",
                     grupoId, totalEmpleados, manning, totalAusencias,

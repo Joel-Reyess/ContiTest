@@ -353,14 +353,12 @@ namespace tiempo_libre.Services
             if (_disponibilidadPorGrupoYFecha.TryGetValue(clave, out var cacheado))
                 return cacheado;
 
-            var validacionResponse = await _ausenciaService.ValidarDisponibilidadDiaAsync(
-                new ValidacionDisponibilidadRequest
-                {
-                    EmpleadoId = empleado.Id,
-                    Fecha = fecha
-                });
+            // Se llama al validador directo y no a ValidarDisponibilidadDiaAsync:
+            // ese envoltorio calcula además el porcentaje del grupo dos veces y su
+            // estado detallado —cuatro consultas pesadas— y de todo eso aquí solo
+            // se ocupa DiaDisponible, que es exactamente este booleano.
+            var disponible = await _validadorPorcentaje.PuedeGrupoTenerAusencias(grupoId, 1, null, fecha);
 
-            var disponible = validacionResponse.Success && validacionResponse.Data?.DiaDisponible == true;
             _disponibilidadPorGrupoYFecha[clave] = disponible;
             return disponible;
         }
