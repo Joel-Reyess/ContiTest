@@ -188,11 +188,17 @@ namespace tiempo_libre.Services
 
         private async Task<List<User>> ObtenerEmpleadosSindicalizadosAsync(List<int>? grupoIds, CancellationToken ct = default)
         {
+            // Solo empleados ACTIVOS. Faltaba el filtro: las bajas y los suspendidos
+            // entraban al proceso, contaban en "empleados procesados" y podían acabar
+            // con días de empresa asignados para un año que no van a trabajar —además
+            // de ocupar el cupo del grupo frente a sus compañeros. El resto de la app
+            // (rol semanal, ausencias, plantilla del grupo) ya filtraba así.
             var query = _db.Users
                 .AsNoTracking()
                 .Include(u => u.Grupo)
                 .ThenInclude(g => g.Area)
-                .Where(u => u.Nomina.HasValue && u.GrupoId.HasValue && u.GrupoId > 0);
+                .Where(u => u.Nomina.HasValue && u.GrupoId.HasValue && u.GrupoId > 0
+                            && u.Status == tiempo_libre.Models.Enums.UserStatus.Activo);
 
             if (grupoIds?.Any() == true)
             {
