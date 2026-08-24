@@ -70,6 +70,46 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Empleados DISTINTOS del grupo ausentes ese día: vacaciones programadas
+        /// activas (días de empresa y días capturados por el operador viven en la
+        /// misma tabla) más permisos e incapacidades de SAP vigentes ese día.
+        ///
+        /// Antes esta cuenta solo miraba VacacionesProgramadas, así que el permiso
+        /// que bloquea la captura no consideraba incapacidades ni permisos: el
+        /// tablero mostraba el grupo al tope —ese sí los suma— y aun así la app
+        /// dejaba capturar. Es el "no consolidó el mismo porcentaje" del reporte
+        /// de 2026.
+        ///
+        /// Se cuentan empleados y no renglones: un operador con vacación capturada
+        /// en la app y su fila 1100 exportada por SAP aparecería dos veces.
+        /// </summary>
+        private async Task<int> ContarAusentesDelGrupoAsync(int grupoId, DateOnly fecha)
+        {
+            var porVacaciones = await _db.VacacionesProgramadas
+                .Where(v => v.FechaVacacion == fecha && v.EstadoVacacion == "Activa")
+                .Where(v => _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId == grupoId))
+                .Select(v => v.EmpleadoId)
+                .Distinct()
+                .ToListAsync();
+
+            // Mismo criterio que AusenciaService: las filas que vienen del Excel no
+            // llevan FechaSolicitud; las capturadas en la app solo cuentan aprobadas.
+            var porPermisos = await _db.PermisosEIncapacidadesSAP
+                .Where(p => p.Desde <= fecha && p.Hasta >= fecha
+                            && (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo),
+                      p => p.Nomina,
+                      u => u.Nomina,
+                      (p, u) => u.Id)
+                .Distinct()
+                .ToListAsync();
+
+            var ausentes = new HashSet<int>(porVacaciones);
+            ausentes.UnionWith(porPermisos);
+            return ausentes.Count;
+        }
+
+        /// <summary>
         /// Valida si un grupo puede tener ausencias respetando el porcentaje configurado
         /// </summary>
         /// <param name="fecha">
@@ -144,11 +184,7 @@ namespace tiempo_libre.Services
                     if (!ausenciasActuales.HasValue)
                     {
                         // Ausencias ya programadas para el día que se evalúa
-                        ausenciasActuales = await _db.VacacionesProgramadas
-                            .CountAsync(v =>
-                                _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId == grupoId) &&
-                                v.FechaVacacion == fechaEvaluada &&
-                                v.EstadoVacacion == "Activa");
+                        ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
                     }
 
                     // Permitir la ausencia si actualmente no hay nadie ausente
@@ -166,11 +202,7 @@ namespace tiempo_libre.Services
                 // Calcular cuántos estarían ausentes con la nueva solicitud
                 if (!ausenciasActuales.HasValue)
                 {
-                    ausenciasActuales = await _db.VacacionesProgramadas
-                        .CountAsync(v =>
-                            _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId == grupoId) &&
-                            v.FechaVacacion == fechaEvaluada &&
-                            v.EstadoVacacion == "Activa");
+                    ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
                 }
 
                 var totalAusencias = ausenciasActuales.Value + ausenciasSolicitadas;

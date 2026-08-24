@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -449,7 +449,13 @@ namespace tiempo_libre.Services
                 .ToList();
 
             // 5) Disponibles / No disponibles
-            var personalNoDisponible = empleadosAusentes.Count;
+            //
+            // Se cuentan EMPLEADOS distintos, no renglones de ausencia: un mismo
+            // operador puede aparecer dos veces —su día de vacaciones capturado en
+            // la app y la fila 1100 que SAP exporta por ese mismo día, o un permiso
+            // encimado— y con el conteo de renglones el porcentaje de ausencia
+            // salía inflado y el día se veía "lleno" sin estarlo.
+            var personalNoDisponible = idsAusentes.Count;
             var personalDisponible = Math.Max(0, personalTotal - personalNoDisponible);
 
             // ==============================
