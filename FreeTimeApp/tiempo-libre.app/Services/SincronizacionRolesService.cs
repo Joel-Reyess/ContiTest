@@ -63,6 +63,10 @@ namespace tiempo_libre.Services
                 .Where(r => !string.IsNullOrEmpty(r.Regla))
                 .ToListAsync();
 
+            // Empleados es el espejo de SAP; si el archivo de roles trae una
+            // nómina que ya no tiene fila ahí, se vuelve a crear antes de seguir.
+            await RestaurarEmpleadosFaltantesAsync(rolesEmpleadosSAP);
+
             // Catálogo de grupos: se carga UNA vez, no una por nómina.
             //
             // Estaba dentro del ciclo, y como además incluye dos colecciones
@@ -324,11 +328,173 @@ namespace tiempo_libre.Services
             // await EliminarEmpleadosInactivos();
             _logger.LogInformation("⏸️ EliminarEmpleadosInactivos desactivado temporalmente.");
 
+            // Un empleado del archivo de roles sin fila en Users no aparece en
+            // ninguna pantalla: el rol semanal, el manning y la programación se
+            // arman desde Users, no desde Empleados.
+            await CrearUsuariosFaltantesAsync(new HashSet<int>(rolesEmpleadosSAP.Select(r => r.Nomina)));
+
             _logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} registros actualizados.");
             var usersActualizados = await SincronizarUsersDesdeEmpleados();
             registrosActualizados += usersActualizados;
             return registrosActualizados;
         }
+
+        /// <summary>
+        /// Vuelve a crear en Empleados las nóminas que el archivo de roles sigue
+        /// reportando y que ya no tienen fila ahí.
+        ///
+        /// La app nunca insertaba en Empleados: solo actualizaba, borraba
+        /// (delete-sindicalizado borra User y Empleado a la vez) y avisaba con un
+        /// warning cuando faltaba la fila. Sin camino de regreso, el operador
+        /// desaparecía de la aplicación para siempre aunque SAP lo siguiera
+        /// reportando activo. El archivo de roles manda: si está ahí, existe.
+        /// </summary>
+        private async Task<int> RestaurarEmpleadosFaltantesAsync(List<RolEmpleadoSAP> rolesEmpleadosSAP)
+        {
+            var nominasConEmpleado = new HashSet<int>(
+                await _context.Empleados.Select(e => e.Nomina).ToListAsync());
+
+            var faltantes = rolesEmpleadosSAP
+                .Where(r => !nominasConEmpleado.Contains(r.Nomina))
+                .GroupBy(r => r.Nomina)
+                .Select(g => g.First())
+                .ToList();
+
+            if (faltantes.Count == 0) return 0;
+
+            foreach (var rolSAP in faltantes)
+            {
+                // CentroCoste llega como texto en SAP y es entero en Empleados.
+                int? centroCoste = int.TryParse(rolSAP.CentroCoste, out var cc) ? cc : null;
+
+                _context.Empleados.Add(new Empleado
+                {
+                    Nomina = rolSAP.Nomina,
+                    Nombre = rolSAP.Nombre,
+                    FechaAlta = rolSAP.Alta,
+                    CentroCoste = centroCoste,
+                    UnidadOrganizativa = rolSAP.UnidadOrganizativa,
+                    EncargadoRegistro = rolSAP.EncargadoRegistro,
+                    Rol = rolSAP.Regla
+                });
+
+                _logger.LogWarning(
+                    "♻️ Nómina {Nomina} ({Nombre}): estaba en el archivo de roles pero no en Empleados; se restauró la fila (Regla={Regla}, UnidadOrg={UnidadOrg}).",
+                    rolSAP.Nomina, rolSAP.Nombre, rolSAP.Regla, rolSAP.UnidadOrganizativa);
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogWarning("♻️ Filas restauradas en Empleados desde el archivo de roles: {Total}", faltantes.Count);
+            return faltantes.Count;
+        }
+
+        /// <summary>
+        /// Da de alta el User de las nóminas que el archivo de roles reporta, ya
+        /// tienen fila en Empleados y ninguna en Users.
+        ///
+        /// Es la misma alta que hace GenericUsersGenerator (usuario = nómina,
+        /// contraseña inicial = nómina, rol Empleado Sindicalizado), pero acotada
+        /// a lo que SAP está reportando hoy, no a toda la tabla Empleados. No
+        /// toca a los usuarios desactivados: esa baja se decidió en la app y se
+        /// respeta.
+        /// </summary>
+        private async Task<int> CrearUsuariosFaltantesAsync(HashSet<int> nominasSap)
+        {
+            var rolSindicalizado = await _context.Roles
+                .FirstOrDefaultAsync(r => r.Id == (int)RolEnum.Empleado_Sindicalizado);
+            if (rolSindicalizado == null)
+            {
+                _logger.LogError("❌ No existe el rol Empleado Sindicalizado; no se pueden dar de alta usuarios faltantes.");
+                return 0;
+            }
+
+            var usuarios = await _context.Users
+                .Select(u => new { u.Nomina, u.Username })
+                .ToListAsync();
+            var nominasConUser = new HashSet<int>(usuarios.Where(u => u.Nomina.HasValue).Select(u => u.Nomina!.Value));
+            var usernamesExistentes = new HashSet<string>(usuarios.Select(u => u.Username));
+
+            var candidatos = (await _context.Empleados
+                    .Where(e => !string.IsNullOrEmpty(e.UnidadOrganizativa) && !string.IsNullOrEmpty(e.Rol))
+                    .ToListAsync())
+                .Where(e => nominasSap.Contains(e.Nomina)
+                            && !nominasConUser.Contains(e.Nomina)
+                            && !usernamesExistentes.Contains(e.Nomina.ToString()))
+                .ToList();
+
+            if (candidatos.Count == 0) return 0;
+
+            var areas = await _context.Areas.ToListAsync();
+            var grupos = await _context.Grupos.ToListAsync();
+            int creados = 0;
+
+            foreach (var empleado in candidatos)
+            {
+                var unidad = empleado.UnidadOrganizativa!.Trim().ToUpper();
+                var encargado = (empleado.EncargadoRegistro ?? "").Trim().ToUpper();
+
+                var areasDeLaUnidad = areas
+                    .Where(a => (a.UnidadOrganizativaSap ?? "").Trim().ToUpper() == unidad)
+                    .ToList();
+                // Con varias áreas en la misma unidad organizativa manda el
+                // encargado que reporta SAP; si no coincide ninguno, la única.
+                var area = areasDeLaUnidad.FirstOrDefault(a => (a.EncargadoRegistro ?? "").Trim().ToUpper() == encargado)
+                           ?? (areasDeLaUnidad.Count == 1 ? areasDeLaUnidad[0] : null);
+
+                if (area == null)
+                {
+                    _logger.LogWarning(
+                        "⚠️ Nómina {Nomina}: no se pudo dar de alta el usuario, no hay Área para UnidadOrg='{UnidadOrg}' / EncargadoRegistro='{Encargado}'.",
+                        empleado.Nomina, empleado.UnidadOrganizativa, empleado.EncargadoRegistro);
+                    continue;
+                }
+
+                var reglaLimpia = NormalizarRegla(empleado.Rol);
+                var grupo = grupos.FirstOrDefault(g => NormalizarRegla(g.Rol) == reglaLimpia && g.AreaId == area.AreaId);
+                if (grupo == null)
+                {
+                    _logger.LogWarning(
+                        "⚠️ Nómina {Nomina}: no se pudo dar de alta el usuario, el Área {AreaId} no tiene Grupo con Rol '{Rol}'.",
+                        empleado.Nomina, area.AreaId, empleado.Rol);
+                    continue;
+                }
+
+                var nominaStr = empleado.Nomina.ToString();
+                var salt = Guid.NewGuid().ToString();
+
+                _context.Users.Add(new User
+                {
+                    Username = nominaStr,
+                    PasswordSalt = salt,
+                    PasswordHash = PasswordHasher.HashPassword(nominaStr, salt),
+                    FullName = empleado.Nombre ?? nominaStr,
+                    Roles = new List<Rol> { rolSindicalizado },
+                    AreaId = area.AreaId,
+                    GrupoId = grupo.GrupoId,
+                    FechaIngreso = empleado.FechaAlta,
+                    Nomina = empleado.Nomina,
+                    CentroCoste = empleado.CentroCoste,
+                    Posicion = empleado.Posicion,
+                    Status = UserStatus.Activo
+                });
+                creados++;
+
+                _logger.LogWarning(
+                    "♻️ Nómina {Nomina} ({Nombre}): estaba en el archivo de roles sin usuario en la app; se dio de alta en el grupo {GrupoId} del área {AreaId}.",
+                    empleado.Nomina, empleado.Nombre, grupo.GrupoId, area.AreaId);
+            }
+
+            if (creados > 0)
+            {
+                await _context.SaveChangesAsync();
+                _logger.LogWarning("♻️ Usuarios dados de alta desde el archivo de roles: {Total}", creados);
+            }
+            return creados;
+        }
+
+        /// <summary>Compara reglas y roles sin _, - ni espacios: SAP y la app los escriben distinto.</summary>
+        private static string NormalizarRegla(string? valor) =>
+            (valor ?? "").Replace("_", "").Replace("-", "").Replace(" ", "").ToUpper();
 
         public async Task<int> SincronizarUsersDesdeEmpleados()
         {
