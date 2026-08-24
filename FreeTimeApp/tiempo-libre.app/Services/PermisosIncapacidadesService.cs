@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -444,8 +444,10 @@ namespace tiempo_libre.Services
                 // La extensión ACTUALIZA el registro original en vez de crear uno
                 // paralelo (los registros duplicados confundían al usuario en el
                 // modal de extender y en el dashboard). Se marca ProtegidoPorExtension
-                // para que el sync de SAP no vuelva a sobreescribir la fecha con la
-                // versión original del Excel. La traza queda en Observaciones.
+                // como rastro de que hubo captura manual, pero eso ya NO blinda la
+                // fecha: desde ago-2026 el Excel manda y, si SAP reporta otro rango,
+                // la sincronización recorta la extensión. La traza queda en
+                // Observaciones, tanto la de la extensión como la del recorte.
                 var hastaAnterior = permiso.Hasta;
                 var extensionDesde = hastaAnterior.AddDays(1);
                 var extensionHasta = request.NuevaFechaHasta;

@@ -123,9 +123,15 @@ export const ExtenderIncapacidadModal = ({
                             </button>
                         </div>
 
-                        <p className="text-sm text-gray-600 mb-4">
+                        <p className="text-sm text-gray-600 mb-2">
                             Selecciona el permiso/incapacidad y proporciona la nueva fecha Hasta.
                             Las nomenclaturas se reflejarán en el rol semanal en los días extendidos.
+                        </p>
+                        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-4">
+                            La extensión es provisional: <strong>manda el archivo de SAP</strong>. Si el
+                            archivo reporta otro rango para este permiso, la sincronización recorta los
+                            días que queden fuera. Captura también la extensión en SAP para que no se
+                            revierta.
                         </p>
 
                         {loadingData ? (

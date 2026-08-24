@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -181,15 +181,33 @@ namespace tiempo_libre.Services
                                     .OrderByDescending(p => p.Hasta)
                                     .FirstOrDefaultAsync();
 
-                                // Punto 6: si el jefe ya extendio este permiso desde la
-                                // app, el Excel no lo pisa.
+                                // El Excel manda, tambien sobre lo capturado en la app
+                                // (acuerdo con el cliente, ago-2026). Antes, un permiso
+                                // extendido desde la app quedaba ProtegidoPorExtension y
+                                // el Excel ya no lo tocaba nunca: cuando un jefe capturaba
+                                // dias de mas, no habia forma de corregirlo desde SAP.
+                                // Ahora la fila se actualiza con lo que dice el Excel y
+                                // los dias que quedan fuera del rango desaparecen del
+                                // calendario. Queda traza en el log y en Observaciones
+                                // porque estamos deshaciendo una captura de una persona.
                                 if (previo != null && previo.ProtegidoPorExtension)
                                 {
-                                    _logger.LogInformation(
-                                        "Omitido por proteccion de extension: Nomina={Nomina} Desde={Desde} ClAbPre={ClAbPre}",
-                                        nomina, desde, clAbPre);
-                                    registrosOmitidos++;
-                                    continue;
+                                    if (previo.Hasta != hasta)
+                                    {
+                                        _logger.LogWarning(
+                                            "El Excel corrige una extension capturada en la app: Nomina={Nomina} ClAbPre={ClAbPre} Desde={Desde} Hasta {HastaApp} -> {HastaExcel}",
+                                            nomina, clAbPre, desde, previo.Hasta, hasta);
+
+                                        var marca = $"[{DateTime.Now:yyyy-MM-dd HH:mm} SAP corrige la extension: {previo.Hasta:yyyy-MM-dd} -> {hasta:yyyy-MM-dd}]";
+                                        previo.Observaciones = string.IsNullOrWhiteSpace(previo.Observaciones)
+                                            ? marca
+                                            : previo.Observaciones + " | " + marca;
+                                        if (previo.Observaciones.Length > 500)
+                                            previo.Observaciones = previo.Observaciones.Substring(0, 500);
+                                    }
+
+                                    // Ya no hay nada que proteger: el Excel es la fuente.
+                                    previo.ProtegidoPorExtension = false;
                                 }
 
                                 // Convertir Dias y DiaNat (antes del "sin cambios":
@@ -242,6 +260,40 @@ namespace tiempo_libre.Services
                                 if (clAbPre == 1100)
                                 {
                                     await ReconciliarVacacionSapAsync(context, nomina, desde, hasta, dias);
+                                }
+
+                                // El mismo permiso puede tener ademas filas capturadas a
+                                // mano (EsRegistroManual) que se pasan del rango que
+                                // reporta el Excel. Se recortan al Hasta de SAP: son el
+                                // mismo evento —misma nomina, mismo tipo, mismo dia de
+                                // inicio— y lo que quede fuera del rango no debe seguir
+                                // pintandose en el calendario.
+                                var otrasFilasDelMismoPermiso = await context.PermisosEIncapacidadesSAP
+                                    .Where(p => p.Nomina == nomina &&
+                                                p.Desde == desde &&
+                                                p.ClAbPre == clAbPre &&
+                                                p.Hasta > hasta &&
+                                                (previo == null || p.Id != previo.Id))
+                                    .ToListAsync();
+
+                                foreach (var otra in otrasFilasDelMismoPermiso)
+                                {
+                                    _logger.LogWarning(
+                                        "El Excel recorta un registro capturado en la app: Id={Id} Nomina={Nomina} ClAbPre={ClAbPre} Desde={Desde} Hasta {HastaApp} -> {HastaExcel}",
+                                        otra.Id, nomina, clAbPre, desde, otra.Hasta, hasta);
+
+                                    var marcaOtra = $"[{DateTime.Now:yyyy-MM-dd HH:mm} SAP recorta: {otra.Hasta:yyyy-MM-dd} -> {hasta:yyyy-MM-dd}]";
+                                    otra.Observaciones = string.IsNullOrWhiteSpace(otra.Observaciones)
+                                        ? marcaOtra
+                                        : otra.Observaciones + " | " + marcaOtra;
+                                    if (otra.Observaciones.Length > 500)
+                                        otra.Observaciones = otra.Observaciones.Substring(0, 500);
+
+                                    otra.Hasta = hasta;
+                                    otra.Dias = dias;
+                                    otra.DiaNat = diaNat;
+                                    otra.ProtegidoPorExtension = false;
+                                    registrosActualizados++;
                                 }
 
                                 // Mismo permiso con distinto Hasta: SAP lo prolongo (o lo

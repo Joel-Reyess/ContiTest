@@ -120,9 +120,10 @@ namespace tiempo_libre.Models
         public DateTime? FechaRespuesta { get; set; }
 
         /// <summary>
-        /// Punto 6: si un jefe extendi� esta incapacidad, queda protegida para que
-        /// futuras cargas del Excel no la sobrescriban. Solo aplica al registro
-        /// original que vino del Excel.
+        /// Marca que esta fila fue extendida desde la app por un jefe.
+        /// Desde ago-2026 NO impide que el Excel la corrija: el Excel manda y,
+        /// si reporta otro rango, la sincronizacion recorta lo que quede fuera
+        /// (se dejo el campo como rastro de que hubo una captura manual).
         /// </summary>
         public bool ProtegidoPorExtension { get; set; } = false;
 
