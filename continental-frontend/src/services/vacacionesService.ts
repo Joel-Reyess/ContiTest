@@ -73,8 +73,13 @@ export const eliminarVacacionPorFecha = async (
 
 
 // Nuevo: obtener vacaciones asignadas por empleado
-export const getVacacionesAsignadasPorEmpleado = async (empleadoId: number): Promise<VacacionesAsignadasResponse> => {
-  const resp = await httpClient.get<ApiResponse<VacacionesAsignadasResponse>>(`/api/vacaciones/empleado/${empleadoId}/asignadas`);
+// `anio` acota las vacaciones listadas y el resumen (días programables,
+// antigüedad) a ese año. Sin él, el backend lista TODOS los años y calcula el
+// resumen con el año vigente: al capturar el año en preparación eso mezclaba
+// las vacaciones de dos años y daba los días programables del año equivocado.
+export const getVacacionesAsignadasPorEmpleado = async (empleadoId: number, anio?: number): Promise<VacacionesAsignadasResponse> => {
+  const query = anio ? `?anio=${anio}` : '';
+  const resp = await httpClient.get<ApiResponse<VacacionesAsignadasResponse>>(`/api/vacaciones/empleado/${empleadoId}/asignadas${query}`);
   if (resp?.data) {
     return resp.data as unknown as VacacionesAsignadasResponse;
   }

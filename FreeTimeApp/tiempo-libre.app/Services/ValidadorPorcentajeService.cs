@@ -20,6 +20,9 @@ namespace tiempo_libre.Services
         private readonly Dictionary<int, Grupo?> _gruposCache = new();
         private readonly Dictionary<int, int> _totalEmpleadosCache = new();
         private readonly Dictionary<(int AreaId, int Anio, int Mes), decimal?> _manningCache = new();
+        private readonly Dictionary<(int GrupoId, DateOnly Fecha), decimal?> _excepcionPorcentajeCache = new();
+        private readonly Dictionary<int, List<int>> _gruposPorAreaCache = new();
+        private readonly Dictionary<int, int> _totalEmpleadosAreaCache = new();
 
         public ValidadorPorcentajeService(FreeTimeDbContext db, ILogger<ValidadorPorcentajeService> logger)
         {
@@ -72,7 +75,8 @@ namespace tiempo_libre.Services
         /// <summary>
         /// Empleados DISTINTOS del grupo ausentes ese día: vacaciones programadas
         /// activas (días de empresa y días capturados por el operador viven en la
-        /// misma tabla) más permisos e incapacidades de SAP vigentes ese día.
+        /// misma tabla), permisos e incapacidades de SAP vigentes ese día y
+        /// descansos compensatorios de festivo trabajado ya aprobados.
         ///
         /// Antes esta cuenta solo miraba VacacionesProgramadas, así que el permiso
         /// que bloquea la captura no consideraba incapacidades ni permisos: el
@@ -83,11 +87,20 @@ namespace tiempo_libre.Services
         /// Se cuentan empleados y no renglones: un operador con vacación capturada
         /// en la app y su fila 1100 exportada por SAP aparecería dos veces.
         /// </summary>
-        private async Task<int> ContarAusentesDelGrupoAsync(int grupoId, DateOnly fecha)
+        private Task<int> ContarAusentesDelGrupoAsync(int grupoId, DateOnly fecha)
+            => ContarAusentesAsync(new[] { grupoId }, fecha);
+
+        private async Task<int> ContarAusentesAsync(IReadOnlyCollection<int> grupoIds, DateOnly fecha)
         {
+            if (grupoIds.Count == 0) return 0;
+
+            var usuariosDeLosGrupos = _db.Users
+                .Where(u => u.GrupoId.HasValue && grupoIds.Contains(u.GrupoId.Value)
+                            && u.Status == UserStatus.Activo);
+
             var porVacaciones = await _db.VacacionesProgramadas
                 .Where(v => v.FechaVacacion == fecha && v.EstadoVacacion == "Activa")
-                .Where(v => _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId == grupoId))
+                .Where(v => usuariosDeLosGrupos.Any(u => u.Id == v.EmpleadoId))
                 .Select(v => v.EmpleadoId)
                 .Distinct()
                 .ToListAsync();
@@ -97,16 +110,93 @@ namespace tiempo_libre.Services
             var porPermisos = await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Desde <= fecha && p.Hasta >= fecha
                             && (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-                .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo),
+                .Join(usuariosDeLosGrupos,
                       p => p.Nomina,
                       u => u.Nomina,
                       (p, u) => u.Id)
                 .Distinct()
                 .ToListAsync();
 
+            var porFestivos = await _db.SolicitudesFestivosTrabajados
+                .Where(f => f.FechaNuevaSolicitada == fecha && f.EstadoSolicitud == "Aprobada")
+                .Where(f => usuariosDeLosGrupos.Any(u => u.Id == f.EmpleadoId))
+                .Select(f => f.EmpleadoId)
+                .Distinct()
+                .ToListAsync();
+
             var ausentes = new HashSet<int>(porVacaciones);
             ausentes.UnionWith(porPermisos);
+            ausentes.UnionWith(porFestivos);
             return ausentes.Count;
+        }
+
+        /// <summary>
+        /// Porcentaje máximo que aplica a un grupo en una fecha: la excepción
+        /// capturada para ese grupo y día (ExcepcionesPorcentaje) manda sobre el
+        /// porcentaje global de ConfiguracionVacaciones.
+        ///
+        /// El tablero de ausencias ya respetaba estas excepciones; el candado no,
+        /// así que el jefe veía el día "abierto" por la excepción y la app lo
+        /// rechazaba al guardar (o al revés).
+        /// </summary>
+        private async Task<decimal> ObtenerPorcentajeMaximoAsync(int grupoId, DateOnly fecha, decimal porcentajeGlobal)
+        {
+            var clave = (grupoId, fecha);
+            if (!_excepcionPorcentajeCache.TryGetValue(clave, out var excepcion))
+            {
+                excepcion = await _db.ExcepcionesPorcentaje
+                    .Where(e => e.GrupoId == grupoId && e.Fecha == fecha)
+                    .Select(e => (decimal?)e.PorcentajeMaximoPermitido)
+                    .FirstOrDefaultAsync();
+                _excepcionPorcentajeCache[clave] = excepcion;
+            }
+            return excepcion ?? porcentajeGlobal;
+        }
+
+        /// <summary>
+        /// LA regla del porcentaje, sin base de datos, para que el candado (aquí),
+        /// el tablero de ausencias y el semáforo del calendario contesten lo mismo
+        /// con los mismos números.
+        ///
+        /// Grupos con menos del mínimo (100 / porcentaje, redondeado hacia arriba):
+        /// se permite UNA sola ausencia por día; un grupo de una persona siempre
+        /// puede. Grupos del mínimo en adelante: los ausentes —los que ya están
+        /// más los que se piden— no pueden pasar del porcentaje máximo de la
+        /// plantilla activa del grupo. Vacaciones de empresa, vacaciones capturadas
+        /// y permisos entran todos en la misma cuenta.
+        ///
+        /// Antes el candado medía el déficit contra el manning del ÁREA
+        /// ((manning − disponibles del grupo) / manning): en un área con varios
+        /// grupos el manning del área es mayor que la plantilla de cualquiera de
+        /// sus grupos, así que el déficit salía enorme y ningún día se abría; y en
+        /// un área con manning menor que su grupo salía negativo y todo se abría.
+        /// El tablero, en cambio, medía ausentes / plantilla del grupo. Por eso la
+        /// vista y el candado no se ponían de acuerdo.
+        /// </summary>
+        public EvaluacionRegla EvaluarRegla(int totalEmpleados, int ausentesActuales, int ausenciasSolicitadas, decimal porcentajeMaximo)
+        {
+            var minimo = CalcularMinimoEmpleadosParaPorcentaje(porcentajeMaximo);
+            var totalAusencias = ausentesActuales + ausenciasSolicitadas;
+
+            if (totalEmpleados <= 0)
+                return new EvaluacionRegla(false, 0m, false, minimo, "El grupo no tiene empleados activos");
+
+            if (totalEmpleados < minimo)
+            {
+                var permitido = totalEmpleados == 1 || totalAusencias <= 1;
+                var pct = Math.Round((decimal)totalAusencias / totalEmpleados * 100m, 2);
+                return new EvaluacionRegla(permitido, pct, true, minimo,
+                    permitido
+                        ? $"Grupo pequeño ({totalEmpleados} < {minimo}): se permite máximo 1 ausencia por día"
+                        : $"Grupo pequeño ({totalEmpleados} < {minimo}): ya hay {ausentesActuales} ausente(s) y solo se permite 1 por día");
+            }
+
+            var porcentaje = Math.Round((decimal)totalAusencias / totalEmpleados * 100m, 2);
+            var ok = porcentaje <= porcentajeMaximo;
+            return new EvaluacionRegla(ok, porcentaje, false, minimo,
+                ok
+                    ? $"{totalAusencias} de {totalEmpleados} ausentes = {porcentaje:F2}% (máximo {porcentajeMaximo}%)"
+                    : $"{totalAusencias} de {totalEmpleados} ausentes = {porcentaje:F2}% supera el máximo de {porcentajeMaximo}%");
         }
 
         /// <summary>
@@ -157,10 +247,6 @@ namespace tiempo_libre.Services
                     return false;
                 }
 
-                // Calcular el mínimo de empleados para aplicar el porcentaje
-                var minimoEmpleados = CalcularMinimoEmpleadosParaPorcentaje(config.PorcentajeAusenciaMaximo);
-
-                // Obtener total de empleados activos del grupo
                 if (!_totalEmpleadosCache.TryGetValue(grupoId, out var totalEmpleados))
                 {
                     totalEmpleados = await _db.Users
@@ -168,58 +254,43 @@ namespace tiempo_libre.Services
                     _totalEmpleadosCache[grupoId] = totalEmpleados;
                 }
 
-                // EXCEPCIÓN: Grupos pequeños (menos del mínimo)
-                if (totalEmpleados < minimoEmpleados)
-                {
-                    // Debug y no Information: esto se evalúa una vez por grupo, día
-                    // y empleado. Durante la asignación automática del año llenaba el
-                    // log con miles de líneas idénticas por segundo —y escribirlas
-                    // cuesta E/S justo cuando el proceso ya va pesado.
-                    _logger.LogDebug(
-                        "Grupo {GrupoId} con {Total} empleados es menor al mínimo ({Minimo}) para aplicar porcentaje. " +
-                        "Aplicando regla especial: permitir al menos 1 ausencia",
-                        grupoId, totalEmpleados, minimoEmpleados);
+                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada, config.PorcentajeAusenciaMaximo);
 
-                    // Para grupos pequeños: permitir al menos 1 ausencia
-                    if (!ausenciasActuales.HasValue)
-                    {
-                        // Ausencias ya programadas para el día que se evalúa
-                        ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
-                    }
+                // Ausencias ya programadas para el día que se evalúa
+                ausenciasActuales ??= await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
 
-                    // Permitir la ausencia si actualmente no hay nadie ausente
-                    // o si el grupo tiene solo 1 persona (caso especial)
-                    return totalEmpleados == 1 || ausenciasActuales.Value == 0;
-                }
+                var regla = EvaluarRegla(totalEmpleados, ausenciasActuales.Value, ausenciasSolicitadas, porcentajeMaximo);
 
-                // REGLA NORMAL: Grupos grandes usan el porcentaje
-                // El manning también se resuelve con la fecha evaluada: la excepción
-                // mensual del SuperUsuario es por mes, y al programar el año siguiente
-                // la del mes en curso no tiene por qué aplicar.
+                // Debug y no Information: esto se evalúa una vez por grupo, día y
+                // empleado. Durante la asignación automática del año llenaba el log
+                // con miles de líneas idénticas por segundo.
+                _logger.LogDebug("Validación porcentaje Grupo {GrupoId} {Fecha}: {Motivo} → {Resultado}",
+                    grupoId, fechaEvaluada, regla.Motivo, regla.Permitido);
+
+                if (!regla.Permitido)
+                    return false;
+
+                // Segundo candado, ahora sí con el manning: el personal requerido del
+                // ÁREA se compara contra los disponibles de TODA el área (todos sus
+                // grupos), con la misma tolerancia del porcentaje. Solo aplica si el
+                // área tiene manning capturado (o una excepción del mes); con 0 no
+                // hay nada contra qué comparar.
                 var manningArea = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, fechaEvaluada);
-                var manning = manningArea > 0 ? manningArea : totalEmpleados;
-
-                // Calcular cuántos estarían ausentes con la nueva solicitud
-                if (!ausenciasActuales.HasValue)
+                if (manningArea > 0)
                 {
-                    ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
+                    var (totalArea, ausentesArea) = await ContarPlantillaYAusentesDelAreaAsync(grupo.AreaId, fechaEvaluada);
+                    var disponiblesArea = totalArea - ausentesArea - ausenciasSolicitadas;
+                    var deficit = (manningArea - disponiblesArea) / manningArea * 100m;
+                    if (deficit > porcentajeMaximo)
+                    {
+                        _logger.LogDebug(
+                            "Manning Área {AreaId} {Fecha}: requeridos {Manning}, quedarían {Disponibles} de {Total} → déficit {Deficit:F2}% > {Maximo}%",
+                            grupo.AreaId, fechaEvaluada, manningArea, disponiblesArea, totalArea, deficit, porcentajeMaximo);
+                        return false;
+                    }
                 }
 
-                var totalAusencias = ausenciasActuales.Value + ausenciasSolicitadas;
-                var disponibles = totalEmpleados - totalAusencias;
-
-                // Calcular porcentaje de déficit
-                var porcentajeDeficit = ((decimal)(manning - disponibles) / manning) * 100;
-
-                var resultado = porcentajeDeficit <= config.PorcentajeAusenciaMaximo;
-
-                _logger.LogDebug(
-                    "Validación porcentaje Grupo {GrupoId}: Total={Total}, Manning={Manning}, " +
-                    "Ausencias={Ausencias}, Déficit={Deficit:F2}%, Máximo={Maximo}%, Resultado={Resultado}",
-                    grupoId, totalEmpleados, manning, totalAusencias,
-                    porcentajeDeficit, config.PorcentajeAusenciaMaximo, resultado);
-
-                return resultado;
+                return true;
             }
             catch (Exception ex)
             {
@@ -228,10 +299,29 @@ namespace tiempo_libre.Services
             }
         }
 
+        private async Task<(int Total, int Ausentes)> ContarPlantillaYAusentesDelAreaAsync(int areaId, DateOnly fecha)
+        {
+            if (!_gruposPorAreaCache.TryGetValue(areaId, out var grupos))
+            {
+                grupos = await _db.Grupos.Where(g => g.AreaId == areaId).Select(g => g.GrupoId).ToListAsync();
+                _gruposPorAreaCache[areaId] = grupos;
+            }
+            if (!_totalEmpleadosAreaCache.TryGetValue(areaId, out var total))
+            {
+                total = await _db.Users.CountAsync(u => u.GrupoId.HasValue && grupos.Contains(u.GrupoId.Value)
+                                                        && u.Status == UserStatus.Activo);
+                _totalEmpleadosAreaCache[areaId] = total;
+            }
+            // Los ausentes NO se memorizan: dentro de una misma asignación
+            // automática cambian cada vez que se guarda un día.
+            var ausentes = await ContarAusentesAsync(grupos, fecha);
+            return (total, ausentes);
+        }
+
         /// <summary>
         /// Obtiene información detallada sobre el estado de ausencias de un grupo
         /// </summary>
-        public async Task<EstadoAusenciasGrupo> ObtenerEstadoAusenciasGrupo(int grupoId)
+        public async Task<EstadoAusenciasGrupo> ObtenerEstadoAusenciasGrupo(int grupoId, DateOnly? fecha = null)
         {
             var config = await _db.ConfiguracionVacaciones
                 .OrderByDescending(c => c.CreatedAt)
@@ -247,20 +337,12 @@ namespace tiempo_libre.Services
             var totalEmpleados = await _db.Users
                 .CountAsync(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo);
 
-            var hoy = DateOnly.FromDateTime(DateTime.Today);
-            var ausenciasActuales = await _db.VacacionesProgramadas
-                .CountAsync(v =>
-                    _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId == grupoId) &&
-                    v.FechaVacacion == hoy &&
-                    v.EstadoVacacion == "Activa");
+            var dia = fecha ?? DateOnly.FromDateTime(DateTime.Today);
+            var ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, dia);
+            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia, config.PorcentajeAusenciaMaximo);
+            var estado = EvaluarRegla(totalEmpleados, ausenciasActuales, 0, porcentajeMaximo);
 
-            var minimoEmpleados = CalcularMinimoEmpleadosParaPorcentaje(config.PorcentajeAusenciaMaximo);
-            var esGrupoPequeno = totalEmpleados < minimoEmpleados;
-
-            var manningAreaEstado = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, hoy);
-            var manning = manningAreaEstado > 0 ? manningAreaEstado : totalEmpleados;
-            var disponibles = totalEmpleados - ausenciasActuales;
-            var porcentajeDeficit = manning > 0 ? ((decimal)(manning - disponibles) / manning) * 100 : 0;
+            var manningAreaEstado = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, dia);
 
             return new EstadoAusenciasGrupo
             {
@@ -268,18 +350,24 @@ namespace tiempo_libre.Services
                 NombreGrupo = grupo.Rol,
                 TotalEmpleados = totalEmpleados,
                 AusenciasActuales = ausenciasActuales,
-                Manning = (int)manning,
-                PorcentajeDeficitActual = porcentajeDeficit,
-                PorcentajeMaximoPermitido = config.PorcentajeAusenciaMaximo,
-                EsGrupoPequeno = esGrupoPequeno,
-                MinimoEmpleadosParaPorcentaje = minimoEmpleados,
-                PuedeAgregarAusencia = await PuedeGrupoTenerAusencias(grupoId, 1, ausenciasActuales),
-                MensajeEstado = esGrupoPequeno
-                    ? $"Grupo pequeño: se permite máximo 1 ausencia (tiene {totalEmpleados} empleados, mínimo para porcentaje es {minimoEmpleados})"
-                    : $"Déficit actual: {porcentajeDeficit:F2}% de {config.PorcentajeAusenciaMaximo}% máximo"
+                Manning = (int)manningAreaEstado,
+                PorcentajeDeficitActual = estado.PorcentajeResultante,
+                PorcentajeMaximoPermitido = porcentajeMaximo,
+                EsGrupoPequeno = estado.EsGrupoPequeno,
+                MinimoEmpleadosParaPorcentaje = estado.MinimoEmpleados,
+                PuedeAgregarAusencia = await PuedeGrupoTenerAusencias(grupoId, 1, ausenciasActuales, dia),
+                MensajeEstado = estado.Motivo
             };
         }
     }
+
+    /// <summary>Resultado de EvaluarRegla: la misma respuesta para el candado y para las vistas.</summary>
+    public sealed record EvaluacionRegla(
+        bool Permitido,
+        decimal PorcentajeResultante,
+        bool EsGrupoPequeno,
+        int MinimoEmpleados,
+        string Motivo);
 
     public class EstadoAusenciasGrupo
     {

@@ -48,13 +48,18 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
   const [showConfirmConclude, setShowConfirmConclude] = useState(false);
   const [isDownloadingNoRespondieron, setIsDownloadingNoRespondieron] = useState(false);
 
+  // Año sobre el que operan cancelar/concluir: el que está en preparación si
+  // lo hay. Con el vigente se habría revertido el año en curso (bloques,
+  // vacaciones y solicitudes de 2026) al cancelar la preparación de 2027.
+  const anioObjetivo = configVacaciones?.anioProgramacionAnual ?? anioVigente;
+
   const handleCancelarProgramacion = async () => {
     if (!showConfirmCancel) {
       // Primera vez: mostrar resumen de lo que se va a eliminar
       try {
         onNotification("info", "Obteniendo información", "Consultando datos de la programación anual...");
         
-        const resumen = await ProgramacionAnualService.obtenerResumenReversion(anioVigente);
+        const resumen = await ProgramacionAnualService.obtenerResumenReversion(anioObjetivo);
         
         // Mostrar información detallada del resumen
         const advertenciasTexto = resumen.advertencias.length > 0 
@@ -102,7 +107,7 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
       onNotification("info", "Procesando", "Ejecutando reversión completa de la programación anual...");
       
       // Ejecutar reversión completa usando el nuevo endpoint
-      const resultado = await ProgramacionAnualService.revertirCompleto(anioVigente, true);
+      const resultado = await ProgramacionAnualService.revertirCompleto(anioObjetivo, true);
       
       // Mostrar resultado detallado
       const mensajeDetallado = `${resultado.mensaje}
@@ -126,10 +131,16 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
       // Solo cambiar el periodo a Cerrado si la reversión fue exitosa
       if (resultado.operacionExitosa && configVacaciones) {
         try {
+          // Si se canceló la preparación del año siguiente, el periodo del año
+          // vigente se queda como estaba (su reprogramación sigue); sólo se
+          // suelta el año en preparación. "Cerrado" únicamente en el flujo sin
+          // coexistencia, donde no hay otro año corriendo.
+          const habiaPreparacion = configVacaciones.anioProgramacionAnual != null;
           const updatedConfig = await vacacionesService.updateConfig({
             porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
-            periodoActual: "Cerrado",
+            periodoActual: habiaPreparacion ? configVacaciones.periodoActual : "Cerrado",
             anioVigente: configVacaciones.anioVigente,
+            anioProgramacionAnual: null,
           });
           onConfigUpdate(updatedConfig);
 
@@ -281,11 +292,14 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
         throw new Error("No se pudo cargar la configuración");
       }
 
-      // Cambiar el periodo a Reprogramacion
+      // Cambiar el periodo a Reprogramacion. El año en preparación (si lo hay)
+      // se conserva: el PUT persiste lo que recibe y omitirlo lo borraba, con lo
+      // que jefes y operadores perdían el año de sus bloques.
       const updatedConfig = await vacacionesService.updateConfig({
         porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
         periodoActual: "Reprogramacion",
         anioVigente: configVacaciones.anioVigente,
+        anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
       });
 
       onConfigUpdate(updatedConfig);

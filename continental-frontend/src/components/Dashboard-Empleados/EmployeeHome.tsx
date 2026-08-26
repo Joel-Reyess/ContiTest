@@ -78,7 +78,18 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
 
             setLoadingVacaciones(true);
             try {
-                const resp = await getVacacionesAsignadasPorEmpleado(empleadoId);
+                // En captura anual, los datos son del año que se captura (el que
+                // está en preparación, o el vigente si no hay preparación).
+                let anio: number | undefined;
+                if (currentPeriod === PeriodOptions.annual) {
+                    try {
+                        const cfg = await vacacionesService.getConfig();
+                        anio = cfg.anioProgramacionAnual ?? cfg.anioVigente;
+                    } catch {
+                        anio = undefined;
+                    }
+                }
+                const resp = await getVacacionesAsignadasPorEmpleado(empleadoId, anio);
                 setVacacionesData(resp);
                 console.log('📊 Datos de vacaciones cargados:', resp);
             } catch (error) {
@@ -90,7 +101,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
         };
 
         fetchVacaciones();
-    }, [user?.id, selectedEmployee?.id]);
+    }, [user?.id, selectedEmployee?.id, currentPeriod]);
 
     // Cargar estadisticas de solicitudes de reprogramacion
     useEffect(() => {

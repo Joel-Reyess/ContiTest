@@ -118,8 +118,12 @@ const CustomDateCellWrapper = ({
         break;
       case "not-work":
         // Sin código SAP y sin sombreado: el gris se confundía con una
-        // incidencia. Queda el tooltip con la razón.
+        // incidencia. Queda el tooltip con la razón... salvo el día LLENO por
+        // el porcentaje del grupo, que sí se tiñe: sin color se veía idéntico a
+        // un día abierto y el operador se enteraba hasta el clic (el "los
+        // colores de alerta no funcionaron" de la captura 2026).
         title = eventData.razon || "Día no laborable";
+        if ((eventData.razon || "").includes("lleno")) className += " full-day";
         break;
       default:
         break;
@@ -200,13 +204,17 @@ const CustomDateCellWrapper = ({
 };
  
 
-const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean }) => {
+const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false, year }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean; year?: number }) => {
   // Obtener configuración de vacaciones para determinar el año
   const { currentPeriod } = useVacationConfig();
   
-  // Calcular el año apropiado basado en el período actual
+  // El año que se dibuja lo decide quien usa el calendario (la captura de la
+  // programación anual pasa el año en preparación). Sin ese dato, el año en
+  // curso. Antes era SIEMPRE el año en curso: en agosto de 2026 el operador
+  // capturaba sus vacaciones de 2027 sobre un grid de 2026, y las fechas
+  // guardadas salían con el año equivocado.
   const currentYear = new Date().getFullYear();
-  const targetYear = currentYear;
+  const targetYear = year ?? currentYear;
   
   const {
     schedule,

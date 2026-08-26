@@ -522,9 +522,12 @@ namespace tiempo_libre.Services
 
                 _db.VacacionesProgramadas.Add(vacacion);
 
-                // Ese día del grupo acaba de ocuparse un lugar más: lo memorizado
-                // dejó de ser cierto.
-                _disponibilidadPorGrupoYFecha.Remove((resultado.GrupoId, dia.Fecha));
+                // Ese día acaba de ocuparse un lugar más: lo memorizado dejó de ser
+                // cierto para este grupo y, por el manning del área, también para
+                // los demás grupos de la misma área en esa fecha. Se limpia la fecha
+                // completa: es barato y no deja huecos.
+                foreach (var clave in _disponibilidadPorGrupoYFecha.Keys.Where(k => k.Fecha == dia.Fecha).ToList())
+                    _disponibilidadPorGrupoYFecha.Remove(clave);
             }
 
             // CancellationToken.None a propósito: si el cliente aborta justo aquí, es

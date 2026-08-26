@@ -8,6 +8,9 @@ import MyRequests from './MyRequests'
 import { PeriodOptions } from '@/interfaces/Calendar.interface'
 import { Plantilla } from './Plantilla'
 import { useVacationConfig } from '@/hooks/useVacationConfig'
+import useAuth from '@/hooks/useAuth'
+import { UserRole } from '@/interfaces/User.interface'
+import type { Period } from '@/interfaces/Calendar.interface'
 import WeeklyRoles from './WeeklyRoles'
 import MisPermutas from './MisPermutas';
 import EdicionDiasEmpresa from './EdicionDiasEmpresa';
@@ -15,7 +18,24 @@ import ConsultaConstancia from './ConsultaConstancia';
 
 
 const EmployeeDashboard = (): JSX.Element => {
-    const { currentPeriod, loading, error } = useVacationConfig();
+    const { currentPeriod, loading, error, config } = useVacationConfig();
+    const { user } = useAuth();
+
+    const hasRole = (roleName: string) =>
+        (user?.roles || []).some((role: any) => (typeof role === "string" ? role === roleName : role?.name === roleName));
+    const isDelegadoSindical =
+        Boolean((user as any)?.isUnionCommittee) ||
+        hasRole(UserRole.UNION_REPRESENTATIVE) ||
+        user?.area?.nombreGeneral === "Sindicato";
+
+    // Coexistencia: mientras el año siguiente está "en preparación", el periodo
+    // sigue en Reprogramación (para que los delegados no pierdan la del año en
+    // curso) y aun así el sindicalizado tiene que poder capturar su año nuevo.
+    // Antes la ruta de captura sólo existía con el periodo en ProgramacionAnual,
+    // así que en agosto de 2026 nadie podía capturar 2027.
+    const anioEnPreparacion = config?.anioProgramacionAnual != null && currentPeriod !== PeriodOptions.closed;
+    const periodoEfectivo: Period =
+        anioEnPreparacion && !isDelegadoSindical ? PeriodOptions.annual : currentPeriod;
 
     // Mostrar loading mientras se obtiene la configuración
     if (loading) {
@@ -65,10 +85,10 @@ const EmployeeDashboard = (): JSX.Element => {
             {/* Main Content */}
             <div className="flex-1 min-h-screen h-full">
                 <Routes>
-                    <Route index element={<EmployeeHome currentPeriod={currentPeriod} />} />
+                    <Route index element={<EmployeeHome currentPeriod={periodoEfectivo} />} />
 
                     {/* Rutas condicionales basadas en el período actual */}
-                    {currentPeriod === PeriodOptions.annual && (
+                    {(currentPeriod === PeriodOptions.annual || anioEnPreparacion) && (
                         <Route path="solicitar-vacaciones" element={<RequestVacations />} />
                     )}
 

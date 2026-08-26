@@ -826,8 +826,9 @@ export const Reportes = () => {
 
                 const config = await vacacionesService.getConfig();
 
+                // El selector de año manda; el vigente sólo si no se eligió nada.
                 const empleadosSinAsignacion = await AsignacionAutomaticaService.getEmpleadosSinAsignacion(
-                    config.anioVigente
+                    selectedYear ? parseInt(selectedYear) : config.anioVigente
                 );
 
                 if (empleadosSinAsignacion.totalEmpleadosSinAsignacion === 0) {
@@ -861,7 +862,7 @@ export const Reportes = () => {
                     selectedGroups.length === 1 ? availableGroups.find((g) => g.value === selectedGroups[0])?.liderId : undefined;
 
                 const empleadosNoRespondieron = await BloquesReservacionService.obtenerEmpleadosNoRespondieron(
-                    config.anioVigente,
+                    selectedYear ? parseInt(selectedYear) : config.anioVigente,
                     areaIdFilter,
                     grupoIdFilter
                 );
@@ -1099,7 +1100,7 @@ export const Reportes = () => {
                             <SelectValue placeholder="Seleccionar año" />
                         </SelectTrigger>
                         <SelectContent>
-                            {Array.from({ length: (config?.anioVigente || new Date().getFullYear()) - 2020 + 3 }, (_, i) => {
+                            {Array.from({ length: Math.max(config?.anioVigente || 0, config?.anioProgramacionAnual || 0, new Date().getFullYear()) - 2020 + 3 }, (_, i) => {
                                 const year = 2020 + i;
                                 return (
                                     <SelectItem key={year} value={year.toString()}>

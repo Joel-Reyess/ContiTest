@@ -158,7 +158,10 @@ export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; us
                                 // también estaba ausente — por eso una incapacidad del
                                 // 23/07 al 19/08 solo pintaba días sueltos.
                                 if (finalEventType !== 'inability') {
-                                    razon = "Día no disponible";
+                                    // Texto del criterio de aceptación de la captura
+                                    // (HU95-101, punto 12): el operador debe saber que el
+                                    // día está lleno, no sólo que "no está disponible".
+                                    razon = "Día lleno por vacaciones y/o permisos";
                                     finalEventType = ['holiday-boss', 'holiday', 'not-work', 'rest'].includes(finalEventType) ? finalEventType : "not-work" ;
                                 }
                             } else if (ausenciasDelDia.porcentajeAusencia >= 4.0) {

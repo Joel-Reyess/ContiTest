@@ -102,3 +102,25 @@ PRINT '=== (5) Porcentaje configurado (define el minimo de 23) ===';
 SELECT TOP 1 Id, PorcentajeAusenciaMaximo, PeriodoActual, AnioVigente, AnioProgramacionAnual, CreatedAt
 FROM dbo.ConfiguracionVacaciones
 ORDER BY CreatedAt DESC;
+
+PRINT '=== (6) Manning del area vs plantilla de sus grupos ===';
+-- Hasta la rama fix/punchlist-batch-1 el candado del porcentaje comparaba el
+-- MANNING DEL ÁREA contra los DISPONIBLES DEL GRUPO:
+--     déficit = (ManningArea - (PlantillaGrupo - Ausentes)) / ManningArea * 100
+-- En un área con varios grupos el manning del área es mayor que cualquiera de
+-- sus grupos y ese déficit sale enorme aun con CERO ausentes: ningún día se
+-- abría y la asignación de días por empresa terminaba en "No se encontró una
+-- semana disponible". La columna DeficitConCeroAusentes lo muestra: si es
+-- mayor que el porcentaje configurado, ese grupo estaba bloqueado siempre.
+SELECT a.AreaId, a.NombreGeneral AS Area, a.Manning AS ManningArea,
+       (SELECT COUNT(*) FROM dbo.Grupos g2 WHERE g2.AreaId = a.AreaId) AS GruposEnElArea,
+       g.GrupoId, g.Rol AS Grupo,
+       (SELECT COUNT(*) FROM dbo.Users u WHERE u.GrupoId = g.GrupoId AND u.Status = 0) AS PlantillaGrupo,
+       CASE WHEN a.Manning > 0 THEN
+            CAST((a.Manning - (SELECT COUNT(*) FROM dbo.Users u WHERE u.GrupoId = g.GrupoId AND u.Status = 0))
+                 * 100.0 / a.Manning AS DECIMAL(10,2))
+       END AS DeficitConCeroAusentes,
+       (SELECT TOP 1 PorcentajeAusenciaMaximo FROM dbo.ConfiguracionVacaciones ORDER BY CreatedAt DESC) AS PorcentajeMaximo
+FROM dbo.Grupos g
+JOIN dbo.Areas a ON a.AreaId = g.AreaId
+ORDER BY DeficitConCeroAusentes DESC, a.NombreGeneral, g.Rol;

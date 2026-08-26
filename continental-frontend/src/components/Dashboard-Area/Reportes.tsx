@@ -16,6 +16,10 @@ import { reportesService } from "@/services/reportesService";
 import { edicionDiasEmpresaService } from "@/services/edicionDiasEmpresaService";
 import { vacacionesService } from "@/services/vacacionesService";
 import { generarExcelVacacionesAsignadasEmpresa } from "@/utils/vacacionesAsignadasEmpresaExcel";
+import { generarExcelEmpleadosFaltantesCaptura } from "@/utils/empleadosFaltantesCapturaExcel";
+import { BloquesReservacionService } from "@/services/bloquesReservacionService";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import type { EmpleadoDetalle } from "@/interfaces/Api.interface";
 import {
   Download,
@@ -76,6 +80,15 @@ export const Reportes = () => {
       setSelectedYear(config.anioVigente.toString());
     }
   }, [config, selectedYear]);
+
+  // Años que se ofrecen: desde 2020 hasta dos después del mayor entre el
+  // vigente, el que está en preparación y el actual. Antes el jefe/RH no tenía
+  // selector: todos los reportes salían del año vigente aunque ya se estuviera
+  // preparando el siguiente.
+  const aniosDisponibles = useMemo(() => {
+    const tope = Math.max(config?.anioVigente || 0, config?.anioProgramacionAnual || 0, new Date().getFullYear()) + 2;
+    return Array.from({ length: tope - 2020 + 1 }, (_, i) => 2020 + i);
+  }, [config?.anioVigente, config?.anioProgramacionAnual]);
 
   useEffect(() => {
     const loadAreas = async () => {
@@ -444,6 +457,55 @@ export const Reportes = () => {
             await handleDownloadConstancia();
         } else if (reportId === 11) {
             await handleReprogGeneral();
+        } else if (reportId === 10) {
+            try {
+                const anio = selectedYear ? parseInt(selectedYear) : config?.anioVigente;
+                if (!anio) {
+                    toast.error("Selecciona el año para generar el reporte");
+                    return;
+                }
+                const loadingToast = toast.loading("Generando reporte de empleados faltantes...");
+                const data = await reportesService.obtenerEmpleadosFaltantesCaptura({
+                    anio,
+                    areaId: selectedArea === "all" ? undefined : selectedArea,
+                    grupoId: undefined
+                });
+                toast.dismiss(loadingToast);
+                if (!data.empleados.length) {
+                    toast.info("No hay empleados pendientes de capturar vacaciones con los filtros seleccionados");
+                    return;
+                }
+                generarExcelEmpleadosFaltantesCaptura(data);
+                toast.success(`Reporte descargado con ${data.totalEmpleados} empleado(s) pendiente(s)`);
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte de faltantes de capturar vacaciones");
+            }
+        } else if (reportId === 7) {
+            try {
+                const anio = selectedYear ? parseInt(selectedYear) : config?.anioVigente;
+                if (!anio) {
+                    toast.error("Selecciona el año para generar el reporte");
+                    return;
+                }
+                const loadingToast = toast.loading("Generando reporte de empleados que no respondieron...");
+                const data = await BloquesReservacionService.obtenerEmpleadosNoRespondieron(
+                    anio,
+                    selectedArea === "all" ? undefined : selectedArea,
+                    undefined
+                );
+                toast.dismiss(loadingToast);
+                if (data.totalEmpleadosNoRespondio === 0) {
+                    toast.info("No hay empleados que no hayan respondido");
+                    return;
+                }
+                const { generarExcelEmpleadosNoRespondieron } = await import("@/utils/empleadosNoRespondieronExcel");
+                generarExcelEmpleadosNoRespondieron(data);
+                toast.success(`Reporte descargado: ${data.totalEmpleadosNoRespondio} empleado(s) que no respondieron`);
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo descargar el reporte de empleados que no respondieron");
+            }
         } else if (reportId === 19) {
             try {
                 const anio = selectedYear ? parseInt(selectedYear) : undefined;
@@ -500,6 +562,27 @@ export const Reportes = () => {
                     <div className="text-[25px] font-bold text-continental-black text-left">Descargar Reportes</div>
                     <p className="text-[16px] font-medium text-continental-black text-left">
                         Accede y descarga los reportes más relevantes
+                    </p>
+                </div>
+
+                <div className="space-y-2">
+                    <Label className="text-base font-medium text-continental-black">Año</Label>
+                    <Select value={selectedYear} onValueChange={setSelectedYear}>
+                        <SelectTrigger className="w-full max-w-xs">
+                            <SelectValue placeholder="Seleccionar año" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {aniosDisponibles.map((year) => (
+                                <SelectItem key={year} value={year.toString()}>
+                                    {year}
+                                    {config?.anioVigente === year ? " (vigente)" : ""}
+                                    {config?.anioProgramacionAnual === year ? " (en preparación)" : ""}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">
+                        Aplica a vacaciones asignadas por la empresa, constancias, faltantes por capturar, no respondieron y reprogramación de días de empresa.
                     </p>
                 </div>
 

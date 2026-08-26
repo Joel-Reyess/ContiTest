@@ -90,6 +90,14 @@
   font-weight: bold !important;
 }
 
+/* Día lleno por vacaciones y/o permisos del grupo: se puede ver el turno,
+   pero no se puede reservar. Rojo tenue para distinguirlo de una incidencia. */
+.custom-date-cell-wrapper.full-day {
+  background-color: rgba(220, 38, 38, 0.12) !important;
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(220, 38, 38, 0.10) 6px 8px);
+  cursor: not-allowed !important;
+}
+
 .custom-date-cell-wrapper.inability-day {
   background-color: var(--color-continental-gray-1) !important; /* Gris claro */
   cursor: not-allowed !important;

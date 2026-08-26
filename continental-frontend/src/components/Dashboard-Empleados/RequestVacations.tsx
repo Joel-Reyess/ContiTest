@@ -115,10 +115,13 @@ const RequestVacations = () => {
                 // vigente. Antes se calculaba como "año actual + 1", que sólo
                 // acertaba por casualidad y nunca coincidía con el año de los
                 // bloques generados.
-                setAnioCaptura(config.anioProgramacionAnual ?? config.anioVigente ?? null);
+                setAnioCaptura(config.anioProgramacionAnual ?? config.anioVigente ?? new Date().getFullYear() + 1);
                 console.log('📅 Periodo actual cargado:', config.periodoActual);
             } catch (error) {
                 console.error('Error fetching period:', error);
+                // Sin configuración no hay año de captura; se asume el siguiente
+                // para no dejar la pantalla cargando para siempre.
+                setAnioCaptura(new Date().getFullYear() + 1);
             }
         };
         fetchPeriod();
@@ -128,11 +131,13 @@ const RequestVacations = () => {
     // Cargar vacaciones reales del empleado al montar el componente
     useEffect(() => {
         const fetchVacaciones = async () => {
-            if (!user?.id) return;
+            if (!user?.id || anioCaptura == null) return;
 
             setLoadingVacations(true);
             try {
-                const resp = await getVacacionesAsignadasPorEmpleado(user.id);
+                // Del año que se captura: sus días de empresa, lo que ya reservó y
+                // los días programables calculados con la antigüedad de ESE año.
+                const resp = await getVacacionesAsignadasPorEmpleado(user.id, anioCaptura);
                 setVacacionesData(resp);
 
                 // Días de empresa que ya cambiaron de fecha, para marcarlos.
@@ -155,19 +160,19 @@ const RequestVacations = () => {
         };
 
         fetchVacaciones();
-    }, [user?.id]);
+    }, [user?.id, anioCaptura]);
 
     // Cargar datos de disponibilidad por grupo
     useEffect(() => {
         const fetchDisponibilidad = async () => {
-            if (!user?.grupo?.grupoId) return;
+            if (!user?.grupo?.grupoId || anioCaptura == null) return;
 
             setLoadingDisponibilidad(true);
             try {
-                const currentYear = new Date().getFullYear();
-                const nextYear = currentYear + 1; // Año siguiente al actual
-
-                const resp = await getDisponibilidadVacaciones(nextYear, user.grupo.grupoId);
+                // El semáforo por mes es del año que se captura, no de "el que
+                // sigue al actual": en enero de 2027, con la captura de 2027 aún
+                // abierta, eso apuntaba a 2028.
+                const resp = await getDisponibilidadVacaciones(anioCaptura, user.grupo.grupoId);
                 setDisponibilidadData(resp);
             } catch (error) {
                 console.error('Error fetching disponibilidad:', error);
@@ -180,7 +185,7 @@ const RequestVacations = () => {
         };
 
         fetchDisponibilidad();
-    }, [user?.grupo?.grupoId]);
+    }, [user?.grupo?.grupoId, anioCaptura]);
 
     const handleSelectDay = (day: string) => {
         //validar que el dia no exista en selectedDays
@@ -344,6 +349,7 @@ const RequestVacations = () => {
                     )}
                     {selectedMonth ? (
                         <Calendar
+                            year={anioCaptura ?? undefined}
                             month={selectedMonth}
                             onMonthChange={setSelectedMonth}
                             onSelectDay={handleSelectDay}

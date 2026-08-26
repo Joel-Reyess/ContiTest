@@ -275,9 +275,11 @@ namespace tiempo_libre.Services
                             ? Math.Clamp(Math.Round((decimal)personalNoDisponible / personalTotal * 100m, 2), 0m, 100m)
                             : 0m;
 
-                        var minimoEmp = _validadorPorcentaje.CalcularMinimoEmpleadosParaPorcentaje(porcentajeMaximo);
-                        var esSmall = personalTotal < minimoEmp;
-                        var excedeLimite = !esSmall && pctAusencia > porcentajeMaximo;
+                        // La misma regla que aplica el candado al guardar (ValidadorPorcentajeService):
+                        // así el tablero y el semáforo del calendario no contradicen a la app.
+                        var estadoActual = _validadorPorcentaje.EvaluarRegla(personalTotal, personalNoDisponible, 0, porcentajeMaximo);
+                        var conUnoMas = _validadorPorcentaje.EvaluarRegla(personalTotal, personalNoDisponible, 1, porcentajeMaximo);
+                        var excedeLimite = !estadoActual.Permitido;
 
                         ausenciasPorGrupo.Add(new AusenciaPorGrupoDto
                         {
@@ -293,7 +295,7 @@ namespace tiempo_libre.Services
                             PorcentajeAusencia = pctAusencia,
                             PorcentajeMaximoPermitido = porcentajeMaximo,
                             ExcedeLimite = excedeLimite,
-                            PuedeReservar = !excedeLimite,
+                            PuedeReservar = conUnoMas.Permitido,
                             EmpleadosAusentes = todosAusentes,
                             EmpleadosDisponibles = disponibles
                         });
@@ -482,11 +484,9 @@ namespace tiempo_libre.Services
 
             // 7) Límite permitido y grupos pequeños
             var porcentajeMaximo = await ObtenerPorcentajeMaximoPermitidoAsync(grupoId, fecha);
-            var minimoEmpleados = _validadorPorcentaje.CalcularMinimoEmpleadosParaPorcentaje(porcentajeMaximo);
-            var esGrupoPequeno = personalTotal < minimoEmpleados;
-
-            // 8) Excede límite: se evalúa contra la ausencia real del grupo
-            bool excedeLimite = !esGrupoPequeno && (porcentajeAusenciaGrupo > porcentajeMaximo);
+            // 8) Excede límite: la misma regla del candado (grupo pequeño = 1 ausencia;
+            //    grupo grande = ausentes / plantilla del grupo contra el porcentaje).
+            bool excedeLimite = !_validadorPorcentaje.EvaluarRegla(personalTotal, personalNoDisponible, 0, porcentajeMaximo).Permitido;
 
             // 9) Puede reservar: usa el validador considerando el estado actual
             bool puedeReservar = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
