@@ -204,13 +204,22 @@ namespace tiempo_libre.Services
             DateOnly fechaOriginal,
             DateOnly fechaNueva,
             string? motivoRechazo = null,
-            int? idSolicitud = null)
+            int? idSolicitud = null,
+            int? idUsuarioEmisor = null,
+            int? areaId = null,
+            int? grupoId = null,
+            string? nombreEmpleado = null)
         {
             var tipoNotificacion = aprobada ? TiposDeNotificacionEnum.AprobacionReprogramacion : TiposDeNotificacionEnum.RechazoReprogramacion;
             var titulo = aprobada ? "Reprogramación Aprobada" : "Reprogramación Rechazada";
+            // Sin nombreEmpleado el receptor es el propio empleado ("Tu solicitud");
+            // con él, el receptor es quien capturó la papeleta (delegado/comité).
+            var sujeto = string.IsNullOrWhiteSpace(nombreEmpleado)
+                ? "Tu solicitud de reprogramación"
+                : $"La solicitud de reprogramación de {nombreEmpleado}";
             var mensaje = aprobada
-                ? $"Tu solicitud de reprogramación del {fechaOriginal:dd/MM/yyyy} al {fechaNueva:dd/MM/yyyy} ha sido aprobada"
-                : $"Tu solicitud de reprogramación del {fechaOriginal:dd/MM/yyyy} al {fechaNueva:dd/MM/yyyy} ha sido rechazada";
+                ? $"{sujeto} del {fechaOriginal:dd/MM/yyyy} al {fechaNueva:dd/MM/yyyy} ha sido aprobada"
+                : $"{sujeto} del {fechaOriginal:dd/MM/yyyy} al {fechaNueva:dd/MM/yyyy} ha sido rechazada";
 
             if (!aprobada && !string.IsNullOrEmpty(motivoRechazo))
             {
@@ -223,6 +232,9 @@ namespace tiempo_libre.Services
                 mensaje,
                 nombreAprobador,
                 idUsuarioReceptor: solicitanteId,
+                idUsuarioEmisor: idUsuarioEmisor,
+                areaId: areaId,
+                grupoId: grupoId,
                 tipoMovimiento: aprobada ? "Reprogramación Aprobada" : "Reprogramación Rechazada",
                 idSolicitud: idSolicitud,
                 metadatos: new { Aprobada = aprobada, FechaOriginal = fechaOriginal, FechaNueva = fechaNueva, MotivoRechazo = motivoRechazo }

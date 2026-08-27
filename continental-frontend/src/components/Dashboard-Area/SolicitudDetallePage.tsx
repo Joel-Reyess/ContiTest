@@ -49,6 +49,9 @@ import ApproveModal from './ApproveModal'
 
 type AreaOption = { id: string; name: string; grupos?: any[]; jefeFullName?: string };
 
+const mensajeError = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback
+
 export default function SolicitudDetallePage() {
     const { id } = useParams()                // id que llega en la URL
     const navigate = useNavigate()
@@ -197,7 +200,7 @@ export default function SolicitudDetallePage() {
             })
         } catch (error) {
             console.error('Error al aprobar solicitud:', error)
-            toast.error('Error al aprobar la solicitud')
+            toast.error(mensajeError(error, 'Error al aprobar la solicitud'))
         } finally {
             setProcessingAction(false)
             setShowApproveModal(false)
@@ -217,7 +220,7 @@ export default function SolicitudDetallePage() {
             })
         } catch (error) {
             console.error('Error al rechazar solicitud:', error)
-            toast.error('Error al rechazar la solicitud')
+            toast.error(mensajeError(error, 'Error al rechazar la solicitud'))
         } finally {
             setProcessingAction(false)
             setShowRejectModal(false)

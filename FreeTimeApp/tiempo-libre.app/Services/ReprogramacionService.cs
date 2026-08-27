@@ -368,10 +368,34 @@ namespace tiempo_libre.Services
                                                     || a.JefeSuplenteId == usuarioAprobadorId))));
                     }
 
-                    if (!esJefeArea || (!aprobadorEsJefeAsignado && !aprobadorMismaArea && !jefeDeAreaMatch))
+                    // 4) Mismo alcance con el que ConsultarSolicitudes calcula
+                    //    PuedeAprobar (AreaJefes, AreaAsignaciones, liderazgo,
+                    //    ingeniería). Sin esto el jefe veía el botón "Aprobar"
+                    //    y al usarlo recibía "no tiene permisos": un jefe con el
+                    //    área por AreaAsignaciones, o cuyo Users.AreaId (lo
+                    //    escribe el sync SAP) es otra área, no pasaba 1-3.
+                    var alcanceCoincide = false;
+                    if (esJefeArea)
                     {
+                        var areasAprobador = await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioAprobadorId);
+                        var areasEmpleado = new[]
+                            {
+                                areaEmpleado,
+                                solicitud.Empleado?.AreaId,
+                                solicitud.Empleado?.Grupo?.AreaId
+                            }
+                            .Where(a => a.HasValue)
+                            .Select(a => a!.Value);
+                        alcanceCoincide = areasEmpleado.Any(areasAprobador.Contains);
+                    }
+
+                    if (!esJefeArea || (!aprobadorEsJefeAsignado && !aprobadorMismaArea && !jefeDeAreaMatch && !alcanceCoincide))
+                    {
+                        _logger.LogWarning(
+                            "Aprobador {UsuarioId} sin alcance sobre la solicitud {SolicitudId}: esJefeArea={EsJefe}, jefeAsignado={JefeAsignado}, areaAprobador={AreaAprobador}, areaEmpleado={AreaEmpleado}",
+                            usuarioAprobadorId, solicitud.Id, esJefeArea, solicitud.JefeAreaId, usuarioAprobador.AreaId, areaEmpleado);
                         return new ApiResponse<AprobarReprogramacionResponse>(false, null,
-                            "El usuario no tiene permisos para aprobar esta solicitud");
+                            "No tienes permisos para aprobar esta solicitud: el área del empleado no está dentro de tu alcance como jefe de área");
                     }
                 }
 
@@ -440,16 +464,59 @@ namespace tiempo_libre.Services
                 }
                 await _db.SaveChangesAsync();
 
-                await _notificacionesService.NotificarRespuestaReprogramacionAsync(
-                    request.Aprobada,
-                    solicitud.EmpleadoId,
-                    usuarioAprobador.FullName ?? "Sistema",
-                    solicitud.FechaOriginalGuardada,
-                    solicitud.FechaNuevaSolicitada,
-                    solicitud.MotivoRechazo,
-                    solicitud.Id);
-
+                // Confirmar ANTES de notificar (mismo criterio que la captura):
+                // la decisión del jefe es lo que no se puede perder. Antes los
+                // avisos corrían dentro de la transacción y cualquier excepción
+                // suya revertía la aprobación completa y llegaba al front como
+                // un "Error al aprobar la solicitud" sin detalle.
                 await transaction.CommitAsync();
+
+                try
+                {
+                    var areaNotif = solicitud.Empleado?.Grupo?.AreaId ?? solicitud.Empleado?.AreaId;
+                    var grupoNotif = solicitud.Empleado?.GrupoId;
+
+                    // Al empleado
+                    await _notificacionesService.NotificarRespuestaReprogramacionAsync(
+                        request.Aprobada,
+                        solicitud.EmpleadoId,
+                        usuarioAprobador.FullName ?? "Sistema",
+                        solicitud.FechaOriginalGuardada,
+                        solicitud.FechaNuevaSolicitada,
+                        solicitud.MotivoRechazo,
+                        solicitud.Id,
+                        idUsuarioEmisor: usuarioAprobadorId,
+                        areaId: areaNotif,
+                        grupoId: grupoNotif);
+
+                    // A quien capturó la papeleta (delegado / comité sindical),
+                    // cuando no es el propio empleado. Queda como movimiento
+                    // "Reprogramación Aprobada/Rechazada" en su bandeja y en el
+                    // reporte de movimientos.
+                    if (solicitud.SolicitadoPorId.HasValue &&
+                        solicitud.SolicitadoPorId.Value != solicitud.EmpleadoId &&
+                        solicitud.SolicitadoPorId.Value != usuarioAprobadorId)
+                    {
+                        await _notificacionesService.NotificarRespuestaReprogramacionAsync(
+                            request.Aprobada,
+                            solicitud.SolicitadoPorId.Value,
+                            usuarioAprobador.FullName ?? "Sistema",
+                            solicitud.FechaOriginalGuardada,
+                            solicitud.FechaNuevaSolicitada,
+                            solicitud.MotivoRechazo,
+                            solicitud.Id,
+                            idUsuarioEmisor: usuarioAprobadorId,
+                            areaId: areaNotif,
+                            grupoId: grupoNotif,
+                            nombreEmpleado: solicitud.Empleado?.FullName);
+                    }
+                }
+                catch (Exception exNotif)
+                {
+                    _logger.LogError(exNotif,
+                        "La solicitud {SolicitudId} quedó {Estado}, pero falló el envío de notificaciones (empleado {EmpleadoId}, solicitante {SolicitanteId})",
+                        solicitud.Id, solicitud.EstadoSolicitud, solicitud.EmpleadoId, solicitud.SolicitadoPorId);
+                }
 
                 var response = new AprobarReprogramacionResponse
                 {
@@ -471,7 +538,9 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                // La transacción ya pudo quedar confirmada (commit previo a las
+                // notificaciones); revertir entonces lanza y taparía el error real.
+                try { await transaction.RollbackAsync(); } catch { /* ya confirmada */ }
                 _logger.LogError(ex, "Error al aprobar/rechazar solicitud de reprogramaciA3n");
                 return new ApiResponse<AprobarReprogramacionResponse>(false, null,
                     $"Error inesperado: {ex.Message}");

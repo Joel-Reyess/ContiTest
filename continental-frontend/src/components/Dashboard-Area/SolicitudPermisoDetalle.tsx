@@ -9,6 +9,9 @@ import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
+const mensajeError = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback
+
 export default function SolicitudPermisoDetalle() {
     const { id } = useParams()
     const navigate = useNavigate()
@@ -55,7 +58,7 @@ export default function SolicitudPermisoDetalle() {
             goBack()
         } catch (error) {
             console.error('Error al aprobar:', error)
-            toast.error('Error al aprobar la solicitud')
+            toast.error(mensajeError(error, 'Error al aprobar la solicitud'))
         } finally {
             setProcessingAction(false)
         }
@@ -77,7 +80,7 @@ export default function SolicitudPermisoDetalle() {
             goBack()
         } catch (error) {
             console.error('Error al rechazar:', error)
-            toast.error('Error al rechazar la solicitud')
+            toast.error(mensajeError(error, 'Error al rechazar la solicitud'))
         } finally {
             setProcessingAction(false)
         }
