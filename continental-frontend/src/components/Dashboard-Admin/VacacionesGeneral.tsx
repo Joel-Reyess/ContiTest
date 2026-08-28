@@ -421,9 +421,11 @@ export const VacacionesGeneral = ({
     }
   };
 
-  const handleDescargarTurnos = async () => {
+  // `anio` permite descargar los turnos del año en preparación (ej. 2027)
+  // mientras el vigente sigue siendo 2026.
+  const descargarTurnos = async (anio: number) => {
     try {
-      console.log("Descargando turnos para el año:", anioVigente);
+      console.log("Descargando turnos para el año:", anio);
 
       // Mostrar notificación de descarga en progreso
       onNotification(
@@ -433,7 +435,7 @@ export const VacacionesGeneral = ({
       );
 
       // Obtener los bloques del servidor
-      const bloquesData = await BloquesReservacionService.obtenerBloques(anioVigente);
+      const bloquesData = await BloquesReservacionService.obtenerBloques(anio);
 
       if (!bloquesData.bloques || bloquesData.bloques.length === 0) {
         onNotification(
@@ -445,7 +447,7 @@ export const VacacionesGeneral = ({
       }
 
       // Generar y descargar el archivo Excel
-      generarExcelBloques(bloquesData.bloques, anioVigente);
+      generarExcelBloques(bloquesData.bloques, anio);
 
       onNotification(
         "success",
@@ -467,6 +469,8 @@ export const VacacionesGeneral = ({
       );
     }
   };
+
+  const handleDescargarTurnos = () => descargarTurnos(anioVigente);
 
   const onDescargarNoAsignados = async () => {
     if (!configVacaciones) {
@@ -765,6 +769,17 @@ export const VacacionesGeneral = ({
                     onChange={(e) => setPrepFechaInicioBloques(e.target.value)}
                   />
                 </div>
+
+                {/* Turnos del año en preparación: el botón del panel principal
+                    solo descarga los del año vigente. */}
+                <Button
+                  onClick={() => descargarTurnos(anioPreparacion)}
+                  variant="continental"
+                  className="flex items-center gap-2 h-12 px-6"
+                >
+                  <Download size={18} />
+                  <span>Descargar turnos {anioPreparacion}</span>
+                </Button>
 
                 <div className="pt-2 border-t space-y-3">
                   <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-3 space-y-1">

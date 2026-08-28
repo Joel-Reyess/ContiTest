@@ -35,7 +35,10 @@ const fallbackOccupationData = [
 export const fallbackAssignedDays = [];
 
 const RequestVacations = () => {
-    const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+    // La captura de programación anual se hace sobre el calendario mensual por
+    // rol (turnos 1/2/3/D, descansos e inhábiles en gris): abre directo en
+    // enero del año que se captura. La vista anual queda como resumen opcional.
+    const [selectedMonth, setSelectedMonth] = useState<number | null>(1);
     const [selectedDays, setSelectedDays] = useState<{ date: string }[]>([]);
     const [realAssignedDays, setRealAssignedDays] = useState<DiaAsignado[]>([]);
     const [vacacionesData, setVacacionesData] = useState<VacacionesAsignadasResponse | null>(null);
@@ -339,12 +342,19 @@ const RequestVacations = () => {
             </header>
             <div className="flex gap-8 justify-between">
                 <div className="flex-2">
-                    {selectedMonth && (
+                    {selectedMonth ? (
                         <div
                             onClick={() => setSelectedMonth(null)}
+                            className="flex items-center gap-2 cursor-pointer p-2 w-fit text-sm text-slate-600"
+                        >
+                            Ver resumen anual {anioCaptura ?? ''}
+                        </div>
+                    ) : (
+                        <div
+                            onClick={() => setSelectedMonth(new Date().getFullYear() === anioCaptura ? new Date().getMonth() + 1 : 1)}
                             className="flex items-center gap-2 cursor-pointer p-2 w-fit"
                         >
-                            <ArrowLeft /> Vista anual
+                            <ArrowLeft /> Volver al calendario
                         </div>
                     )}
                     {selectedMonth ? (
