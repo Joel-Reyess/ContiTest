@@ -53,6 +53,8 @@ interface ProgramacionAnualWizardProps {
   onAbrirGenerarBloques: () => void;
   /** Se invoca cuando el usuario pide ir a la pestaña Calendario (pasos 1 y 2). */
   onIrACalendario?: () => void;
+  /** Cámbialo (ej. contador) para que el wizard vuelva a verificar los pasos tras una acción. */
+  version?: number;
 }
 
 export const ProgramacionAnualWizard = ({
@@ -61,6 +63,7 @@ export const ProgramacionAnualWizard = ({
   onAbrirProgramarDias,
   onAbrirGenerarBloques,
   onIrACalendario,
+  version = 0,
 }: ProgramacionAnualWizardProps) => {
   const navigate = useNavigate();
   const [estado, setEstado] = useState<EstadoWizard | null>(null);
@@ -161,7 +164,9 @@ export const ProgramacionAnualWizard = ({
       );
     }
     setCargando(false);
-  }, [anio]);
+    // `version` no se usa dentro, pero forma parte de las dependencias para
+    // volver a verificar cuando el padre completa un paso (asignación, bloques).
+  }, [anio, version]);
 
   useEffect(() => {
     cargarEstado();

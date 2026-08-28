@@ -74,6 +74,8 @@ export const VacacionesGeneral = ({
   // modales de días/bloques deben operar sobre ese año, no sobre el vigente.
   const [prepFechaInicioBloques, setPrepFechaInicioBloques] = useState<string>("");
   const [modalesEnPreparacion, setModalesEnPreparacion] = useState(false);
+  // Se incrementa tras completar un paso para que el wizard vuelva a verificar.
+  const [wizardVersion, setWizardVersion] = useState(0);
   const [cambiandoPreparacion, setCambiandoPreparacion] = useState(false);
   // Confirmaciones de los dos botones que cambian el periodo de toda la planta.
   const [confirmarActivarAnio, setConfirmarActivarAnio] = useState(false);
@@ -292,13 +294,16 @@ export const VacacionesGeneral = ({
   };
 
   const handleProgramacionCompleta = async () => {
-    // Actualizar el resumen después de completar la programación
+    // El modal pudo operar sobre el año en preparación; el resumen del panel
+    // principal es siempre el del año vigente, así que solo se refresca en ese caso.
+    setShowProgramacionModal(false);
+    setWizardVersion((v) => v + 1);
+    if (modalesEnPreparacion && anioPreparacion) return;
     try {
       const resumen = await AsignacionAutomaticaService.obtenerResumen(
         anioVigente
       );
       setResumenAsignacion(resumen);
-      setShowProgramacionModal(false);
     } catch (error) {
       console.error("Error al actualizar resumen:", error);
     }
@@ -365,15 +370,20 @@ export const VacacionesGeneral = ({
   };
 
   const handleBloquesGeneradosSuccess = async () => {
-    // Actualizar estadísticas después de generar bloques
+    // Los bloques pudieron generarse para el año en preparación (2027 mientras
+    // 2026 sigue vigente): se consulta ese año y se avisa al wizard para que
+    // marque el paso 4. Las estadísticas del panel son las del año vigente.
+    setShowGenerarBloquesModal(false);
+    setWizardVersion((v) => v + 1);
+    const anioGenerado =
+      modalesEnPreparacion && anioPreparacion ? anioPreparacion : anioVigente;
     try {
       const estadisticas = await BloquesReservacionService.obtenerEstadisticas(
-        anioVigente
+        anioGenerado
       );
-      if (estadisticas.totalBloques > 0) {
+      if (anioGenerado === anioVigente && estadisticas.totalBloques > 0) {
         setEstadisticasBloques(estadisticas);
       }
-      setShowGenerarBloquesModal(false);
     } catch (error) {
       console.error("Error al actualizar estadísticas de bloques:", error);
     }
@@ -395,6 +405,7 @@ export const VacacionesGeneral = ({
 
       // Actualizar estadísticas (debería quedar en 0)
       setEstadisticasBloques(null);
+      setWizardVersion((v) => v + 1);
     } catch (error) {
       console.error("Error al eliminar bloques:", error);
 
@@ -719,6 +730,7 @@ export const VacacionesGeneral = ({
               <>
                 <ProgramacionAnualWizard
                   anio={anioPreparacion}
+                  version={wizardVersion}
                   onNotification={onNotification}
                   onIrACalendario={onIrACalendario}
                   onAbrirProgramarDias={() => {
@@ -822,6 +834,7 @@ export const VacacionesGeneral = ({
           {/* Estado de la secuencia (rol → festivos → días empresa → bloques) */}
           <ProgramacionAnualWizard
             anio={anioVigente}
+            version={wizardVersion}
             onNotification={onNotification}
             onIrACalendario={onIrACalendario}
             onAbrirProgramarDias={() => {
