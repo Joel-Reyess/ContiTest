@@ -244,6 +244,16 @@ export interface EstadisticasEmpleados {
     porcentajeCompletado: number;
     porcentajeReservado: number;
     porcentajeNoRespondio: number;
+    // HU21: conteo por empleado (cada uno en una sola categoría). Opcionales
+    // para no tronar contra un backend que todavía no los manda.
+    empleadosCompletados?: number;
+    empleadosPendientes?: number;
+    empleadosNoRespondieron?: number;
+    empleadosRecalendarizados?: number;
+    porcentajeEmpleadosCompletados?: number;
+    porcentajeEmpleadosPendientes?: number;
+    porcentajeEmpleadosNoRespondieron?: number;
+    porcentajeEmpleadosRecalendarizados?: number;
 }
 
 export interface EstadisticasBloquesResponse {
@@ -921,6 +931,31 @@ export interface AsignacionManualRequest {
     notificarEmpleado: boolean;
     bloqueId?: number | null;
     origenSolicitud: 'NoRespondio' | 'Ajuste' | 'Correcion' | 'Especial';
+    /** Quien captura ya vio la alerta de rebase del porcentaje y aun así continúa. */
+    confirmarRebasePorcentaje?: boolean;
+}
+
+/** Un día que rebasa el porcentaje permitido del grupo. */
+export interface DiaConRebase {
+    fecha: string;
+    porcentajeResultante: number;
+    porcentajeMaximo: number;
+    detalle: string;
+}
+
+/** Renglón del reporte de días capturados por encima del porcentaje. */
+export interface DiaRebasePorcentaje {
+    fecha: string;
+    nomina: string;
+    nombreEmpleado: string;
+    area: string;
+    grupo: string;
+    tipoVacacion: string;
+    origenAsignacion: string;
+    porcentajeAlCapturar?: number | null;
+    capturadoPor?: string | null;
+    fechaCaptura: string;
+    observaciones?: string | null;
 }
 
 export interface AsignacionManualResponse {

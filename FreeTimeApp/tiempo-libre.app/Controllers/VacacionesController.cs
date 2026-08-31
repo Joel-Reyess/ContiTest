@@ -259,6 +259,24 @@ namespace tiempo_libre.Controllers
         /// </summary>
         /// <param name="request">Datos de las asignaciones en lote</param>
         /// <returns>Resultado de las asignaciones</returns>
+        /// <summary>
+        /// Días capturados por encima del porcentaje permitido del grupo, con
+        /// quién los capturó. Sirve para desglosar los días que se llenaron de
+        /// más durante la programación.
+        /// </summary>
+        [HttpGet("reporte-rebase-porcentaje")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Jefe De Area,JefeArea,Ingeniero Industrial,Gerente BT,RH")]
+        public async Task<IActionResult> ReporteRebasePorcentaje(
+            [FromQuery] int anio,
+            [FromQuery] int? areaId = null,
+            [FromQuery] int? grupoId = null)
+        {
+            var response = await _vacacionesService.ObtenerDiasConRebaseAsync(anio, areaId, grupoId);
+            if (!response.Success)
+                return BadRequest(response);
+            return Ok(response);
+        }
+
         [HttpPost("asignacion-manual-lote")]
         [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
         public async Task<IActionResult> AsignarVacacionesManualLote([FromBody] AsignacionManualLoteRequest request)

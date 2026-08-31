@@ -46,6 +46,16 @@ namespace tiempo_libre.Models
         [MaxLength(500)]
         public string? Observaciones { get; set; }
 
+        /// <summary>
+        /// El día se capturó a sabiendas de que el grupo ya rebasaba el
+        /// porcentaje permitido (el jefe o el superusuario lo confirmaron).
+        /// Alimenta el reporte de días capturados con rebase.
+        /// </summary>
+        public bool CapturadoConRebase { get; set; } = false;
+
+        /// <summary>Porcentaje de ausencia del grupo con este día ya contado.</summary>
+        public decimal? PorcentajeAlCapturar { get; set; }
+
         // Navigation properties
         [ForeignKey("EmpleadoId")]
         public virtual User Empleado { get; set; } = null!;

@@ -25,12 +25,19 @@ interface ExcelBloqueRow {
  */
 export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: number): void => {
   try {
+    // El nombre del área viene de la BD (Areas.NombreGeneral) y puede llegar
+    // vacío o con espacios de sobra; sin este respaldo la hoja de esa área
+    // sale sin nombre y sin la columna Área.
+    const nombreDeArea = (bloque: BloqueReservacion): string =>
+      (bloque.nombreArea ?? '').trim() || 'Sin área';
+
     // Agrupar bloques por área
     const bloquesPorArea = bloques.reduce((acc, bloque) => {
-      if (!acc[bloque.nombreArea]) {
-        acc[bloque.nombreArea] = [];
+      const area = nombreDeArea(bloque);
+      if (!acc[area]) {
+        acc[area] = [];
       }
-      acc[bloque.nombreArea].push(bloque);
+      acc[area].push(bloque);
       return acc;
     }, {} as Record<string, BloqueReservacion[]>);
 
@@ -63,7 +70,7 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
           // Si no hay empleados, crear una fila vacía para el bloque
           excelRows.push({
             'Bloque': bloque.numeroBloque,
-            'Área': bloque.nombreArea,
+            'Área': nombreArea,
             'Grupo': bloque.nombreGrupo,
             'Fecha Inicio': format(new Date(bloque.fechaHoraInicio), "dd/MM/yyyy HH:mm", { locale: es }),
             'Fecha Fin': format(new Date(bloque.fechaHoraFin), "dd/MM/yyyy HH:mm", { locale: es }),
@@ -80,7 +87,7 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
           empleadosOrdenados.forEach(empleado => {
             excelRows.push({
               'Bloque': bloque.numeroBloque,
-              'Área': bloque.nombreArea,
+              'Área': nombreArea,
               'Grupo': bloque.nombreGrupo,
               'Fecha Inicio': format(new Date(bloque.fechaHoraInicio), "dd/MM/yyyy HH:mm", { locale: es }),
               'Fecha Fin': format(new Date(bloque.fechaHoraFin), "dd/MM/yyyy HH:mm", { locale: es }),
@@ -111,10 +118,17 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
         { wch: 15 },  // Antigüedad
       ];
 
-      // Truncar el nombre del área si es muy largo (máximo 31 caracteres para nombres de hojas en Excel)
-      let sheetName = nombreArea;
+      // Excel no acepta : \ / ? * [ ] en el nombre de la hoja, ni más de 31
+      // caracteres, ni dos hojas que se llamen igual.
+      let sheetName = nombreArea.replace(/[:\\/?*[\]]/g, '-').trim() || 'Sin area';
       if (sheetName.length > 31) {
         sheetName = sheetName.substring(0, 28) + '...';
+      }
+      const nombreBase = sheetName;
+      let repetido = 2;
+      while (workbook.SheetNames.includes(sheetName)) {
+        const marca = ` (${repetido++})`;
+        sheetName = nombreBase.substring(0, 31 - marca.length) + marca;
       }
 
       // Agregar la hoja al libro
@@ -143,7 +157,7 @@ export const generarExcelBloquesSimplificado = (bloques: BloqueReservacion[], an
   try {
     const excelRows = bloques.map(bloque => ({
       'ID Bloque': bloque.id,
-      'Área': bloque.nombreArea,
+      'Área': (bloque.nombreArea ?? '').trim() || 'Sin área',
       'Grupo': bloque.nombreGrupo,
       'Número de Bloque': bloque.numeroBloque,
       'Fecha Inicio': format(new Date(bloque.fechaHoraInicio), "dd/MM/yyyy HH:mm", { locale: es }),

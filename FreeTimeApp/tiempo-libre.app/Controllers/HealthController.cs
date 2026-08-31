@@ -112,10 +112,15 @@ namespace tiempo_libre.Controllers
             try
             {
                 var canConnect = await _context.Database.CanConnectAsync();
+                // Server y base SIN credenciales: es la unica forma de saber, sin
+                // entrar a SQL, si el backend de pruebas quedo pegado a produccion.
+                var conexion = _context.Database.GetDbConnection();
                 return new
                 {
                     connected = canConnect,
-                    provider = _context.Database.ProviderName
+                    provider = _context.Database.ProviderName,
+                    server = conexion.DataSource,
+                    database = conexion.Database
                 };
             }
             catch (Exception ex)

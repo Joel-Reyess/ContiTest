@@ -36,6 +36,15 @@ namespace tiempo_libre.DTOs
 
         public bool NotificarEmpleado { get; set; } = true; // Si se debe notificar al empleado
 
+        /// <summary>
+        /// El jefe o el superusuario ya vieron la alerta de que el día rebasa el
+        /// porcentaje del grupo y aun así quieren guardarlo. Sin esto, un día
+        /// rebasado se rechaza pidiendo confirmación. Va aparte de
+        /// IgnorarRestricciones, que hoy llega en true desde todas las
+        /// pantallas y se salta también los días duplicados.
+        /// </summary>
+        public bool ConfirmarRebasePorcentaje { get; set; } = false;
+
         public int? BloqueId { get; set; } // Si está relacionado con un bloque específico
 
         // Para tracking
@@ -94,6 +103,40 @@ namespace tiempo_libre.DTOs
         public List<string> Advertencias { get; set; } = new();
         public DateTime FechaAsignacion { get; set; }
         public string UsuarioAsigno { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Hay días que rebasan el porcentaje y falta que quien captura lo
+        /// confirme. El frontend muestra la alerta y reenvía con
+        /// ConfirmarRebasePorcentaje = true.
+        /// </summary>
+        public bool RequiereConfirmacionRebase { get; set; }
+
+        public List<DiaConRebaseDto> DiasConRebase { get; set; } = new();
+    }
+
+    /// <summary>Renglón del reporte de días capturados por encima del porcentaje.</summary>
+    public class DiaRebasePorcentajeDto
+    {
+        public DateOnly Fecha { get; set; }
+        public string Nomina { get; set; } = string.Empty;
+        public string NombreEmpleado { get; set; } = string.Empty;
+        public string Area { get; set; } = string.Empty;
+        public string Grupo { get; set; } = string.Empty;
+        public string TipoVacacion { get; set; } = string.Empty;
+        public string OrigenAsignacion { get; set; } = string.Empty;
+        public decimal? PorcentajeAlCapturar { get; set; }
+        public string? CapturadoPor { get; set; }
+        public DateTime FechaCaptura { get; set; }
+        public string? Observaciones { get; set; }
+    }
+
+    /// <summary>Un día que se capturó (o se va a capturar) por encima del porcentaje.</summary>
+    public class DiaConRebaseDto
+    {
+        public DateOnly Fecha { get; set; }
+        public decimal PorcentajeResultante { get; set; }
+        public decimal PorcentajeMaximo { get; set; }
+        public string Detalle { get; set; } = string.Empty;
     }
 
     /// <summary>

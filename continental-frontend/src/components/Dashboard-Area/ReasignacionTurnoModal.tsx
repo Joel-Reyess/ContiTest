@@ -233,10 +233,18 @@ const ReasignacionTurnoModal: React.FC<ReasignacionTurnoModalProps> = ({
                                 </div>
                             ) : (
                                 <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
-                                    {bloquesDisponibles.map((bloque) => (
+                                    {bloquesDisponibles.map((bloque) => {
+                                        // El backend no valida el cupo al cambiar de bloque: si aquí
+                                        // se deja elegir uno lleno, ese turno termina con más gente
+                                        // de la que permite "personas por bloque".
+                                        const sinEspacio =
+                                            bloque.empleadosAsignados.length >= bloque.personasPorBloque;
+                                        return (
                                         <label
                                             key={bloque.id}
-                                            className={`flex items-center p-3 cursor-pointer hover:bg-gray-50 ${
+                                            className={`flex items-center p-3 hover:bg-gray-50 ${
+                                                sinEspacio ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                                            } ${
                                                 bloqueSeleccionado === bloque.id ? 'bg-blue-50 border-blue-200' : ''
                                             }`}
                                         >
@@ -246,6 +254,7 @@ const ReasignacionTurnoModal: React.FC<ReasignacionTurnoModalProps> = ({
                                                 value={bloque.id}
                                                 checked={bloqueSeleccionado === bloque.id}
                                                 onChange={() => setBloqueSeleccionado(bloque.id)}
+                                                disabled={sinEspacio}
                                                 className="mr-3"
                                             />
                                             <div className="flex-1">
@@ -270,6 +279,7 @@ const ReasignacionTurnoModal: React.FC<ReasignacionTurnoModalProps> = ({
                                                         <Users className="w-4 h-4 text-gray-400" />
                                                         <span>
                                                             {bloque.empleadosAsignados.length}/{bloque.personasPorBloque}
+                                                            {sinEspacio && ' (lleno)'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -278,7 +288,8 @@ const ReasignacionTurnoModal: React.FC<ReasignacionTurnoModalProps> = ({
                                                 </div>
                                             </div>
                                         </label>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

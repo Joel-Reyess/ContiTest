@@ -440,8 +440,8 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
         />
       </div>
 
-      {/* Estadísticas detalladas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Estadísticas detalladas (HU21: mismas categorías que el pastel) */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <p className="text-sm text-gray-600">Total Empleados</p>
           <p className="text-2xl font-bold text-gray-900">
@@ -451,19 +451,29 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <p className="text-sm text-gray-600">Completados</p>
           <p className="text-2xl font-bold text-green-600">
-            {estadisticasBloques.estadisticasEmpleados.empleadosConEstadoCompletado}
+            {estadisticasBloques.estadisticasEmpleados.empleadosCompletados ??
+              estadisticasBloques.estadisticasEmpleados.empleadosConEstadoCompletado +
+                estadisticasBloques.estadisticasEmpleados.empleadosConEstadoReservado}
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-600">Reservados</p>
-          <p className="text-2xl font-bold text-yellow-600">
-            {estadisticasBloques.estadisticasEmpleados.empleadosConEstadoReservado}
+          <p className="text-sm text-gray-600">Pendientes</p>
+          <p className="text-2xl font-bold text-gray-700">
+            {estadisticasBloques.estadisticasEmpleados.empleadosPendientes ??
+              estadisticasBloques.estadisticasEmpleados.empleadosConEstadoAsignado}
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-600">No respondió</p>
+          <p className="text-sm text-gray-600">No contestó</p>
           <p className="text-2xl font-bold text-red-600">
-            {estadisticasBloques.estadisticasEmpleados.empleadosConEstadoNoRespondio}
+            {estadisticasBloques.estadisticasEmpleados.empleadosNoRespondieron ??
+              estadisticasBloques.estadisticasEmpleados.empleadosConEstadoNoRespondio}
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <p className="text-sm text-gray-600">Recalendarizados</p>
+          <p className="text-2xl font-bold text-yellow-600">
+            {estadisticasBloques.estadisticasEmpleados.empleadosRecalendarizados ?? 0}
           </p>
         </div>
       </div>

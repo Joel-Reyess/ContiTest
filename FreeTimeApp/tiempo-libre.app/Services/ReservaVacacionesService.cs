@@ -427,6 +427,20 @@ namespace tiempo_libre.Services
 
                 var vacacionesData = vacacionesResponse.Data!;
 
+                // 2.b Candado de turno. Hasta ahora el orden por antigüedad se
+                // respetaba SOLO en el frontend (LoginEmployee): cualquier
+                // llamada que no pasara por esa pantalla dejaba capturar fuera
+                // de turno. Es el punto 1 de "errores durante la captura del
+                // 2026". El jefe y el superusuario NO pasan por aquí: capturan
+                // por /api/vacaciones/asignacion-manual.
+                var turno = await ValidarTurnoDeCapturaAsync(empleado, request.AnioVacaciones);
+                if (!turno.Permitido)
+                {
+                    _logger.LogWarning("Captura fuera de turno del empleado {EmpleadoId} para {Anio}: {Motivo}",
+                        empleado.Id, request.AnioVacaciones, turno.Motivo);
+                    return new ApiResponse<ReservaAnualResponse>(false, null, turno.Motivo);
+                }
+
                 // 3. Verificar días programables disponibles vs solicitados
                 int diasSolicitados = request.FechasSeleccionadas.Count;
                 if (diasSolicitados > vacacionesData.DiasProgramables)
@@ -714,5 +728,80 @@ namespace tiempo_libre.Services
         }
 
         #endregion
+    
+        /// <summary>
+        /// ¿Le toca capturar a este empleado ahora mismo?
+        ///
+        /// Reglas, las mismas que pinta la pantalla de turno del operador:
+        ///   * Si el año no tiene bloques generados para su grupo, no hay turnos
+        ///     que respetar (reprogramación normal) y se deja pasar.
+        ///   * Debe tener una asignación vigente en un bloque de ese año.
+        ///   * Ese bloque tiene que estar abierto (entre su inicio y su fin).
+        ///   * Dentro del bloque manda la antigüedad: nadie captura antes que
+        ///     alguien con más antigüedad que sigue pendiente. "Saltado" no
+        ///     bloquea, que es justo para lo que el jefe lo salta.
+        /// </summary>
+        private async Task<(bool Permitido, string Motivo)> ValidarTurnoDeCapturaAsync(User empleado, int anio)
+        {
+            if (empleado.GrupoId == null)
+                return (true, string.Empty);
+
+            var ultimoFin = await _context.BloquesReservacion
+                .Where(b => b.AnioGeneracion == anio && b.GrupoId == empleado.GrupoId.Value)
+                .MaxAsync(b => (DateTime?)b.FechaHoraFin);
+
+            // Sin bloques para ese año y grupo no hay turnos que respetar; y si
+            // el último bloque ya cerró, la captura anual terminó y lo que sigue
+            // es reprogramación, que no va por turnos. En los dos casos, pasar.
+            if (ultimoFin == null || DateTime.Now > ultimoFin.Value)
+                return (true, string.Empty);
+
+            var asignacion = await _context.AsignacionesBloque
+                .Include(a => a.Bloque)
+                .Where(a => a.EmpleadoId == empleado.Id
+                            && a.Estado != "Transferido"
+                            && a.Bloque.AnioGeneracion == anio)
+                .OrderByDescending(a => a.Id)
+                .FirstOrDefaultAsync();
+
+            if (asignacion == null)
+                return (false, $"No tienes un turno asignado para la programación de {anio}. Pide a tu jefe de área que te asigne uno.");
+
+            var bloque = asignacion.Bloque;
+            var ahora = DateTime.Now;
+
+            if (ahora < bloque.FechaHoraInicio)
+                return (false, $"Todavía no es tu turno: tu bloque inicia el {bloque.FechaHoraInicio:dd/MM/yyyy} a las {bloque.FechaHoraInicio:HH:mm}.");
+
+            if (ahora > bloque.FechaHoraFin)
+                return (false, $"Tu turno terminó el {bloque.FechaHoraFin:dd/MM/yyyy} a las {bloque.FechaHoraFin:HH:mm}. Pide a tu jefe de área que te reasigne un turno.");
+
+            var companeros = await _context.AsignacionesBloque
+                .Include(a => a.Empleado)
+                .Where(a => a.BloqueId == bloque.Id && a.Estado != "Transferido")
+                .ToListAsync();
+
+            var ordenados = companeros
+                .OrderBy(a => a.Empleado.FechaIngreso ?? DateOnly.MaxValue)
+                .ThenBy(a => a.Empleado.Nomina ?? int.MaxValue)
+                .ToList();
+
+            var miPosicion = ordenados.FindIndex(a => a.EmpleadoId == empleado.Id);
+            if (miPosicion <= 0)
+                return (true, string.Empty);
+
+            var pendientes = ordenados
+                .Take(miPosicion)
+                .Where(a => a.Estado != "Reservado" && a.Estado != "Completado" && a.Estado != "Saltado")
+                .Select(a => a.Empleado.FullName ?? a.Empleado.Nomina?.ToString() ?? "compañero")
+                .ToList();
+
+            if (pendientes.Count > 0)
+                return (false,
+                    $"Aún no es tu turno: falta(n) por capturar {string.Join(", ", pendientes)} " +
+                    "(tienen más antigüedad). En cuanto capturen —o tu jefe los salte— podrás continuar.");
+
+            return (true, string.Empty);
+        }
     }
 }

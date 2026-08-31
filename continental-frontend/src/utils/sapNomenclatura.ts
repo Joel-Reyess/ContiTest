@@ -3,7 +3,8 @@
 
 export type SAPCodigo =
     | '1' | '2' | '3' | 'D' | 'CD'
-    | 'V' | 'P' | 'E' | 'A' | 'M' | 'G' | 'R' | 'S' | 'O' | 'H' | 'F' | 'C' | 'T';
+    | 'V' | 'VE' | 'P' | 'E' | 'A' | 'M' | 'G' | 'R' | 'S' | 'O' | 'H' | 'F' | 'C' | 'T'
+    | 'DI' | 'LL';
 
 export interface SAPEntry {
     codigo: SAPCodigo;
@@ -22,6 +23,10 @@ export const SAP_NOMENCLATURA: Record<SAPCodigo, SAPEntry> = {
     'D': { codigo: 'D', label: 'Descanso', bg: '#f3f4f6', fg: '#374151', chipBg: 'bg-gray-100', chipFg: 'text-gray-700', grupo: 'descanso' },
     'CD': { codigo: 'CD', label: 'Cubre descansos', bg: '#e0e7ff', fg: '#3730a3', chipBg: 'bg-indigo-100', chipFg: 'text-indigo-700', grupo: 'descanso' },
     'V': { codigo: 'V', label: 'Vacaciones', bg: '#f3e8ff', fg: '#6b21a8', chipBg: 'bg-purple-100', chipFg: 'text-purple-700', grupo: 'vacacion' },
+    // Días que puso la empresa (asignación automática del jefe). El operador
+    // necesita distinguirlos de los que capturó él: no los puede mover y le
+    // cuentan aparte de sus días programables.
+    'VE': { codigo: 'VE', label: 'Vacación asignada por la empresa', bg: '#dbeafe', fg: '#1e40af', chipBg: 'bg-blue-100', chipFg: 'text-blue-700', grupo: 'vacacion' },
     'P': { codigo: 'P', label: 'Permiso con goce', bg: '#dcfce7', fg: '#15803d', chipBg: 'bg-green-100', chipFg: 'text-green-700', grupo: 'permiso' },
     'G': { codigo: 'G', label: 'Permiso sin goce', bg: '#fef3c7', fg: '#92400e', chipBg: 'bg-amber-100', chipFg: 'text-amber-700', grupo: 'permiso' },
     'H': { codigo: 'H', label: 'Permiso sin goce alterno', bg: '#e0e7ff', fg: '#3730a3', chipBg: 'bg-indigo-100', chipFg: 'text-indigo-700', grupo: 'permiso' },
@@ -34,6 +39,11 @@ export const SAP_NOMENCLATURA: Record<SAPCodigo, SAPEntry> = {
     'F': { codigo: 'F', label: 'Festivo trabajado', bg: '#ccfbf1', fg: '#0f766e', chipBg: 'bg-teal-100', chipFg: 'text-teal-700', grupo: 'otro' },
     'C': { codigo: 'C', label: 'Día empresa reprogramado', bg: '#fef3c7', fg: '#92400e', chipBg: 'bg-amber-100', chipFg: 'text-amber-800', grupo: 'otro' },
     'T': { codigo: 'T', label: 'Fuera de tiempo', bg: '#e5e7eb', fg: '#374151', chipBg: 'bg-slate-100', chipFg: 'text-slate-600', grupo: 'otro' },
+    // Los dos motivos por los que un día NO se puede capturar. Antes los dos
+    // salían como un día gris sin letra y el operador solo se enteraba al hacer
+    // clic: es el "los colores de alerta no funcionaron" de la captura 2026.
+    'DI': { codigo: 'DI', label: 'Día inhábil (no se programa)', bg: '#e2e8f0', fg: '#334155', chipBg: 'bg-slate-200', chipFg: 'text-slate-700', grupo: 'otro' },
+    'LL': { codigo: 'LL', label: 'Día lleno por vacaciones y/o permisos', bg: '#fee2e2', fg: '#b91c1c', chipBg: 'bg-red-100', chipFg: 'text-red-700', grupo: 'otro' },
 };
 
 // Convierte un tipoIncidencia arbitrario (letra corta o texto largo) a un SAPCodigo.
@@ -48,7 +58,7 @@ export const codigoFromTipoIncidencia = (tipoIncidencia?: string | null): SAPCod
     // Alias que emite el backend (CalendariosEmpleadosService.MapTipoActividad)
     // y que no existen como código SAP: VA = vacaciones auto-asignadas,
     // PD = permiso por defunción, PP = permiso por paternidad.
-    if (upper === 'VA') return 'V';
+    if (upper === 'VA') return 'VE';
     if (upper === 'PD') return 'P';
     if (upper === 'PP') return 'O';
 
@@ -79,7 +89,8 @@ export const codigoFromTipoIncidencia = (tipoIncidencia?: string | null): SAPCod
     // Vocabulario de programación anual (tipoVacacion del backend): estas
     // vacaciones también deben pintarse con la nomenclatura SAP 'V' para que
     // el calendario del empleado no mezcle dos sistemas de colores.
-    if (lower === 'anual' || lower.includes('automatic') || lower.includes('automátic')) return 'V';
+    if (lower === 'anual') return 'V';
+    if (lower.includes('automatic') || lower.includes('automátic')) return 'VE';
     return null;
 };
 
@@ -91,8 +102,9 @@ export const getSAPEntry = (codigo?: string | null): SAPEntry | null => {
 // Grupos ordenados para renderizar la leyenda.
 export const NOMENCLATURA_LEGEND_GROUPS: { titulo: string; codigos: SAPCodigo[] }[] = [
     { titulo: 'Turnos', codigos: ['1', '2', '3', 'D', 'CD'] },
-    { titulo: 'Vacaciones y festivos', codigos: ['V', 'F', 'C'] },
+    { titulo: 'Vacaciones y festivos', codigos: ['V', 'VE', 'F', 'C'] },
     { titulo: 'Permisos', codigos: ['P', 'G', 'H', 'O'] },
     { titulo: 'Incapacidades', codigos: ['E', 'A', 'M', 'R'] },
+    { titulo: 'No disponibles', codigos: ['DI', 'LL'] },
     { titulo: 'Otros', codigos: ['S', 'T'] },
 ];

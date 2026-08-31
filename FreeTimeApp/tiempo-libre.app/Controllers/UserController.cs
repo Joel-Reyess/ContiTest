@@ -85,6 +85,47 @@ namespace tiempo_libre.app.Controllers
             return Ok(new ApiResponse<object>(true, updatedUser));
         }
 
+        // EP: Corregir la fecha de ingreso de un sindicalizado (reingresos).
+        // Cuando alguien reingresa, SAP trae la fecha del reingreso y la app le
+        // calcula antigüedad y días programables desde cero. El superusuario
+        // captura aquí la fecha original y todo lo que depende de
+        // Users.FechaIngreso (bloques, días por antigüedad, constancia) se
+        // recalcula con ella.
+        [HttpPatch("update-fecha-ingreso/{id}")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario")]
+        public async Task<IActionResult> UpdateUserFechaIngreso(int id, [FromBody] UpdateFechaIngresoRequest request)
+        {
+            var userToUpdate = await _dbContext.Users.Include(u => u.Roles).FirstOrDefaultAsync(u => u.Id == id);
+            if (userToUpdate == null)
+            {
+                _logger.LogWarning("Intento de modificar fecha de ingreso de usuario inexistente. Id: {Id}", id);
+                return NotFound(new ApiResponse<object>(false, null, "Usuario no encontrado"));
+            }
+
+            var hoy = DateOnly.FromDateTime(DateTime.Today);
+            if (request.FechaIngreso > hoy)
+                return BadRequest(new ApiResponse<object>(false, null, "La fecha de ingreso no puede ser futura"));
+            if (request.FechaIngreso.Year < 1950)
+                return BadRequest(new ApiResponse<object>(false, null, "La fecha de ingreso no es válida"));
+
+            var anterior = userToUpdate.FechaIngreso;
+            userToUpdate.FechaIngreso = request.FechaIngreso;
+            userToUpdate.UpdatedAt = DateTime.UtcNow;
+            userToUpdate.UpdatedBy = User.Identity?.Name;
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Fecha de ingreso del usuario {Id} cambiada de {Anterior} a {Nueva} por {Username}",
+                id, anterior, request.FechaIngreso, User.Identity?.Name);
+
+            return Ok(new ApiResponse<object>(true, new
+            {
+                userToUpdate.Id,
+                FechaIngreso = request.FechaIngreso.ToDateTime(TimeOnly.MinValue),
+                FechaIngresoAnterior = anterior.HasValue ? anterior.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null
+            }));
+        }
+
         // EP: Modificar datos de usuario
         [HttpPatch("update/{id}")]
         [Authorize]
@@ -304,8 +345,11 @@ namespace tiempo_libre.app.Controllers
             _logger.LogInformation("Usuario {UserId} tiene rol de liderazgo: {HasLeadershipRole}. Roles: {Roles}",
                 baseUser.Id, hasLeadershipRole, string.Join(", ", baseUser.Roles.Select(r => r.Name)));
 
+            // Manda Users.FechaIngreso: es la que usan bloques, antigüedad y
+            // constancia, y la que el superusuario corrige en reingresos. La de
+            // SAP (Empleados.FechaAlta) solo suple cuando el usuario no la tiene.
             var fechaIngresoEmpleado = await ObtenerFechaAltaPorNominaAsync(baseUser.Nomina);
-            var fechaIngreso = fechaIngresoEmpleado ?? baseUser.FechaIngreso;
+            var fechaIngreso = baseUser.FechaIngreso ?? fechaIngresoEmpleado;
 
             var user = new UserDetailDto
             {
@@ -504,10 +548,10 @@ namespace tiempo_libre.app.Controllers
                         .Select(a => a.UnidadOrganizativaSap)
                         .FirstOrDefault() ?? "NA",
                     Rol = "Empleado_Sindicalizado",
-                    FechaIngreso = _dbContext.Empleados
+                    FechaIngreso = u.FechaIngreso ?? _dbContext.Empleados
                         .Where(e => e.Nomina == u.Nomina)
                         .Select(e => e.FechaAlta)
-                        .FirstOrDefault() ?? u.FechaIngreso,
+                        .FirstOrDefault(),
                     Nomina = u.Nomina,
                     Area = u.AreaId > 0 ? _dbContext.Areas
                         .Where(a => a.AreaId == u.AreaId)
@@ -606,7 +650,7 @@ namespace tiempo_libre.app.Controllers
             }).ToList() ?? new List<UserProfileRolDTO>();
 
             var fechaIngresoEmpleado = await ObtenerFechaAltaPorNominaAsync(user.Nomina);
-            var fechaIngreso = fechaIngresoEmpleado ?? user.FechaIngreso;
+            var fechaIngreso = user.FechaIngreso ?? fechaIngresoEmpleado;
 
             var profile = new UserProfileDto
             {
@@ -1491,6 +1535,11 @@ namespace tiempo_libre.app.Controllers
     public class UpdateMaquinaRequest
     {
         public required string Maquina { get; set; }
+    }
+
+    public class UpdateFechaIngresoRequest
+    {
+        public required DateOnly FechaIngreso { get; set; }
     }
 
     public class ChangeUserStatusRequest

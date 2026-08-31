@@ -14,7 +14,8 @@ import { exportarReprogramacionesExcel } from "@/utils/reprogramacionesExcel";
 import { ReporteAprobaciones } from "./ReporteAprobaciones";
 import { reportesService } from "@/services/reportesService";
 import { edicionDiasEmpresaService } from "@/services/edicionDiasEmpresaService";
-import { vacacionesService } from "@/services/vacacionesService";
+import { vacacionesService, getDiasConRebasePorcentaje } from "@/services/vacacionesService";
+import { generarExcelDiasRebasePorcentaje } from "@/utils/diasRebasePorcentajeExcel";
 import { generarExcelVacacionesAsignadasEmpresa } from "@/utils/vacacionesAsignadasEmpresaExcel";
 import { generarExcelEmpleadosFaltantesCaptura } from "@/utils/empleadosFaltantesCapturaExcel";
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
@@ -104,6 +105,31 @@ export const Reportes = () => {
     loadAreas();
   }, []);
 
+  // Grupos del área elegida. El jefe solo tenía filtro de área (y ni ese estaba
+  // en pantalla): la constancia le salía de toda el área aunque quisiera un
+  // grupo. Mismo comportamiento que el superusuario.
+  const [availableGroups, setAvailableGroups] = useState<{ value: string; label: string; grupoId?: number }[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadGroups = async () => {
+      if (selectedArea === "all") {
+        setAvailableGroups([]);
+        setSelectedGroups([]);
+        return;
+      }
+      try {
+        const grupos = await areasService.getGroupsByAreaId(selectedArea as number);
+        setAvailableGroups(grupos.map((g) => ({ value: g.rol, label: g.rol, grupoId: g.grupoId })));
+      } catch (error) {
+        console.error("Error cargando grupos del área", error);
+        setAvailableGroups([]);
+      }
+      setSelectedGroups([]);
+    };
+    loadGroups();
+  }, [selectedArea]);
+
   const selectedAreaName = useMemo(() => {
     if (selectedArea === "all") return "Todas";
     const found = areas.find((a) => a.areaId === selectedArea);
@@ -166,6 +192,13 @@ export const Reportes = () => {
             subtitle: "Días que los sindicalizados solicitaron cambiar (día original y nuevo día asignado).",
             category: 'programacion-anual'
         },
+        {
+            id: 20,
+            icon: ShieldAlert,
+            title: "Días capturados con rebase del porcentaje",
+            subtitle: "Días capturados aun con el grupo por encima del porcentaje permitido, con quién los capturó.",
+            category: 'programacion-anual'
+        },
     ];
 
   const ensureReprogramming = (): boolean => {
@@ -214,11 +247,34 @@ export const Reportes = () => {
 
       const empleadosLista = empleadosResponse.usuarios || [];
       const empleadosPorNomina = new Map(empleadosLista.map((emp) => [String(emp.nomina), emp]));
+
+      // Los códigos de grupo no se escriben igual en todos lados (R0144_02 /
+      // R0144-02): se compara por id y, si no viene, por el código normalizado.
+      const normalizarRol = (valor?: string | null) => (valor ?? "").replace(/[_\-\s]/g, "").toUpperCase();
+      const idsSeleccionados = new Set(
+        availableGroups
+          .filter((g) => selectedGroups.includes(g.value))
+          .map((g) => g.grupoId)
+          .filter((id): id is number => typeof id === "number")
+      );
+      const rolesSeleccionados = new Set(selectedGroups.map(normalizarRol));
+
       const nominasFiltradas = new Set(
         empleadosLista
           .filter((emp) => !selectedArea || selectedArea === "all" || emp.area?.areaId === selectedArea)
+          .filter((emp) =>
+            selectedGroups.length === 0 ||
+            (emp.grupo?.grupoId != null && idsSeleccionados.has(emp.grupo.grupoId)) ||
+            rolesSeleccionados.has(normalizarRol(emp.grupo?.rol))
+          )
           .map((emp) => String(emp.nomina))
       );
+
+      if (nominasFiltradas.size === 0) {
+        toast.dismiss(loadingToast);
+        toast.error("No hay empleados sindicalizados con los criterios seleccionados");
+        return;
+      }
 
       const vacacionesAsignadas = await runWithTimeout(
         vacacionesService.getVacacionesAsignadas(
@@ -301,7 +357,9 @@ export const Reportes = () => {
       const pdfData = {
         empleados: empleadosData,
         area: selectedAreaName,
-        grupos: selectedArea === "all" ? ["Todas"] : [selectedAreaName],
+        grupos: selectedGroups.length > 0
+          ? selectedGroups
+          : selectedArea === "all" ? ["Toda la planta"] : ["Todos los grupos"],
         periodo: {
           inicio: `01/01/${selectedYear}`,
           fin: `12/31/${selectedYear}`
@@ -451,6 +509,33 @@ export const Reportes = () => {
   };
 
     const handleDownload = async (reportId: number) => {
+        if (reportId === 20) {
+            try {
+                toast.loading("Generando reporte de días con rebase...");
+                const anio = selectedYear ? parseInt(selectedYear) : (config?.anioVigente ?? new Date().getFullYear());
+                const areaIdFiltro = selectedArea === "all" ? undefined : (selectedArea as number);
+                const grupoIdFiltro = selectedGroups.length === 1
+                    ? availableGroups.find((g) => g.value === selectedGroups[0])?.grupoId
+                    : undefined;
+
+                const filas = await getDiasConRebasePorcentaje(anio, {
+                    areaId: areaIdFiltro,
+                    grupoId: grupoIdFiltro,
+                });
+                toast.dismiss();
+
+                generarExcelDiasRebasePorcentaje(filas, { anio, area: selectedAreaName });
+                toast.success(
+                    filas.length > 0
+                        ? `Reporte descargado (${filas.length} día(s) con rebase).`
+                        : "No hay días capturados con rebase para esos filtros; el archivo se descargó vacío."
+                );
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+            }
+            return;
+        }
         if (reportId === 1) {
             await handleDownloadVacacionesAsignadas();
         } else if (reportId === 5) {
@@ -584,6 +669,63 @@ export const Reportes = () => {
                     <p className="text-xs text-gray-500">
                         Aplica a vacaciones asignadas por la empresa, constancias, faltantes por capturar, no respondieron y reprogramación de días de empresa.
                     </p>
+                </div>
+
+                <div className="space-y-2">
+                    <Label className="text-base font-medium text-continental-black">Área</Label>
+                    <Select
+                        value={String(selectedArea)}
+                        onValueChange={(value) => setSelectedArea(value === "all" ? "all" : parseInt(value))}
+                    >
+                        <SelectTrigger className="w-full max-w-sm">
+                            <SelectValue placeholder="Todas las áreas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las áreas</SelectItem>
+                            {areas.map((area) => (
+                                <SelectItem key={area.areaId} value={String(area.areaId)}>
+                                    {area.nombreGeneral}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div className="space-y-2">
+                    <Label className="text-base font-medium text-continental-black">Grupo (opcional)</Label>
+                    {selectedArea === "all" ? (
+                        <p className="text-sm text-gray-500">Selecciona un área para poder filtrar por grupo.</p>
+                    ) : availableGroups.length === 0 ? (
+                        <p className="text-sm text-gray-500">Esta área no tiene grupos cargados.</p>
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex flex-wrap gap-2">
+                                {availableGroups.map((group) => (
+                                    <Button
+                                        key={group.value}
+                                        type="button"
+                                        variant={selectedGroups.includes(group.value) ? "default" : "outline"}
+                                        onClick={() =>
+                                            setSelectedGroups((prev) =>
+                                                prev.includes(group.value)
+                                                    ? prev.filter((g) => g !== group.value)
+                                                    : [...prev, group.value]
+                                            )
+                                        }
+                                        className="rounded-full"
+                                    >
+                                        {group.label}
+                                        {selectedGroups.includes(group.value) && <span className="ml-2">✓</span>}
+                                    </Button>
+                                ))}
+                            </div>
+                            <p className="text-xs text-gray-500">
+                                {selectedGroups.length > 0
+                                    ? `${selectedGroups.length} grupo(s) seleccionado(s) — aplica a la constancia de antigüedad.`
+                                    : "Sin grupos seleccionados: la constancia sale de toda el área."}
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="space-y-4">

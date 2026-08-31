@@ -9,34 +9,32 @@ interface EstadisticasEmpleadosProps {
 export const EstadisticasEmpleados: React.FC<EstadisticasEmpleadosProps> = ({
   estadisticas,
 }) => {
-  const porcentajePendiente =
-    100 -
-    estadisticas.porcentajeCompletado -
-    estadisticas.porcentajeReservado -
-    estadisticas.porcentajeNoRespondio;
+  // HU21: categorías por empleado — Completado / Pendiente / No contestó /
+  // Recalendarizado. Si el backend aún no manda los conteos por empleado se
+  // arma con los porcentajes por asignación de antes (Reservado cuenta como
+  // Completado: ya capturó, solo falta que cierre el bloque).
+  const tieneConteoPorEmpleado = estadisticas.porcentajeEmpleadosCompletados !== undefined;
+  const completado = tieneConteoPorEmpleado
+    ? estadisticas.porcentajeEmpleadosCompletados ?? 0
+    : estadisticas.porcentajeCompletado + estadisticas.porcentajeReservado;
+  const noRespondio = tieneConteoPorEmpleado
+    ? estadisticas.porcentajeEmpleadosNoRespondieron ?? 0
+    : estadisticas.porcentajeNoRespondio;
+  const recalendarizado = tieneConteoPorEmpleado
+    ? estadisticas.porcentajeEmpleadosRecalendarizados ?? 0
+    : 0;
+  const pendiente = tieneConteoPorEmpleado
+    ? estadisticas.porcentajeEmpleadosPendientes ?? 0
+    : Math.max(0, 100 - completado - noRespondio);
 
-  const segments = [
-    {
-      value: estadisticas.porcentajeCompletado,
-      color: "#10b981",
-      label: "Completado",
-    },
-    {
-      value: estadisticas.porcentajeReservado,
-      color: "#fbbf24",
-      label: "Reservado",
-    },
-    {
-      value: estadisticas.porcentajeNoRespondio,
-      color: "#ef4444",
-      label: "No respondió",
-    },
-    {
-      value: porcentajePendiente,
-      color: "#6b7280",
-      label: "Pendientes",
-    },
-  ].filter(segment => segment.value > 0);
+  const categorias = [
+    { value: completado, color: "#10b981", label: "Completado" },
+    { value: pendiente, color: "#6b7280", label: "Pendiente" },
+    { value: noRespondio, color: "#ef4444", label: "No contestó" },
+    { value: recalendarizado, color: "#fbbf24", label: "Recalendarizado" },
+  ];
+
+  const segments = categorias.filter((segment) => segment.value > 0);
 
   return (
     <div className="bg-white p-6 rounded-lg border border-gray-200">
@@ -61,54 +59,20 @@ export const EstadisticasEmpleados: React.FC<EstadisticasEmpleadosProps> = ({
         </div>
 
         <div className="w-full space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded"
-                style={{ backgroundColor: "#10b981" }}
-              />
-              <span className="text-sm">Completado</span>
+          {categorias.map((categoria) => (
+            <div key={categoria.label} className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: categoria.color }}
+                />
+                <span className="text-sm">{categoria.label}</span>
+              </div>
+              <span className="text-sm font-medium">
+                {categoria.value.toFixed(1)}%
+              </span>
             </div>
-            <span className="text-sm font-medium">
-              {estadisticas.porcentajeCompletado.toFixed(1)}%
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded"
-                style={{ backgroundColor: "#fbbf24" }}
-              />
-              <span className="text-sm">Reservado</span>
-            </div>
-            <span className="text-sm font-medium">
-              {estadisticas.porcentajeReservado.toFixed(1)}%
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded"
-                style={{ backgroundColor: "#ef4444" }}
-              />
-              <span className="text-sm">No respondió</span>
-            </div>
-            <span className="text-sm font-medium">
-              {estadisticas.porcentajeNoRespondio.toFixed(1)}%
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded"
-                style={{ backgroundColor: "#6b7280" }}
-              />
-              <span className="text-sm">Pendientes</span>
-            </div>
-            <span className="text-sm font-medium">
-              {porcentajePendiente.toFixed(1)}%
-            </span>
-          </div>
+          ))}
         </div>
       </div>
     </div>

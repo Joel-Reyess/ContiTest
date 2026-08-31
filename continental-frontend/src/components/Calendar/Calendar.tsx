@@ -117,13 +117,18 @@ const CustomDateCellWrapper = ({
         if (!sapChip) className += " inability-day";
         break;
       case "not-work":
-        // Sin código SAP y sin sombreado: el gris se confundía con una
-        // incidencia. Queda el tooltip con la razón... salvo el día LLENO por
-        // el porcentaje del grupo, que sí se tiñe: sin color se veía idéntico a
-        // un día abierto y el operador se enteraba hasta el clic (el "los
-        // colores de alerta no funcionaron" de la captura 2026).
+        // Los dos motivos por los que el día está cerrado ahora llevan su
+        // propia letra: LL (lleno por el porcentaje del grupo) y DI (inhábil).
+        // Antes los dos eran el mismo gris sin código y el operador solo se
+        // enteraba al hacer clic — el "los colores de alerta no funcionaron"
+        // de la captura 2026.
         title = eventData.razon || "Día no laborable";
-        if ((eventData.razon || "").includes("lleno")) className += " full-day";
+        if ((eventData.razon || "").includes("lleno")) {
+          sapChip = SAP_NOMENCLATURA['LL'];
+          className += " full-day";
+        } else if (eventData.incidencia === 'DI') {
+          sapChip = SAP_NOMENCLATURA['DI'];
+        }
         break;
       default:
         break;

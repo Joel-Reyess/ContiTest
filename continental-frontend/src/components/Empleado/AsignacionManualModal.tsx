@@ -180,7 +180,7 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
         try {
             setIsSubmitting(true);
 
-            const request: AsignacionManualRequest = {
+            const construirRequest = (confirmarRebase: boolean): AsignacionManualRequest => ({
                 empleadoId,
                 fechasVacaciones: selectedDates,
                 tipoVacacion,
@@ -192,9 +192,38 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                 notificarEmpleado: true,
                 bloqueId: null,
                 origenSolicitud: 'Ajuste',
-            };
+                confirmarRebasePorcentaje: confirmarRebase,
+            });
 
-            const response = await asignarVacacionesManualmente(request);
+            // El backend rechaza los días que rebasan el porcentaje del grupo y
+            // devuelve cuáles son. Aquí se le muestran a quien captura para que
+            // decida: si continúa, se reenvía confirmado y el día queda marcado
+            // en el reporte de rebases (y se le avisa al jefe del área).
+            let response;
+            try {
+                response = await asignarVacacionesManualmente(construirRequest(false));
+            } catch (posibleRebase: any) {
+                const cuerpo = posibleRebase?.details?.data;
+                if (!cuerpo?.requiereConfirmacionRebase) throw posibleRebase;
+
+                const dias: { fecha: string; porcentajeResultante: number; porcentajeMaximo: number }[] =
+                    cuerpo.diasConRebase ?? [];
+                const detalle = dias
+                    .map(d => `• ${d.fecha} — quedaría en ${d.porcentajeResultante.toFixed(2)}% (máximo ${d.porcentajeMaximo.toFixed(2)}%)`)
+                    .join('\n');
+
+                const continuar = window.confirm(
+                    `Estos días ya rebasan el porcentaje permitido del grupo:\n\n${detalle}\n\n` +
+                    '¿Capturarlos de todas formas?\n' +
+                    'Quedarán marcados en el reporte de días capturados con rebase y se le avisará al jefe del área.'
+                );
+                if (!continuar) {
+                    setIsSubmitting(false);
+                    return;
+                }
+
+                response = await asignarVacacionesManualmente(construirRequest(true));
+            }
 
             if (response.exitoso) {
                 toast.success(

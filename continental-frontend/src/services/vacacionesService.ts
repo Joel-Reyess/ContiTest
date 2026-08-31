@@ -1,5 +1,5 @@
 import { httpClient } from '@/services/httpClient';
-import type { ApiResponse, VacacionesAsignadasResponse, VacacionesAsignadasCompleteResponse, EliminarVacacionesPorFechaRequest ,DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse, AsignacionManualRequest, AsignacionManualResponse } from '@/interfaces/Api.interface';
+import type { ApiResponse, VacacionesAsignadasResponse, VacacionesAsignadasCompleteResponse, EliminarVacacionesPorFechaRequest ,DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse, AsignacionManualRequest, AsignacionManualResponse, DiaRebasePorcentaje } from '@/interfaces/Api.interface';
 import type { VacacionesConfig, VacacionesConfigUpdateRequest ,} from '@/interfaces/Vacaciones.interface';
 
 export const vacacionesService = {
@@ -107,6 +107,23 @@ export const reservarVacacionesAnuales = async (request: ReservaAnualRequest): P
     return resp.data as unknown as ReservaAnualResponse;
   }
   throw new Error('No se pudo procesar la reserva de vacaciones');
+};
+
+// Días capturados por encima del porcentaje permitido del grupo (quién y cuándo).
+export const getDiasConRebasePorcentaje = async (
+  anio: number,
+  filtros: { areaId?: number | null; grupoId?: number | null } = {}
+): Promise<DiaRebasePorcentaje[]> => {
+  const params = new URLSearchParams({ anio: String(anio) });
+  if (filtros.grupoId) params.set('grupoId', String(filtros.grupoId));
+  else if (filtros.areaId) params.set('areaId', String(filtros.areaId));
+
+  const resp = await httpClient.get<ApiResponse<DiaRebasePorcentaje[]>>(
+    `/api/vacaciones/reporte-rebase-porcentaje?${params.toString()}`,
+    undefined,
+    { timeout: 60000 }
+  );
+  return (resp?.data as unknown as DiaRebasePorcentaje[]) ?? [];
 };
 
 // Nuevo: asignación manual de vacaciones

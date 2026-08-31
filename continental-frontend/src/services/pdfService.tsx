@@ -5,6 +5,9 @@ export interface EmpleadoVacacionData {
     nomina: string;
     nombre: string;
     fechaIngreso: string;
+    /** Área del empleado; cuando la constancia es de toda la planta cada hoja lleva la suya. */
+    area?: string;
+    grupo?: string;
     antiguedadAnios: number;
     diasVacacionesCorresponden: number;
     diasAdicionales: number;

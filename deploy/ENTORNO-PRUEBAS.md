@@ -32,7 +32,8 @@ Rama de pruebas: **`fix/punchlist-batch-1`**. Producción sigue en `main`.
 ## Paso 1 — La base de datos de pruebas
 
 En SQL Server Management Studio, sobre la misma instancia que usa producción
-(`ALEX\SQLEXPRESS`, según `appsettings.json`):
+(**`SLAS056A\SLAS056A`**, que es la que usa el servidor; el `ALEX\SQLEXPRESS`
+de `appsettings.json` es solo de desarrollo):
 
 1. Clic derecho en `FreeTime` → **Tasks → Back Up…** → guarda el `.bak`.
 2. Clic derecho en **Databases** → **Restore Database…**
@@ -54,8 +55,14 @@ sobreescribiendo `FreeTime_Test` (Options → *Overwrite the existing database*)
 
 ## Paso 2 — Backend de pruebas (puerto 6050)
 
-La configuración ya está en el repo: **`appsettings.Test.json`**. Trae tres
-diferencias importantes contra producción:
+La configuración vive en **`appsettings.Test.json`**, que **no está en git**
+(lo ignora `.gitignore` porque lleva la cadena de conexión). Existe solo en la
+copia del repo desde donde publicas: si compilas en una máquina limpia, ese
+archivo no aparece, `dotnet publish` no lo copia y el backend de pruebas carga
+`appsettings.json` — es decir, **la base de PRODUCCIÓN**. Antes de enviar,
+confirma que `envio\test\backend\appsettings.Test.json` exista.
+
+Trae tres diferencias importantes contra producción:
 
 - Apunta a `FreeTime_Test`.
 - `"BackgroundServices": { "Habilitados": false }` — no corre las
@@ -124,8 +131,15 @@ Es `[AllowAnonymous]` y responde las dos cosas que importan:
 
 - `environment` debe decir **`Test`**. Si dice `Production`, la variable de arriba
   no quedó y el backend está pegándole a `FreeTime`.
+- `services.database.database` debe decir **`FreeTime_Test`** y `server` la
+  instancia real. Esto es lo único que prueba a qué base escribe: `environment`
+  solo dice qué `appsettings` cargó, y la cadena de conexión de ese archivo
+  puede apuntar a donde sea.
 - `services.database.connected` debe ser **`true`**. Si es `false`, trae el error
   de conexión en `error`.
+
+> `status` es una cadena fija en el código: **siempre** dice `healthy`, aunque la
+> base esté caída. No lo uses como comprobación.
 
 Ojo: IIS no arranca el proceso hasta la primera petición HTTP. `Start-Website`
 solo pone a IIS a escuchar, así que hasta que no llames al endpoint no existe ni
@@ -300,9 +314,27 @@ un solo paso desde tu máquina con una ruta UNC (requiere permisos de admin en
 el recurso):
 
 ```powershell
-robocopy .\envio\test\backend  \\slas052a\c$\inetpub\vacaciones-test-backend  /MIR
+robocopy .\envio\test\backend  \\slas052a\c$\inetpub\vacaciones-test-backend  /MIR /XF appsettings.Test.json
 robocopy .\envio\test\frontend \\slas052a\c$\inetpub\vacaciones-test-frontend /MIR /XF web.config
 ```
+
+> `/XF appsettings.Test.json` **no es opcional**: sin él, `/MIR` sobreescribe la
+> configuración del servidor con la tuya, que apunta a tu SQL local, y el backend
+> de pruebas deja de conectarse. Igual que `/XF web.config` en el frontend.
+
+**Dos fallas silenciosas que ya nos pasaron** (agosto 2026), las dos se ven solo
+si lees la salida:
+
+- El `robocopy` corrido **en el servidor** con origen `C:\publish\test-backend`
+  aborta con `ERROR 3 ... The system cannot find the path specified`, porque esa
+  carpeta está en la máquina donde publicaste, no en slas052a. `Start-Website`
+  levanta igual y el health check contesta bien: parece desplegado y sigue el
+  binario viejo. El envío va **desde tu máquina** con la ruta UNC.
+- Correr los scripts SQL "en el servidor" no basta: hay que correrlos en la
+  **base que usa el backend**. Se confirma con la query de sesiones activas
+  (`sys.dm_exec_sessions`, columna `DB_NAME(database_id)`) o con `VerificarEsquemaBD.sql`,
+  que ahora imprime `@@SERVERNAME` y `DB_NAME()` para poder cruzarlo con el
+  health check.
 
 Aun así el `Stop-Website` / `Start-Website` y el health check se ejecutan **en
 el servidor** (o con `Invoke-Command -ComputerName slas052a` si tienes WinRM).

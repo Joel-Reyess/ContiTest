@@ -384,6 +384,47 @@ namespace tiempo_libre.Services
                         Math.Round((decimal)estadisticasEmpleados.EmpleadosConEstadoNoRespondio * 100 / totalActivos, 2);
                 }
 
+                // HU21: el pastel del superusuario se lee POR EMPLEADO, no por
+                // asignación. Un empleado que se movió de turno tiene dos filas
+                // (la vieja en Transferido y la nueva en Asignado) y contarlas por
+                // separado lo duplica. Se clasifica por su asignación vigente:
+                //   Completado      → ya capturó (Reservado, o Completado al cerrar el bloque)
+                //   No respondió    → se le venció el turno sin capturar
+                //   Recalendarizado → sigue pendiente, pero ya se le dio otro turno
+                //   Pendiente       → el resto (Asignado, Saltado)
+                foreach (var porEmpleado in todasAsignaciones.GroupBy(a => a.EmpleadoId))
+                {
+                    var vigente = porEmpleado
+                        .Where(a => a.Estado != "Transferido")
+                        .OrderByDescending(a => a.Id)
+                        .FirstOrDefault();
+                    var fueMovido = porEmpleado.Any(a => a.Estado == "Transferido");
+
+                    if (vigente == null)
+                        estadisticasEmpleados.EmpleadosRecalendarizados++;
+                    else if (vigente.Estado == "Reservado" || vigente.Estado == "Completado")
+                        estadisticasEmpleados.EmpleadosCompletados++;
+                    else if (vigente.Estado == "NoRespondio")
+                        estadisticasEmpleados.EmpleadosNoRespondieron++;
+                    else if (fueMovido)
+                        estadisticasEmpleados.EmpleadosRecalendarizados++;
+                    else
+                        estadisticasEmpleados.EmpleadosPendientes++;
+                }
+
+                var totalEmpleados = estadisticasEmpleados.TotalEmpleadosAsignados;
+                if (totalEmpleados > 0)
+                {
+                    estadisticasEmpleados.PorcentajeEmpleadosCompletados =
+                        Math.Round((decimal)estadisticasEmpleados.EmpleadosCompletados * 100 / totalEmpleados, 2);
+                    estadisticasEmpleados.PorcentajeEmpleadosPendientes =
+                        Math.Round((decimal)estadisticasEmpleados.EmpleadosPendientes * 100 / totalEmpleados, 2);
+                    estadisticasEmpleados.PorcentajeEmpleadosNoRespondieron =
+                        Math.Round((decimal)estadisticasEmpleados.EmpleadosNoRespondieron * 100 / totalEmpleados, 2);
+                    estadisticasEmpleados.PorcentajeEmpleadosRecalendarizados =
+                        Math.Round((decimal)estadisticasEmpleados.EmpleadosRecalendarizados * 100 / totalEmpleados, 2);
+                }
+
                 var resultado = new EstadisticasBloquesDto
                 {
                     AnioConsultado = anio,
@@ -442,5 +483,15 @@ namespace tiempo_libre.Services
         public decimal PorcentajeCompletado { get; set; }
         public decimal PorcentajeReservado { get; set; }
         public decimal PorcentajeNoRespondio { get; set; }
+
+        // HU21: conteo por empleado (cada uno cae en una sola categoría).
+        public int EmpleadosCompletados { get; set; }
+        public int EmpleadosPendientes { get; set; }
+        public int EmpleadosNoRespondieron { get; set; }
+        public int EmpleadosRecalendarizados { get; set; }
+        public decimal PorcentajeEmpleadosCompletados { get; set; }
+        public decimal PorcentajeEmpleadosPendientes { get; set; }
+        public decimal PorcentajeEmpleadosNoRespondieron { get; set; }
+        public decimal PorcentajeEmpleadosRecalendarizados { get; set; }
     }
 }

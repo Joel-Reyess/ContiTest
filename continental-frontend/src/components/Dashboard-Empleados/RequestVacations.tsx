@@ -94,6 +94,11 @@ const RequestVacations = () => {
     const { user } = useAuth();
 
     const [currentPeriod, setCurrentPeriod] = useState<Period | null>(null);
+    // Años entre los que el operador puede moverse. Con la programación anual
+    // del año siguiente conviviendo con la reprogramación del vigente, la
+    // pantalla se quedaba pegada al año en preparación y el operador no podía
+    // ver ni sus días del año en curso.
+    const [aniosDisponibles, setAniosDisponibles] = useState<number[]>([]);
 
     // ✅ Determinar si es delegado sindical
     const isUnionCommittee = Boolean((user as any)?.isUnionCommittee);
@@ -119,6 +124,11 @@ const RequestVacations = () => {
                 // acertaba por casualidad y nunca coincidía con el año de los
                 // bloques generados.
                 setAnioCaptura(config.anioProgramacionAnual ?? config.anioVigente ?? new Date().getFullYear() + 1);
+                const anios = [config.anioVigente, config.anioProgramacionAnual]
+                    .filter((a): a is number => typeof a === 'number')
+                    .filter((a, i, arr) => arr.indexOf(a) === i)
+                    .sort((a, b) => a - b);
+                setAniosDisponibles(anios);
                 console.log('📅 Periodo actual cargado:', config.periodoActual);
             } catch (error) {
                 console.error('Error fetching period:', error);
@@ -340,6 +350,28 @@ const RequestVacations = () => {
                 </div>
                 <NavbarUser />
             </header>
+            {aniosDisponibles.length > 1 && (
+                <div className="flex items-center gap-2 px-2 pb-3 text-sm">
+                    <span className="text-slate-600">Año:</span>
+                    {aniosDisponibles.map((anio) => (
+                        <button
+                            key={anio}
+                            type="button"
+                            onClick={() => { setAnioCaptura(anio); setSelectedDays([]); }}
+                            className={`px-3 py-1 rounded-full border text-sm cursor-pointer ${
+                                anioCaptura === anio
+                                    ? 'bg-continental-blue-dark text-white border-continental-blue-dark'
+                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            }`}
+                        >
+                            {anio}
+                        </button>
+                    ))}
+                    <span className="text-xs text-slate-500">
+                        Cambia de año para ver o capturar los días que te corresponden en cada uno.
+                    </span>
+                </div>
+            )}
             <div className="flex gap-8 justify-between">
                 <div className="flex-2">
                     {selectedMonth ? (

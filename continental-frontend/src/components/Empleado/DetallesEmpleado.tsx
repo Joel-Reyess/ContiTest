@@ -84,6 +84,11 @@ export const DetallesEmpleado = ({
   const [maquinaValue, setMaquinaValue] = useState('');
   const [isUpdatingMaquina, setIsUpdatingMaquina] = useState(false);
 
+  // Edición de fecha de ingreso (solo superusuario, para reingresos)
+  const [isEditingFechaIngreso, setIsEditingFechaIngreso] = useState(false);
+  const [fechaIngresoValue, setFechaIngresoValue] = useState('');
+  const [isUpdatingFechaIngreso, setIsUpdatingFechaIngreso] = useState(false);
+
   // Estados para asignación manual de vacaciones
     const [showAsignacionModal, setShowAsignacionModal] = useState(false);
 
@@ -621,6 +626,62 @@ const handleRemoveDay = async (fecha: string) => {
     setIsEditingMaquina(false);
     setMaquinaValue(sindicalizado?.maquina || 'Sin maquina');
   };
+
+  const fechaIngresoComoInput = (fecha?: string): string => {
+    if (!fecha) return '';
+    const d = new Date(fecha);
+    return isNaN(d.getTime()) ? '' : format(d, 'yyyy-MM-dd');
+  };
+
+  const handleEditFechaIngreso = () => {
+    setFechaIngresoValue(fechaIngresoComoInput(sindicalizado?.fechaIngreso));
+    setIsEditingFechaIngreso(true);
+  };
+
+  const handleCancelEditFechaIngreso = () => {
+    setIsEditingFechaIngreso(false);
+  };
+
+  // Reingresos: SAP trae la fecha del reingreso y la app le calcula la
+  // antigüedad desde cero. Aquí el superusuario pone la fecha original; el
+  // backend la guarda en Users.FechaIngreso, que es la que usan bloques,
+  // días por antigüedad y constancia.
+  const handleSaveFechaIngreso = async () => {
+    if (!id || !fechaIngresoValue) {
+      toast.error('Indica la fecha de ingreso');
+      return;
+    }
+    if (fechaIngresoValue > format(new Date(), 'yyyy-MM-dd')) {
+      toast.error('La fecha de ingreso no puede ser futura');
+      return;
+    }
+    if (fechaIngresoValue === fechaIngresoComoInput(sindicalizado?.fechaIngreso)) {
+      setIsEditingFechaIngreso(false);
+      return;
+    }
+    const confirmado = window.confirm(
+      `¿Cambiar la fecha de ingreso de ${sindicalizado?.nombre || 'este empleado'} a ` +
+      `${format(new Date(`${fechaIngresoValue}T00:00:00`), "dd 'de' MMMM 'de' yyyy", { locale: es })}?\n\n` +
+      'La antigüedad y los días que le corresponden se recalculan con esta fecha.'
+    );
+    if (!confirmado) return;
+
+    setIsUpdatingFechaIngreso(true);
+    try {
+      await userService.updateFechaIngreso(parseInt(id), fechaIngresoValue);
+      const nuevaFecha = `${fechaIngresoValue}T00:00:00`;
+      setSindicalizado(prev => prev
+        ? { ...prev, fechaIngreso: nuevaFecha, antiguedad: calculateAntiguedad(nuevaFecha) }
+        : null);
+      setIsEditingFechaIngreso(false);
+      toast.success('Fecha de ingreso actualizada');
+    } catch (error) {
+      console.error('Error updating fecha de ingreso:', error);
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la fecha de ingreso');
+    } finally {
+      setIsUpdatingFechaIngreso(false);
+    }
+  };
     const handleCreateTestExceptions = async () => {
         if (!groupId || !anioVigente) {
             toast.error('No hay información de grupo disponible');
@@ -816,9 +877,52 @@ const handleRemoveDay = async (fecha: string) => {
               {sindicalizado?.nombre}
             </div>
 
-            {/* 4. Grupo */}
-            <div className="text-[16px] font-medium text-continental-black">
-              Fecha de Ingreso: {sindicalizado?.fechaIngreso ? format(new Date(sindicalizado.fechaIngreso), 'dd \'de\' MMMM \'de\' yyyy', { locale: es }) : 'No disponible'}
+            {/* 4. Fecha de ingreso (el superusuario la puede corregir: reingresos) */}
+            <div className="flex items-center gap-2 text-[16px] font-medium text-continental-black">
+              {isEditingFechaIngreso ? (
+                <>
+                  <span>Fecha de Ingreso:</span>
+                  <input
+                    type="date"
+                    value={fechaIngresoValue}
+                    max={format(new Date(), 'yyyy-MM-dd')}
+                    onChange={(e) => setFechaIngresoValue(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-continental-blue-dark"
+                    disabled={isUpdatingFechaIngreso}
+                  />
+                  <button
+                    onClick={handleSaveFechaIngreso}
+                    disabled={isUpdatingFechaIngreso}
+                    className="text-green-600 hover:text-green-700 disabled:opacity-50"
+                    title="Guardar"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    onClick={handleCancelEditFechaIngreso}
+                    disabled={isUpdatingFechaIngreso}
+                    className="text-red-600 hover:text-red-700 disabled:opacity-50"
+                    title="Cancelar"
+                  >
+                    <X size={16} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>
+                    Fecha de Ingreso: {sindicalizado?.fechaIngreso ? format(new Date(sindicalizado.fechaIngreso), 'dd \'de\' MMMM \'de\' yyyy', { locale: es }) : 'No disponible'}
+                  </span>
+                  {isSuperUsuario && (
+                    <button
+                      onClick={handleEditFechaIngreso}
+                      className="text-continental-blue-dark hover:text-continental-blue-dark/80"
+                      title="Corregir fecha de ingreso (reingresos)"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
             {/* 5. Antigüedad */}
@@ -950,8 +1054,11 @@ const handleRemoveDay = async (fecha: string) => {
                               empleadoNombre={sindicalizado?.nombre || ''}
                           />
                       )}
-            {/* 8. Botón Reasignar turno - Solo en período de programación anual */}
-            {currentPeriod === 'annual' && (
+            {/* 8. Botón Reasignar turno (HU27): el jefe de área y el superusuario
+                le dan un turno nuevo a quien no alcanzó a capturar. Hace falta
+                también en reprogramación —que es justo cuando se detecta al que
+                se quedó fuera—, así que solo se oculta con el periodo cerrado. */}
+            {currentPeriod !== PeriodOptions.closed && (
               <Button
                 variant="outline"
                 onClick={handleReassignShift}

@@ -10,7 +10,9 @@ namespace tiempo_libre.Controllers
 {
     [ApiController]
     [Route("api/recuperacion-password")]
-    [AllowAnonymous] // Estos endpoints no requieren autenticación
+    // Los tres pasos de recuperación son públicos (van con [AllowAnonymous]
+    // cada uno). No se pone a nivel de clase: un [AllowAnonymous] de clase
+    // anula el [Authorize] de limpiar-expirados y lo deja abierto (ASP0026).
     public class RecuperacionPasswordController : ControllerBase
     {
         private readonly IRecuperacionPasswordService _recuperacionService;
@@ -30,6 +32,7 @@ namespace tiempo_libre.Controllers
         /// <param name="request">Email del usuario</param>
         /// <returns>Confirmación del envío del código</returns>
         [HttpPost("solicitar-codigo")]
+        [AllowAnonymous]
         public async Task<IActionResult> SolicitarCodigo([FromBody] SolicitarCodigoRequest request)
         {
             try
@@ -74,6 +77,7 @@ namespace tiempo_libre.Controllers
         /// <param name="request">Email y código a validar</param>
         /// <returns>Resultado de la validación</returns>
         [HttpPost("validar-codigo")]
+        [AllowAnonymous]
         public async Task<IActionResult> ValidarCodigo([FromBody] ValidarCodigoRequest request)
         {
             try
@@ -113,6 +117,7 @@ namespace tiempo_libre.Controllers
         /// <param name="request">Datos para el cambio de contraseña</param>
         /// <returns>Resultado del cambio de contraseña</returns>
         [HttpPost("cambiar-password")]
+        [AllowAnonymous]
         public async Task<IActionResult> CambiarPassword([FromBody] CambiarPasswordRequest request)
         {
             try

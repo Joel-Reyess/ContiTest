@@ -257,6 +257,20 @@ export const userService = {
     }
   },
 
+  // Reingresos: el superusuario captura la fecha de ingreso original para que
+  // antigüedad, días programables y constancia se calculen con ella.
+  async updateFechaIngreso(userId: number, fechaIngreso: string): Promise<{ id: number; fechaIngreso: string }> {
+    const response = await httpClient.patch<ApiResponse<{ id: number; fechaIngreso: string }>>(
+      `/api/user/update-fecha-ingreso/${userId}`,
+      { fechaIngreso }
+    );
+    const data = response.data || response;
+    if (!data) {
+      throw new Error("Invalid response from server");
+    }
+    return data as unknown as { id: number; fechaIngreso: string };
+  },
+
     async deleteUser(userId: number, adminPassword: string): Promise<void> {
         await httpClient.post(`/api/User/delete/${userId}`, { adminPassword });
     },

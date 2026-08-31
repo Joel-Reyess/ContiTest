@@ -140,8 +140,61 @@ namespace tiempo_libre.Services
                     }
                 }
 
+                // Porcentaje por día. Esta ruta —la del jefe y el superusuario—
+                // NUNCA lo validaba: insertaba directo. Es el "en vulcanización
+                // no respetó el bloqueo de los %, el 17 de septiembre dejó
+                // capturar 13 personas" del reporte de 2026. Ahora se evalúa
+                // siempre; lo que decide quien captura es si continúa.
+                var diasConRebase = new List<DiaConRebaseDto>();
+                var porcentajePorFecha = new Dictionary<DateOnly, decimal>();
+
+                if (empleado.GrupoId.HasValue)
+                {
+                    foreach (var fecha in request.FechasVacaciones)
+                    {
+                        var estado = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value, fecha);
+                        if (estado == null) continue;
+
+                        var conEsteDia = _validadorPorcentaje.EvaluarRegla(
+                            estado.TotalEmpleados, estado.AusenciasActuales, 1, estado.PorcentajeMaximoPermitido);
+
+                        porcentajePorFecha[fecha] = conEsteDia.PorcentajeResultante;
+
+                        if (!estado.PuedeAgregarAusencia || !conEsteDia.Permitido)
+                        {
+                            diasConRebase.Add(new DiaConRebaseDto
+                            {
+                                Fecha = fecha,
+                                PorcentajeResultante = conEsteDia.PorcentajeResultante,
+                                PorcentajeMaximo = estado.PorcentajeMaximoPermitido,
+                                Detalle = conEsteDia.Motivo
+                            });
+                        }
+                    }
+                }
+
+                if (diasConRebase.Count > 0 && !request.ConfirmarRebasePorcentaje)
+                {
+                    await transaction.RollbackAsync();
+                    var listado = string.Join(", ", diasConRebase.Select(d =>
+                        $"{d.Fecha:dd/MM/yyyy} ({d.PorcentajeResultante:F2}% de {d.PorcentajeMaximo:F2}% permitido)"));
+
+                    return new ApiResponse<AsignacionManualResponse>(false,
+                        new AsignacionManualResponse
+                        {
+                            Exitoso = false,
+                            EmpleadoId = request.EmpleadoId,
+                            NombreEmpleado = empleado.FullName,
+                            RequiereConfirmacionRebase = true,
+                            DiasConRebase = diasConRebase,
+                            Mensaje = $"Estos días ya rebasan el porcentaje permitido del grupo: {listado}."
+                        },
+                        $"El grupo ya rebasa el porcentaje permitido en: {listado}. Confirma si aun así quieres capturarlos.");
+                }
+
                 foreach (var fecha in request.FechasVacaciones)
                 {
+                    var conRebase = diasConRebase.Any(d => d.Fecha == fecha);
                     var vacacion = new VacacionesProgramadas
                     {
                         EmpleadoId = request.EmpleadoId,
@@ -150,6 +203,12 @@ namespace tiempo_libre.Services
                         OrigenAsignacion = request.OrigenAsignacion,
                         EstadoVacacion = request.EstadoVacacion,
                         Observaciones = request.Observaciones,
+                        CapturadoConRebase = conRebase,
+                        PorcentajeAlCapturar = porcentajePorFecha.TryGetValue(fecha, out var pct) ? pct : (decimal?)null,
+                        // Sin esto el reporte de rebases no puede decir quién
+                        // capturó el día: la columna quedaba siempre vacía.
+                        CreatedBy = usuarioAsignaId,
+                        UpdatedBy = usuarioAsignaId,
                         CreatedAt = DateTime.Now,
                         UpdatedAt = DateTime.Now
                     };
@@ -159,6 +218,15 @@ namespace tiempo_libre.Services
                 }
 
                 await _db.SaveChangesAsync();
+
+                if (diasConRebase.Count > 0)
+                {
+                    advertencias.Add(
+                        "Se capturó rebasando el porcentaje permitido en: " +
+                        string.Join(", ", diasConRebase.Select(d => $"{d.Fecha:dd/MM/yyyy} ({d.PorcentajeResultante:F2}%)")));
+
+                    await AvisarRebaseAJefesDeAreaAsync(empleado, diasConRebase, usuarioAsignaId);
+                }
 
                 if (request.NotificarEmpleado)
                 {
@@ -199,7 +267,9 @@ namespace tiempo_libre.Services
                     Mensaje = $"Se asignaron {vacacionesAsignadas.Count} días de vacaciones exitosamente",
                     Advertencias = advertencias,
                     FechaAsignacion = DateTime.Now,
-                    UsuarioAsigno = usuarioAsigno?.FullName ?? $"Usuario {usuarioAsignaId}"
+                    UsuarioAsigno = usuarioAsigno?.FullName ?? $"Usuario {usuarioAsignaId}",
+                    RequiereConfirmacionRebase = false,
+                    DiasConRebase = diasConRebase
                 };
 
                 return new ApiResponse<AsignacionManualResponse>(true, response, null);
@@ -313,5 +383,125 @@ namespace tiempo_libre.Services
         public int DiasAsignadosAutomaticamente { get; set; }
         public int DiasProgramables { get; set; }
         public int TotalDias { get; set; }
+    
+        /// <summary>
+        /// Avisa a los jefes del área cuando alguien captura por encima del
+        /// porcentaje. Validación 5 y 6 del punchlist: el jefe tiene que
+        /// enterarse aunque el día lo haya forzado el superusuario.
+        /// Los jefes salen de AreaJefes y, para las áreas que todavía no se
+        /// migraron, de Area.JefeId / JefeSuplenteId.
+        /// </summary>
+        private async Task AvisarRebaseAJefesDeAreaAsync(
+            User empleado, List<DiaConRebaseDto> diasConRebase, int usuarioAsignaId)
+        {
+            try
+            {
+                var areaId = empleado.Grupo?.AreaId;
+                if (areaId == null) return;
+
+                var jefes = await _db.AreaJefes
+                    .Where(aj => aj.AreaId == areaId.Value)
+                    .Select(aj => aj.UserId)
+                    .ToListAsync();
+
+                var area = await _db.Areas.FirstOrDefaultAsync(a => a.AreaId == areaId.Value);
+                if (area != null)
+                {
+                    if (area.JefeId > 0) jefes.Add(area.JefeId);
+                    if (area.JefeSuplenteId.HasValue) jefes.Add(area.JefeSuplenteId.Value);
+                }
+
+                // Quien capturó no necesita avisarse a sí mismo.
+                var destinatarios = jefes.Distinct().Where(id => id != usuarioAsignaId).ToList();
+                if (destinatarios.Count == 0) return;
+
+                var quienCapturo = await _db.Users.FindAsync(usuarioAsignaId);
+                var detalle = string.Join(", ", diasConRebase.Select(d =>
+                    $"{d.Fecha:dd/MM/yyyy} ({d.PorcentajeResultante:F2}% de {d.PorcentajeMaximo:F2}%)"));
+
+                foreach (var jefeId in destinatarios)
+                {
+                    await _notificacionesService.CrearNotificacionAsync(
+                        Models.Enums.TiposDeNotificacionEnum.RegistroVacaciones,
+                        "Captura por encima del porcentaje",
+                        $"{quienCapturo?.FullName ?? $"El usuario {usuarioAsignaId}"} capturó vacaciones de " +
+                        $"{empleado.FullName} en día(s) que ya rebasan el porcentaje permitido del grupo: {detalle}.",
+                        "Sistema de Vacaciones",
+                        jefeId,
+                        usuarioAsignaId,
+                        areaId,
+                        empleado.GrupoId,
+                        "RebasePorcentaje",
+                        null,
+                        new
+                        {
+                            EmpleadoId = empleado.Id,
+                            Dias = diasConRebase.Select(d => d.Fecha).ToList(),
+                            CapturadoPor = usuarioAsignaId
+                        }
+                    );
+                }
+
+                _logger.LogWarning(
+                    "Rebase de porcentaje: usuario {UsuarioId} capturó {Dias} día(s) del empleado {EmpleadoId} por encima del límite. Avisados {Jefes} jefe(s).",
+                    usuarioAsignaId, diasConRebase.Count, empleado.Id, destinatarios.Count);
+            }
+            catch (Exception ex)
+            {
+                // El aviso no debe tumbar la captura que ya se guardó.
+                _logger.LogError(ex, "No se pudo avisar del rebase de porcentaje al jefe de área");
+            }
+        }
+    
+        /// <summary>
+        /// Días que se capturaron por encima del porcentaje permitido, con quién
+        /// los capturó. Es el reporte que pide el punchlist para poder desglosar
+        /// "quién capturó esos días" cuando un día se llenó de más.
+        /// </summary>
+        public async Task<ApiResponse<List<DiaRebasePorcentajeDto>>> ObtenerDiasConRebaseAsync(
+            int anio, int? areaId = null, int? grupoId = null)
+        {
+            try
+            {
+                var query = _db.VacacionesProgramadas
+                    .Include(v => v.Empleado).ThenInclude(u => u.Grupo).ThenInclude(g => g!.Area)
+                    .Include(v => v.CreatedByUser)
+                    .Where(v => v.CapturadoConRebase
+                                && v.EstadoVacacion == "Activa"
+                                && v.FechaVacacion.Year == anio);
+
+                if (grupoId.HasValue)
+                    query = query.Where(v => v.Empleado.GrupoId == grupoId.Value);
+                else if (areaId.HasValue)
+                    query = query.Where(v => v.Empleado.Grupo!.AreaId == areaId.Value);
+
+                var filas = await query
+                    .OrderBy(v => v.FechaVacacion)
+                    .ThenBy(v => v.Empleado.Nomina)
+                    .Select(v => new DiaRebasePorcentajeDto
+                    {
+                        Fecha = v.FechaVacacion,
+                        Nomina = v.Empleado.Nomina.HasValue ? v.Empleado.Nomina.Value.ToString() : "",
+                        NombreEmpleado = v.Empleado.FullName ?? "",
+                        Area = v.Empleado.Grupo != null && v.Empleado.Grupo.Area != null
+                            ? v.Empleado.Grupo.Area.NombreGeneral : "",
+                        Grupo = v.Empleado.Grupo != null ? v.Empleado.Grupo.Rol : "",
+                        TipoVacacion = v.TipoVacacion,
+                        OrigenAsignacion = v.OrigenAsignacion,
+                        PorcentajeAlCapturar = v.PorcentajeAlCapturar,
+                        CapturadoPor = v.CreatedByUser != null ? v.CreatedByUser.FullName : null,
+                        FechaCaptura = v.CreatedAt,
+                        Observaciones = v.Observaciones
+                    })
+                    .ToListAsync();
+
+                return new ApiResponse<List<DiaRebasePorcentajeDto>>(true, filas, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener los días capturados con rebase de porcentaje");
+                return new ApiResponse<List<DiaRebasePorcentajeDto>>(false, null, $"Error inesperado: {ex.Message}");
+            }
+        }
     }
 }

@@ -128,6 +128,41 @@ export class BloquesReservacionService {
   }
 
   /**
+   * Todos los bloques de un año, opcionalmente acotados a un área o un grupo.
+   *
+   * La vista de turnos usaba /por-fecha, que solo devuelve DOS bloques por
+   * grupo (el que contiene la fecha de hoy y el siguiente): con los bloques del
+   * año que se está preparando, hoy no cae dentro de ninguno y la pantalla
+   * salía vacía; y al reasignar a alguien a un bloque lejano, ese bloque no
+   * aparecía por ningún lado.
+   */
+  static async obtenerBloquesFiltrados(
+    anioObjetivo: number,
+    filtros: { areaId?: number | null; grupoId?: number | null } = {}
+  ): Promise<BloquesReservacionResponse> {
+    try {
+      const params = new URLSearchParams({ anioObjetivo: String(anioObjetivo) });
+      if (filtros.grupoId) params.set('grupoId', String(filtros.grupoId));
+      else if (filtros.areaId) params.set('areaId', String(filtros.areaId));
+
+      const response = await httpClient.get<ApiResponse<BloquesReservacionResponse>>(
+        `/api/bloques-reservacion?${params.toString()}`,
+        undefined,
+        { timeout: 60000 }
+      );
+
+      if (!response.success || !response.data) {
+        throw new Error(response.errorMsg || 'Error al obtener los bloques');
+      }
+
+      return response.data as unknown as BloquesReservacionResponse;
+    } catch (error) {
+      console.error('Error en obtenerBloquesFiltrados:', error);
+      throw new Error(mensajeDeError(error, 'Error al obtener los bloques del año.'));
+    }
+  }
+
+  /**
    * Elimina todos los bloques de reservación para un año específico
    * @param anioObjetivo - Año para eliminar bloques
    * @returns Respuesta de la eliminación

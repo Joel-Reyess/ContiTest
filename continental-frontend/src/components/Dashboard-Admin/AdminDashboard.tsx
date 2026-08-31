@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Navbar } from '../Navbar/Navbar';
-import { Calendar, Factory, FileChartColumn, User2, Users, ArrowLeftRight, CalendarClock, BarChart2, Repeat, CalendarRange } from 'lucide-react';
+import { Calendar, Factory, FileChartColumn, User2, Users, ArrowLeftRight, CalendarClock, BarChart2, Repeat, CalendarRange, ListOrdered } from 'lucide-react';
 import { Areas } from './Areas';
 import { Vacaciones } from './Vacaciones';
 import { Plantilla } from './Plantilla';
@@ -16,11 +16,13 @@ import WeeklyRoles from "../Dashboard-Empleados/WeeklyRoles";
 import { Dashboard } from './Dashboard';
 import { ReglasTurnos } from './ReglasTurnos';
 import { CalendarioAnualReglas } from './CalendarioAnualReglas';
+import { TurnosCaptura } from './TurnosCaptura';
 //import { DiagnosticoFT } from './DiagnosticoFT';
 
 const navItems = [
     { to: "/admin/areas", label: "Areas", icon: <Factory /> },
     { to: "/admin/vacaciones", label: "Vacaciones", icon: <Calendar /> },
+    { to: "/admin/turnos", label: "Turnos", icon: <ListOrdered /> },
     { to: "/admin/plantilla", label: "Plantilla", icon: <Users /> },
     { to: "/admin/reportes", label: "Reportes", icon: <FileChartColumn /> },
     { to: "/admin/usuarios", label: "Usuarios", icon: <User2 /> },
@@ -71,6 +73,7 @@ const AdminDashboard = (): JSX.Element => {
                     <Route index element={<Areas />} />
                     <Route path="areas" element={<Areas />} />
                     <Route path="vacaciones" element={<Vacaciones />} />
+                    <Route path="turnos" element={<TurnosCaptura />} />
                     <Route path="roles-semanales" element={<WeeklyRoles />} />
                     <Route path="plantilla" element={<Plantilla />} />
                     <Route path="plantilla/:id" element={<DetallesEmpleado currentPeriod={currentPeriod} />} />

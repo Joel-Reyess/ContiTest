@@ -8,7 +8,8 @@ import { useLeaderCache } from "@/hooks/useLeaderCache";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { downloadConstanciaAntiguedadPDF } from "@/services/pdfService";
 import { AsignacionAutomaticaService } from "@/services/asignacionAutomaticaService";
-import { vacacionesService } from "@/services/vacacionesService";
+import { vacacionesService, getDiasConRebasePorcentaje } from "@/services/vacacionesService";
+import { generarExcelDiasRebasePorcentaje } from "@/utils/diasRebasePorcentajeExcel";
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
 import { reportesService } from "@/services/reportesService";
 import { empleadosService } from "@/services/empleadosService";
@@ -16,8 +17,8 @@ import { generarExcelEmpleadosFaltantesCaptura } from "@/utils/empleadosFaltante
 import { generarExcelVacacionesAsignadasEmpresa } from "@/utils/vacacionesAsignadasEmpresaExcel";
 import { toast } from "sonner";
 import { Loader2, RefreshCw, X } from "lucide-react";
-import { Download, Palmtree, FileText, Award, AlertTriangle, FileSpreadsheet, UserMinus } from "lucide-react";
-import type { EmpleadoDetalle } from "@/interfaces/Api.interface";
+import { Download, Palmtree, FileText, Award, AlertTriangle, FileSpreadsheet, UserMinus, ShieldAlert } from "lucide-react";
+import type { EmpleadoDetalle, UsuarioInfoDto } from "@/interfaces/Api.interface";
 import { PeriodOptions } from "@/interfaces/Calendar.interface";
 import { exportarReprogramacionesExcel } from "@/utils/reprogramacionesExcel";
 import { solicitudesService } from "@/services/solicitudesService";
@@ -28,6 +29,12 @@ const transformGroupRole = (role: string) => {
     if (!role) return "";
     return role;
 };
+
+// Los códigos de grupo no se escriben igual en todos lados (R0144_02 / R0144-02
+// / r014402). Comparar el texto tal cual hacía que el filtro por grupo de la
+// constancia no descartara a nadie: parecía que "solo funcionaba el de área".
+export const normalizarRolGrupo = (valor?: string | null): string =>
+    (valor ?? "").replace(/[_\-\s]/g, "").toUpperCase();
 
 const formatFechaMMDDYYYY = (fecha: string | null | undefined): string => {
     if (!fecha) return "";
@@ -434,6 +441,13 @@ export const Reportes = () => {
             subtitle: "Días que los sindicalizados solicitaron cambiar (día original y nuevo día). Incluye estado, solicitado por y jefe que respondió.",
             category: 'programacion-anual'
         },
+        {
+            id: 20,
+            icon: ShieldAlert,
+            title: "Días capturados con rebase del porcentaje",
+            subtitle: "Días que se capturaron aun con el grupo por encima del porcentaje permitido, con el porcentaje que quedó y quién los capturó.",
+            category: 'programacion-anual'
+        },
     ];
 
     const filteredReports = selectedCategory === 'all'
@@ -686,43 +700,100 @@ export const Reportes = () => {
                 toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte.");
             }
         }
+        else if (reportId === 20) {
+            try {
+                toast.loading("Generando reporte de días con rebase...");
+                const anio = parseInt(selectedYear) || config?.anioVigente || new Date().getFullYear();
+                const areaIdFiltro = selectedArea ? parseInt(selectedArea) : undefined;
+                const grupoIdFiltro = availableGroups.find((g) => selectedGroups.includes(g.value))?.grupoId;
+
+                const filas = await getDiasConRebasePorcentaje(anio, {
+                    areaId: areaIdFiltro,
+                    grupoId: selectedGroups.length === 1 ? grupoIdFiltro : undefined,
+                });
+                toast.dismiss();
+
+                const areaNombre = areaIdFiltro
+                    ? areas.find((a) => a.areaId === areaIdFiltro)?.nombreGeneral ?? "Sin área"
+                    : "Toda la planta";
+
+                generarExcelDiasRebasePorcentaje(filas, { anio, area: areaNombre });
+                toast.success(
+                    filas.length > 0
+                        ? `Reporte descargado (${filas.length} día(s) con rebase).`
+                        : "No hay días capturados con rebase para esos filtros; el archivo se descargó vacío."
+                );
+            } catch (error) {
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+            }
+        }
         else if (reportId === 5) {
-            if (!selectedArea || selectedGroups.length === 0 || !selectedYear) {
-                toast.error("Por favor selecciona área, grupos y año para generar la constancia de antiguedad");
+            // Validación 10 del punchlist: la constancia sale por grupo, por
+            // área o de toda la planta. Sin área = planta completa; sin grupos =
+            // todos los grupos del área.
+            if (!selectedYear) {
+                toast.error("Selecciona el año para generar la constancia de antigüedad");
                 return;
             }
+            const areaIdConstancia = selectedArea ? parseInt(selectedArea) : undefined;
 
             let loadingToast: string | number | undefined;
             try {
-                loadingToast = toast.loading("Generando PDF de Constancia de Antiguedad...");
+                loadingToast = toast.loading(
+                    areaIdConstancia
+                        ? "Generando PDF de Constancia de Antiguedad..."
+                        : "Generando constancias de toda la planta (puede tardar)..."
+                );
 
-                const areaDetails = await getAreaById(parseInt(selectedArea));
-                const areaName = areaDetails?.nombreGeneral || "Sin área";
-                const empleadosSindicalizados = await runWithTimeout(
-                    empleadosService.getEmpleadosSindicalizados({
-                        AreaId: parseInt(selectedArea),
-                        Page: 1,
-                        PageSize: 1000
-                    }),
-                    60000,
-                    "empleados sindicalizados"
-                );
-                const empleadosLista = empleadosSindicalizados.usuarios || [];
+                const areaName = areaIdConstancia
+                    ? (await getAreaById(areaIdConstancia))?.nombreGeneral || "Sin área"
+                    : "Toda la planta";
+
+                // La lista viene paginada (máximo 1000 por página): para toda la
+                // planta hay que recorrerla completa.
+                const empleadosLista: UsuarioInfoDto[] = [];
+                for (let pagina = 1; pagina <= 20; pagina++) {
+                    const respuesta = await runWithTimeout(
+                        empleadosService.getEmpleadosSindicalizados({
+                            AreaId: areaIdConstancia,
+                            Page: pagina,
+                            PageSize: 1000
+                        }),
+                        60000,
+                        "empleados sindicalizados"
+                    );
+                    empleadosLista.push(...(respuesta.usuarios || []));
+                    if (!respuesta.hasNextPage) break;
+                }
                 const empleadosPorNomina = new Map(empleadosLista.map((emp) => [String(emp.nomina), emp]));
-                const nominasFiltradas = new Set(
-                    empleadosLista
-                        .filter((emp) => emp.grupo?.rol && selectedGroups.includes(emp.grupo.rol))
-                        .map((emp) => String(emp.nomina))
+
+                // El grupo se compara primero por id y, si el empleado no lo
+                // trae, por el código normalizado.
+                const idsSeleccionados = new Set(
+                    availableGroups
+                        .filter((g) => selectedGroups.includes(g.value))
+                        .map((g) => g.grupoId)
+                        .filter((id): id is number => typeof id === "number")
                 );
-                if (selectedGroups.length > 0 && nominasFiltradas.size === 0) {
-                    toast.error("No hay empleados en los grupos seleccionados para generar la constancia");
+                const rolesSeleccionados = new Set(selectedGroups.map(normalizarRolGrupo));
+                const perteneceAGrupoSeleccionado = (emp: UsuarioInfoDto) =>
+                    selectedGroups.length === 0 ||
+                    (emp.grupo?.grupoId != null && idsSeleccionados.has(emp.grupo.grupoId)) ||
+                    rolesSeleccionados.has(normalizarRolGrupo(emp.grupo?.rol));
+
+                const nominasFiltradas = new Set(
+                    empleadosLista.filter(perteneceAGrupoSeleccionado).map((emp) => String(emp.nomina))
+                );
+                if (nominasFiltradas.size === 0) {
+                    toast.error("No hay empleados sindicalizados con los criterios seleccionados para generar la constancia");
                     return;
                 }
 
                 const vacacionesAsignadas = await runWithTimeout(
                     vacacionesService.getVacacionesAsignadas(
                         {
-                            areaId: parseInt(selectedArea),
+                            areaId: areaIdConstancia,
                             anio: parseInt(selectedYear),
                             incluirDetalleEmpleado: true,
                             incluirResumenPorGrupo: false,
@@ -785,6 +856,8 @@ export const Reportes = () => {
                         nomina: empleado.nomina || "N/A",
                         nombre: empleado.nombreCompleto || "N/A",
                         fechaIngreso: fechaIngreso || "",
+                        area: empleadoInfo?.area?.nombreGeneral,
+                        grupo: empleadoInfo?.grupo?.rol,
                         antiguedadAnios,
                         diasVacacionesCorresponden,
                         diasAdicionales,
@@ -797,10 +870,18 @@ export const Reportes = () => {
                     };
                 });
 
+                // Ordenadas por área, grupo y nómina para que las hojas de una
+                // misma área queden juntas al imprimir toda la planta.
+                empleadosData.sort((a, b) =>
+                    (a.area || "").localeCompare(b.area || "", "es") ||
+                    (a.grupo || "").localeCompare(b.grupo || "", "es") ||
+                    String(a.nomina).localeCompare(String(b.nomina), "es", { numeric: true })
+                );
+
                 const pdfData = {
                     empleados: empleadosData,
                     area: areaName,
-                    grupos: selectedGroups,
+                    grupos: selectedGroups.length > 0 ? selectedGroups : ["Todos los grupos"],
                     targetYear: parseInt(selectedYear),
                     periodo: {
                         inicio: `01/01/${selectedYear}`,

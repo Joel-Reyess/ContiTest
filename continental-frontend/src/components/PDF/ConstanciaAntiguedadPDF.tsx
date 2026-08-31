@@ -288,7 +288,9 @@ const EmpleadoPage: React.FC<{ empleado: EmpleadoVacacionData; area?: string; ta
             <View style={styles.employeeInfoTable}>
                 <View style={styles.employeeInfoLeft}>
                     <Text style={styles.employeeNumber}>{empleado.nomina}</Text>
-                    {area && <Text style={styles.employeeArea}>{area}</Text>}
+                    {(empleado.area || area) && (
+                        <Text style={styles.employeeArea}>{empleado.area || area}</Text>
+                    )}
                 </View>
                 <View style={styles.employeeInfoRight}>
                     <Text style={styles.employeeName}>{empleado.nombre}</Text>

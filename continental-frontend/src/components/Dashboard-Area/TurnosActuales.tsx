@@ -2,9 +2,10 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { ChevronRight, SkipForward } from 'lucide-react'
 import { BloquesReservacionService } from '../../services/bloquesReservacionService'
 import { useAuth } from '../../hooks/useAuth'
-import { EmpleadoEstado, type BloquesPorFechaResponse } from '../../interfaces/Api.interface'
-import { UserRole, type User } from '@/interfaces/User.interface'
+import { EmpleadoEstado, type BloquesPorFechaResponse, type BloqueReservacion } from '../../interfaces/Api.interface'
+import { UserRole, type User, type UserAreaWithGroups } from '@/interfaces/User.interface'
 import { userService } from '@/services/userService'
+import { areasService } from '@/services/areasService'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import ReasignacionTurnoModal from './ReasignacionTurnoModal'
 
@@ -204,10 +205,169 @@ function GrupoCol({
     )
 }
 type UserData = User;
+
+// Etiqueta y color del estado de captura de un empleado dentro de su bloque.
+const ESTADO_EMPLEADO: Record<string, { texto: string; clase: string }> = {
+    [EmpleadoEstado.ASIGNADO]: { texto: 'Pendiente', clase: 'bg-gray-100 text-gray-700' },
+    [EmpleadoEstado.RESERVADO]: { texto: 'Ya capturó', clase: 'bg-green-100 text-green-700' },
+    [EmpleadoEstado.COMPLETADO]: { texto: 'Completado', clase: 'bg-green-100 text-green-700' },
+    [EmpleadoEstado.NO_RESPONDIO]: { texto: 'No contestó', clase: 'bg-red-100 text-red-700' },
+    [EmpleadoEstado.SALTADO]: { texto: 'Saltado', clase: 'bg-amber-100 text-amber-700' },
+    [EmpleadoEstado.MANUAL]: { texto: 'Manual', clase: 'bg-blue-100 text-blue-700' },
+}
+
+/**
+ * Todos los bloques del año, por grupo. Es la vista que faltaba: la de arriba
+ * solo puede mostrar el bloque que contiene la fecha de hoy y el siguiente, así
+ * que no servía ni para los bloques del año en preparación ni para ver a dónde
+ * quedó alguien a quien se reasignó.
+ */
+function ListaBloquesDelAnio({
+    bloques,
+    anio,
+    abiertos,
+    onToggle,
+}: {
+    bloques: BloqueReservacion[]
+    anio: number
+    abiertos: Record<number, boolean>
+    onToggle: (grupoId: number) => void
+}) {
+    const ahora = new Date()
+
+    if (bloques.length === 0) {
+        return (
+            <section className="rounded-lg border border-gray-300 bg-white p-6 text-center text-gray-600">
+                No hay bloques generados para {anio} en lo que está seleccionado.
+            </section>
+        )
+    }
+
+    const porGrupo = new Map<number, BloqueReservacion[]>()
+    for (const bloque of bloques) {
+        const lista = porGrupo.get(bloque.grupoId) ?? []
+        lista.push(bloque)
+        porGrupo.set(bloque.grupoId, lista)
+    }
+
+    const fmtFecha = (iso: string) => new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+    const fmtHora = (iso: string) =>
+        new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+    return (
+        <section className="rounded-lg border-2 border-gray-400 bg-white">
+            <div className="px-4 pt-3 pb-2">
+                <h2 className="text-base font-semibold text-gray-900">Todos los bloques {anio}</h2>
+                <p className="text-[11px] text-gray-600 mt-1">
+                    La secuencia completa por grupo, con quién quedó en cada bloque. Aquí aparece el
+                    bloque destino cuando reasignas a alguien.
+                </p>
+            </div>
+
+            <div className="px-3 pb-4 space-y-3">
+                {[...porGrupo.entries()].map(([grupoId, bloquesGrupo]) => {
+                    const ordenados = [...bloquesGrupo].sort((a, b) => a.numeroBloque - b.numeroBloque)
+                    const abierto = abiertos[grupoId] ?? true
+                    const totalEmpleados = ordenados.reduce((n, b) => n + b.empleadosAsignados.length, 0)
+
+                    return (
+                        <div key={grupoId} className="border border-gray-200 rounded-lg">
+                            <button
+                                type="button"
+                                onClick={() => onToggle(grupoId)}
+                                className="w-full flex items-center justify-between px-3 py-2 text-left cursor-pointer hover:bg-gray-50"
+                            >
+                                <span className="text-sm font-semibold text-gray-900">
+                                    {ordenados[0]?.nombreGrupo || `Grupo ${grupoId}`}
+                                </span>
+                                <span className="text-[11px] text-gray-600">
+                                    {ordenados.length} bloque(s) · {totalEmpleados} empleado(s) {abierto ? '▲' : '▼'}
+                                </span>
+                            </button>
+
+                            {abierto && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-3 pt-0">
+                                    {ordenados.map(bloque => {
+                                        const inicio = new Date(bloque.fechaHoraInicio)
+                                        const fin = new Date(bloque.fechaHoraFin)
+                                        const enCurso = ahora >= inicio && ahora <= fin
+                                        const terminado = ahora > fin
+                                        const etiqueta = enCurso
+                                            ? { texto: 'En curso', clase: 'bg-[#0A4AA3] text-white' }
+                                            : terminado
+                                                ? { texto: 'Terminado', clase: 'bg-gray-200 text-gray-700' }
+                                                : { texto: 'Próximo', clase: 'bg-amber-100 text-amber-800' }
+
+                                        return (
+                                            <div
+                                                key={bloque.id}
+                                                className={`rounded-md border p-2 ${enCurso ? 'border-[#0A4AA3] bg-blue-50/40' : 'border-gray-200'}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-xs font-semibold text-gray-900">
+                                                        Bloque #{bloque.numeroBloque}
+                                                        {bloque.esBloqueCola && ' (cola)'}
+                                                    </span>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${etiqueta.clase}`}>
+                                                        {etiqueta.texto}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[11px] text-gray-600 mt-0.5">
+                                                    {fmtFecha(bloque.fechaHoraInicio)} {fmtHora(bloque.fechaHoraInicio)} →{' '}
+                                                    {fmtFecha(bloque.fechaHoraFin)} {fmtHora(bloque.fechaHoraFin)}
+                                                </div>
+
+                                                <div className="mt-2 space-y-1">
+                                                    {bloque.empleadosAsignados.length === 0 ? (
+                                                        <div className="text-[11px] text-gray-400 italic">Sin empleados</div>
+                                                    ) : (
+                                                        [...bloque.empleadosAsignados]
+                                                            .sort((a, b) => a.posicionEnBloque - b.posicionEnBloque)
+                                                            .map(emp => {
+                                                                const estado = ESTADO_EMPLEADO[emp.estado] ?? {
+                                                                    texto: emp.estado,
+                                                                    clase: 'bg-gray-100 text-gray-700',
+                                                                }
+                                                                return (
+                                                                    <div
+                                                                        key={`${bloque.id}-${emp.empleadoId}`}
+                                                                        className="flex items-center justify-between gap-2 text-[11px]"
+                                                                    >
+                                                                        <span className="truncate text-gray-800">
+                                                                            <span className="text-gray-500">{emp.nomina}</span> {emp.nombreCompleto}
+                                                                        </span>
+                                                                        <span className={`shrink-0 px-1.5 py-0.5 rounded ${estado.clase}`}>
+                                                                            {estado.texto}
+                                                                        </span>
+                                                                    </div>
+                                                                )
+                                                            })
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )
+                })}
+            </div>
+        </section>
+    )
+}
+
 export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
     const { user, hasRole } = useAuth()
     const [data, setData] = React.useState<GrupoTurnos[]>([])
-    const [userData, setUserData] = React.useState<UserData | null>(null)
+    // Áreas (con sus grupos) entre las que se puede elegir. Al jefe le llegan
+    // con su usuario; al superusuario se le carga la planta completa.
+    const [catalogoAreas, setCatalogoAreas] = useState<UserAreaWithGroups[]>([])
+    // Todos los bloques del año para lo seleccionado. /por-fecha solo devuelve
+    // el bloque en curso y el siguiente: con eso no se ve al operador que se
+    // reasignó a un bloque lejano, ni nada si hoy no cae dentro de un bloque.
+    const [bloquesDelAnio, setBloquesDelAnio] = useState<BloqueReservacion[]>([])
+    const [gruposAbiertos, setGruposAbiertos] = useState<Record<number, boolean>>({})
     const [loading, setLoading] = useState(true)
     const [_, setError] = useState<string | null>(null)
     
@@ -221,8 +381,10 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
     const [bloqueActualSeleccionado, setBloqueActualSeleccionado] = useState<BloqueHorario | null>(null)
     const [originalSelectedGrupoId, setOriginalSelectedGrupoId] = useState<number | null>(null)
 
-    // Determinar si el usuario puede hacer skip (solo jefe de área)
-    const canSkip = hasRole(UserRole.AREA_ADMIN)
+    // Saltar / reasignar turno: jefe de área y superusuario (Validación 8 del
+    // punchlist; el backend ya autorizaba a los dos).
+    const isSuperUsuario = hasRole(UserRole.SUPER_ADMIN)
+    const canSkip = hasRole(UserRole.AREA_ADMIN) || isSuperUsuario
 
     const fetchUserData = async () => {
       if (!user?.id) {
@@ -235,9 +397,24 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
       setError(null);
 
       try {
+        if (isSuperUsuario) {
+          // El superusuario no tiene áreas propias: ve todas las de la planta.
+          // Los grupos se cargan al elegir el área (ver efecto de abajo).
+          const areas = await areasService.getAreas();
+          const catalogo: UserAreaWithGroups[] = areas
+            .map(a => ({ areaId: a.areaId, nombreGeneral: a.nombreGeneral }))
+            .sort((a, b) => a.nombreGeneral.localeCompare(b.nombreGeneral, 'es'));
+          setCatalogoAreas(catalogo);
+          if (catalogo.length > 0) {
+            setSelectedAreaId(catalogo[0].areaId);
+            setSelectedGrupoId(null);
+          }
+          return;
+        }
+
         const userDetail = await userService.getUserById(user?.id);
         console.log({ userDetail });
-        setUserData(userDetail);
+        setCatalogoAreas(userDetail?.areas ?? []);
         
         // Establecer valores por defecto para área y grupo
         if (userDetail?.areas && userDetail.areas.length > 0) {
@@ -323,6 +500,42 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
         }
     }, [selectedAreaId, selectedGrupoId])
 
+    const fetchBloquesDelAnio = async () => {
+        if (!selectedAreaId && !selectedGrupoId) return
+        try {
+            const respuesta = await BloquesReservacionService.obtenerBloquesFiltrados(anioVigente, {
+                areaId: selectedAreaId,
+                grupoId: selectedGrupoId,
+            })
+            setBloquesDelAnio(respuesta.bloques ?? [])
+        } catch (err) {
+            console.error('Error al obtener todos los bloques del año:', err)
+            setBloquesDelAnio([])
+        }
+    }
+
+    useEffect(() => {
+        fetchBloquesDelAnio()
+    }, [selectedAreaId, selectedGrupoId, anioVigente])
+
+    // Superusuario: los grupos del área se piden la primera vez que se elige.
+    useEffect(() => {
+        if (!selectedAreaId) return
+        const area = catalogoAreas.find(a => a.areaId === selectedAreaId)
+        if (!area || area.grupos !== undefined) return
+
+        let cancelado = false
+        areasService.getGroupsByAreaId(selectedAreaId)
+            .then(grupos => {
+                if (cancelado) return
+                setCatalogoAreas(prev => prev.map(a => a.areaId === selectedAreaId
+                    ? { ...a, grupos: grupos.map(g => ({ grupoId: g.grupoId, rol: g.rol })) }
+                    : a))
+            })
+            .catch(err => console.error('Error al cargar grupos del área:', err))
+        return () => { cancelado = true }
+    }, [selectedAreaId, catalogoAreas])
+
     // Función para transformar los datos del API al formato del componente
     const transformarBloques = (response: BloquesPorFechaResponse): GrupoTurnos[] => {
         if (!response?.bloquesPorGrupo || response.bloquesPorGrupo.length === 0) {
@@ -407,9 +620,9 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
     const remaining = useCountdown(activeGroup?.bloqueActual.endAt)
 
     const handleSkip = async (empleadoId: string, groupId: string) => {
-        // Solo permitir si es jefe de área
+        // Solo jefe de área o superusuario
         if (!canSkip) {
-            console.warn('Solo el jefe de área puede saltar turnos')
+            console.warn('Solo el jefe de área o el superusuario pueden reasignar turnos')
             return
         }
 
@@ -457,6 +670,7 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
         try {
             await BloquesReservacionService.saltarTurno(parseInt(empleadoId), bloqueId)
             fetchBloques()
+            fetchBloquesDelAnio()
         } catch (error) {
             console.error('Error al saltar turno:', error)
             window.alert(
@@ -491,6 +705,7 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
                 
                 // Actualizar los datos refrescando la información
                 fetchBloques()
+                fetchBloquesDelAnio()
                 
                 // Cerrar modal y restaurar estado
                 setShowReasignacionModal(false)
@@ -535,9 +750,9 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
     // }
 
     // Obtener opciones para los selectores
-    const areaOptions = userData?.areas || []
+    const areaOptions = catalogoAreas
     const grupoOptions = selectedAreaId 
-        ? userData?.areas?.find(area => area.areaId === selectedAreaId)?.grupos || []
+        ? catalogoAreas.find(area => area.areaId === selectedAreaId)?.grupos || []
         : []
 
     if (data.length === 0 && !loading) {
@@ -604,9 +819,19 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
 
                 <div className="bg-white border border-gray-200 rounded-lg p-8">
                     <div className="text-center text-gray-600">
-                        No hay turnos disponibles para mostrar
+                        Hoy no hay ningún bloque en curso para lo seleccionado. Abajo está la
+                        secuencia completa del año.
                     </div>
                 </div>
+
+            <ListaBloquesDelAnio
+                bloques={bloquesDelAnio}
+                anio={anioVigente}
+                abiertos={gruposAbiertos}
+                onToggle={(grupoId) =>
+                    setGruposAbiertos(prev => ({ ...prev, [grupoId]: !(prev[grupoId] ?? true) }))
+                }
+            />
             </div>
         )
     }
@@ -739,6 +964,16 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
                     </div>
                 </div>
             </section>
+
+
+            <ListaBloquesDelAnio
+                bloques={bloquesDelAnio}
+                anio={anioVigente}
+                abiertos={gruposAbiertos}
+                onToggle={(grupoId) =>
+                    setGruposAbiertos(prev => ({ ...prev, [grupoId]: !(prev[grupoId] ?? true) }))
+                }
+            />
 
             {/* Modal de reasignación */}
             {showReasignacionModal && empleadoSeleccionado && bloqueActualSeleccionado && selectedGrupoId && (

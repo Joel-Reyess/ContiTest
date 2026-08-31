@@ -20,6 +20,7 @@ import { RevertirAsignacionModal } from "./RevertirAsignacionModal";
 import { GenerarBloquesModal } from "./GenerarBloquesModal";
 import { ProgramacionAnualContent } from "./ProgramacionAnualContent";
 import { ProgramacionAnualWizard } from "./ProgramacionAnualWizard";
+import { ResumenCapturaBloques } from "./ResumenCapturaBloques";
 import { AsignacionAutomaticaService } from "@/services/asignacionAutomaticaService";
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
 import { vacacionesService } from "@/services/vacacionesService";
@@ -843,6 +844,12 @@ export const VacacionesGeneral = ({
               </>
             )}
           </div>
+
+          {/* HU21: el avance de la captura también con la reprogramación
+              activa. El panel de programación anual —donde vivían las
+              gráficas— no se pinta en este periodo, así que el superusuario
+              se quedaba sin ver quién ya capturó. */}
+          <ResumenCapturaBloques anio={anioPreparacion ?? anioVigente} />
         </>
       ) : !mostrarContenidoProgramacionAnual ? (
         <>
