@@ -10,7 +10,9 @@ namespace tiempo_libre.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [AllowAnonymous]
+    // [AllowAnonymous] va por endpoint, no en la clase: puesto aqui pisaba el
+    // [Authorize] de DetailedHealth (ASP0026) y dejaba publico el health que
+    // expone el servidor de base de datos y los conteos de tablas.
     public class HealthController : ControllerBase
     {
         private readonly FreeTimeDbContext _context;
@@ -28,6 +30,7 @@ namespace tiempo_libre.Controllers
         /// </summary>
         [HttpGet]
         [HttpGet("ping")]
+        [AllowAnonymous]
         public IActionResult Ping()
         {
             return Ok(new
@@ -43,6 +46,7 @@ namespace tiempo_libre.Controllers
         /// Health check detallado con información del sistema
         /// </summary>
         [HttpGet("status")]
+        [AllowAnonymous]
         public async Task<IActionResult> Status()
         {
             var response = new

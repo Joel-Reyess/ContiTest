@@ -375,15 +375,6 @@ namespace tiempo_libre.Services
             return new ApiResponse<AsignacionManualLoteResponse>(true, response,
                 $"Proceso completado: {response.AsignacionesExitosas} exitosas, {response.AsignacionesFallidas} fallidas");
         }
-    }
-
-    public class VacacionesCalculadas
-    {
-        public int DiasEmpresa { get; set; }
-        public int DiasAsignadosAutomaticamente { get; set; }
-        public int DiasProgramables { get; set; }
-        public int TotalDias { get; set; }
-    
         /// <summary>
         /// Avisa a los jefes del área cuando alguien captura por encima del
         /// porcentaje. Validación 5 y 6 del punchlist: el jefe tiene que
@@ -407,8 +398,10 @@ namespace tiempo_libre.Services
                 var area = await _db.Areas.FirstOrDefaultAsync(a => a.AreaId == areaId.Value);
                 if (area != null)
                 {
-                    if (area.JefeId > 0) jefes.Add(area.JefeId);
-                    if (area.JefeSuplenteId.HasValue) jefes.Add(area.JefeSuplenteId.Value);
+                    // Area.JefeId y JefeSuplenteId son int?: hay que desenvolverlos
+                    // antes de meterlos en la lista de int.
+                    if (area.JefeId.HasValue && area.JefeId.Value > 0) jefes.Add(area.JefeId.Value);
+                    if (area.JefeSuplenteId.HasValue && area.JefeSuplenteId.Value > 0) jefes.Add(area.JefeSuplenteId.Value);
                 }
 
                 // Quien capturó no necesita avisarse a sí mismo.
@@ -503,5 +496,14 @@ namespace tiempo_libre.Services
                 return new ApiResponse<List<DiaRebasePorcentajeDto>>(false, null, $"Error inesperado: {ex.Message}");
             }
         }
+    }
+
+    public class VacacionesCalculadas
+    {
+        public int DiasEmpresa { get; set; }
+        public int DiasAsignadosAutomaticamente { get; set; }
+        public int DiasProgramables { get; set; }
+        public int TotalDias { get; set; }
+    
     }
 }
