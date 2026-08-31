@@ -160,7 +160,9 @@ export const TurnoValidacion: React.FC<TurnoValidacionProps> = ({
 
           <div className="bg-blue-50 rounded-lg p-4 mb-6">
             <p className="text-blue-800 font-medium mb-2">
-              Tu turno de programación está programado para:
+              {bloqueAsignado
+                ? 'Tu turno de programación está programado para:'
+                : 'No pudimos leer los datos de tu turno. Consúltalo con tu jefe de área o con el comité sindical.'}
             </p>
             {bloqueAsignado && (
               <div className="space-y-1 text-sm text-blue-700">

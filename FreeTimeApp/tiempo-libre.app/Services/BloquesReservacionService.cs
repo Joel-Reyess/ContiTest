@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -611,7 +611,7 @@ namespace tiempo_libre.Services
                 if (bloqueDestino == null)
                     return new ApiResponse<CambiarBloqueResponse>(false, null, "El bloque destino no existe o no está activo");
 
-                var espaciosOcupados = bloqueDestino.AsignacionesBloque.Count(a => a.Estado == "Asignado");
+                var espaciosOcupados = bloqueDestino.AsignacionesBloque.Count(a => a.Estado != "Transferido");
 
                 // Realizar el cambio
                 asignacionOrigen.Estado = "Transferido";
@@ -728,7 +728,7 @@ namespace tiempo_libre.Services
                 var query = _db.BloquesReservacion
                     .Include(b => b.Grupo)
                     .ThenInclude(g => g.Area)
-                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado == "Asignado"))
+                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado != "Transferido"))
                     .ThenInclude(a => a.Empleado)
                     .AsQueryable();
 
@@ -761,10 +761,16 @@ namespace tiempo_libre.Services
                     DuracionHoras = b.DuracionHoras,
                     EsBloqueCola = b.EsBloqueCola,
                     Estado = b.Estado,
-                    EspaciosDisponibles = b.PersonasPorBloque - b.AsignacionesBloque.Count(a => a.Estado == "Asignado"),
+                    // Mismo criterio que ConsultarBloquesPorFechaAsync: el bloque lo
+                    // integra todo el que sigue perteneciendo a el. Con == "Asignado"
+                    // desaparecian de la lista los que ya reservaron (Reservado /
+                    // Completado), los que el jefe salto y los que no respondieron, asi
+                    // que el turno se veia incompleto y el operador que ya habia actuado
+                    // dejaba de encontrar su propio bloque.
+                    EspaciosDisponibles = b.PersonasPorBloque - b.AsignacionesBloque.Count(a => a.Estado != "Transferido"),
                     FechaAprobacion = b.FechaAprobacion,
                     EmpleadosAsignados = b.AsignacionesBloque
-                        .Where(a => a.Estado == "Asignado")
+                        .Where(a => a.Estado != "Transferido")
                         .Select(a => new EmpleadoAsignadoBloqueDto
                         {
                             EmpleadoId = a.EmpleadoId,
@@ -1041,8 +1047,8 @@ namespace tiempo_libre.Services
                 PersonasPorBloque = bloque.PersonasPorBloque,
                 EsBloqueCola = bloque.EsBloqueCola,
                 Estado = bloque.Estado,
-                EmpleadosAsignados = bloque.AsignacionesBloque?.Count(a => a.Estado == "Asignado") ?? 0,
-                EspaciosDisponibles = bloque.PersonasPorBloque - (bloque.AsignacionesBloque?.Count(a => a.Estado == "Asignado") ?? 0)
+                EmpleadosAsignados = bloque.AsignacionesBloque?.Count(a => a.Estado != "Transferido") ?? 0,
+                EspaciosDisponibles = bloque.PersonasPorBloque - (bloque.AsignacionesBloque?.Count(a => a.Estado != "Transferido") ?? 0)
             };
         }
         /// <summary>
