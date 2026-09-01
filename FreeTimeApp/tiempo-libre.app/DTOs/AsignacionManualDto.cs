@@ -85,6 +85,13 @@ namespace tiempo_libre.DTOs
         public int? BloqueId { get; set; }
 
         public string? OrigenSolicitud { get; set; }
+
+        /// <summary>
+        /// Igual que en la asignacion individual: sin esto el lote no tiene
+        /// forma de contestar la alerta del porcentaje y cada empleado con
+        /// rebase se contabilizaria como fallido.
+        /// </summary>
+        public bool ConfirmarRebasePorcentaje { get; set; } = false;
     }
 
     /// <summary>

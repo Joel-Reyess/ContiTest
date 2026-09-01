@@ -355,7 +355,8 @@ namespace tiempo_libre.Services
                     IgnorarRestricciones = request.IgnorarRestricciones,
                     NotificarEmpleado = request.NotificarEmpleados,
                     BloqueId = request.BloqueId,
-                    OrigenSolicitud = request.OrigenSolicitud
+                    OrigenSolicitud = request.OrigenSolicitud,
+                    ConfirmarRebasePorcentaje = request.ConfirmarRebasePorcentaje
                 };
 
                 var resultado = await AsignarVacacionesManualAsync(asignacionIndividual, usuarioAsignaId);

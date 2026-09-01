@@ -208,8 +208,14 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
 
                 const dias: { fecha: string; porcentajeResultante: number; porcentajeMaximo: number }[] =
                     cuerpo.diasConRebase ?? [];
+                // El backend manda la fecha como 2026-09-17; en la alerta se lee
+                // mejor en el formato con el que trabaja el área.
+                const aDiaMesAnio = (iso: string) => {
+                    const [anio, mes, dia] = iso.split('T')[0].split('-');
+                    return dia && mes && anio ? `${dia}/${mes}/${anio}` : iso;
+                };
                 const detalle = dias
-                    .map(d => `• ${d.fecha} — quedaría en ${d.porcentajeResultante.toFixed(2)}% (máximo ${d.porcentajeMaximo.toFixed(2)}%)`)
+                    .map(d => `• ${aDiaMesAnio(d.fecha)} — quedaría en ${d.porcentajeResultante.toFixed(2)}% (máximo ${d.porcentajeMaximo.toFixed(2)}%)`)
                     .join('\n');
 
                 const continuar = window.confirm(
