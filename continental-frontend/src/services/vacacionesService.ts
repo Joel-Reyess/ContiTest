@@ -1,5 +1,5 @@
 import { httpClient } from '@/services/httpClient';
-import type { ApiResponse, VacacionesAsignadasResponse, VacacionesAsignadasCompleteResponse, EliminarVacacionesPorFechaRequest ,DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse, AsignacionManualRequest, AsignacionManualResponse, DiaRebasePorcentaje } from '@/interfaces/Api.interface';
+import type { ApiResponse, VacacionesAsignadasResponse, VacacionesAsignadasCompleteResponse, EliminarVacacionesPorFechaRequest ,DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse, AsignacionManualRequest, AsignacionManualResponse, DiaRebasePorcentaje, DashboardProgramacionAnual } from '@/interfaces/Api.interface';
 import type { VacacionesConfig, VacacionesConfigUpdateRequest ,} from '@/interfaces/Vacaciones.interface';
 
 export const vacacionesService = {
@@ -107,6 +107,24 @@ export const reservarVacacionesAnuales = async (request: ReservaAnualRequest): P
     return resp.data as unknown as ReservaAnualResponse;
   }
   throw new Error('No se pudo procesar la reserva de vacaciones');
+};
+
+// Foto del año: cómo quedaron repartidos los días que asignó la empresa.
+export const getDashboardProgramacionAnual = async (
+  anio: number,
+  filtros: { areaId?: number | null; grupoId?: number | null } = {}
+): Promise<DashboardProgramacionAnual> => {
+  const params = new URLSearchParams({ anio: String(anio) });
+  if (filtros.grupoId) params.set('grupoId', String(filtros.grupoId));
+  else if (filtros.areaId) params.set('areaId', String(filtros.areaId));
+
+  const resp = await httpClient.get<ApiResponse<DashboardProgramacionAnual>>(
+    `/api/vacaciones/dashboard-programacion-anual?${params.toString()}`,
+    undefined,
+    { timeout: 120000 }
+  );
+  if (!resp?.data) throw new Error(resp?.errorMsg || 'No se pudo obtener el dashboard');
+  return resp.data as unknown as DashboardProgramacionAnual;
 };
 
 // Días capturados por encima del porcentaje permitido del grupo (quién y cuándo).

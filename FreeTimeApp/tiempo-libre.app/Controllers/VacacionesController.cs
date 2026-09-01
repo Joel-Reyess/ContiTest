@@ -18,17 +18,20 @@ namespace tiempo_libre.Controllers
         private readonly FreeTimeDbContext _context;
         private readonly VacacionesService _vacacionesService;
         private readonly AsignacionAutomaticaService _asignacionService;
+        private readonly DashboardProgramacionAnualService _dashboardAnualService;
         private readonly ILogger<VacacionesController> _logger;
 
         public VacacionesController(
             FreeTimeDbContext context,
             VacacionesService vacacionesService,
             AsignacionAutomaticaService asignacionService,
+            DashboardProgramacionAnualService dashboardAnualService,
             ILogger<VacacionesController> logger)
         {
             _context = context;
             _vacacionesService = vacacionesService;
             _asignacionService = asignacionService;
+            _dashboardAnualService = dashboardAnualService;
             _logger = logger;
         }
 
@@ -264,6 +267,25 @@ namespace tiempo_libre.Controllers
         /// quién los capturó. Sirve para desglosar los días que se llenaron de
         /// más durante la programación.
         /// </summary>
+        /// <summary>
+        /// Foto del año: como quedaron repartidos los dias que asigno la
+        /// empresa y que porcentaje de ausencia produce cada dia. Sirve para
+        /// ver si la asignacion se apilo en un mes o si repartio plano sin
+        /// mirar areas ni disponibilidad.
+        /// </summary>
+        [HttpGet("dashboard-programacion-anual")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        public async Task<IActionResult> DashboardProgramacionAnual(
+            [FromQuery] int anio,
+            [FromQuery] int? areaId = null,
+            [FromQuery] int? grupoId = null)
+        {
+            var response = await _dashboardAnualService.ObtenerAsync(anio, areaId, grupoId);
+            if (!response.Success)
+                return BadRequest(response);
+            return Ok(response);
+        }
+
         [HttpGet("reporte-rebase-porcentaje")]
         [Authorize(Roles = "Super Usuario,SuperUsuario,Jefe De Area,JefeArea,Ingeniero Industrial,Gerente BT,RH")]
         public async Task<IActionResult> ReporteRebasePorcentaje(

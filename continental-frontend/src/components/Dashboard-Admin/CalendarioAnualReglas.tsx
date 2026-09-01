@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DashboardProgramacionAnual } from "./DashboardProgramacionAnual";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2, ChevronLeft, ChevronRight, CalendarClock, Filter, Download } from "lucide-react";
@@ -139,6 +140,9 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
     const [anio, setAnio] = useState<number>(
         anioInicial ?? (Number.isInteger(anioDeUrl) && anioDeUrl > 2000 ? anioDeUrl : new Date().getFullYear())
     );
+    // Dos vistas en la misma pantalla: el calendario de reglas (turnos
+    // proyectados) y el tablero de como quedo repartida la programacion anual.
+    const [vista, setVista] = useState<"reglas" | "dashboard">("reglas");
     const [filtroRegla, setFiltroRegla] = useState<string>("__todas__");
     const [filtroSubGrupo, setFiltroSubGrupo] = useState<string>("__todos__");
 
@@ -264,8 +268,55 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
         toast.success(`CSV exportado (${lineas.length - 1} filas).`);
     };
 
+    const pestanas = (
+        <div className="flex gap-1 border-b">
+            {([
+                ["reglas", "Calendario de reglas"],
+                ["dashboard", "Dashboard programación anual"],
+            ] as const).map(([clave, etiqueta]) => (
+                <button
+                    key={clave}
+                    type="button"
+                    onClick={() => setVista(clave)}
+                    className={`px-4 py-2 text-sm -mb-px border-b-2 transition ${
+                        vista === clave
+                            ? "border-continental-yellow font-semibold"
+                            : "border-transparent text-continental-gray-1 hover:text-slate-800"
+                    }`}
+                >
+                    {etiqueta}
+                </button>
+            ))}
+        </div>
+    );
+
+    if (vista === "dashboard") {
+        return (
+            <div className="p-6 max-w-[1600px] mx-auto space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                    <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+                        <CalendarClock className="size-6 text-continental-yellow" />
+                        Calendario anual
+                    </h1>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setAnio(a => a - 1)}>
+                            <ChevronLeft className="size-4" />
+                        </Button>
+                        <span className="text-lg font-semibold tabular-nums px-2">{anio}</span>
+                        <Button variant="outline" size="sm" onClick={() => setAnio(a => a + 1)}>
+                            <ChevronRight className="size-4" />
+                        </Button>
+                    </div>
+                </div>
+                {pestanas}
+                <DashboardProgramacionAnual anio={anio} />
+            </div>
+        );
+    }
+
     return (
         <div className="p-6 max-w-[1600px] mx-auto space-y-4">
+            {pestanas}
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">

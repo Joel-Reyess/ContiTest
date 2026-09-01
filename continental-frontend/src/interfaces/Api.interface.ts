@@ -1283,3 +1283,46 @@ export interface CrearRotacionesProgramadasResponse {
     omitidas: string[];
 }
 
+
+// ── Dashboard de programación anual (días asignados por la empresa) ──────────
+export interface DiaProgramacionAnual {
+    fecha: string;
+    diasEmpresa: number;
+    ausentes: number;
+    plantilla: number;
+    porcentaje: number;
+    excedenteSobrePermitido: number;
+    gruposEnRebase: string[];
+}
+
+export interface MesProgramacionAnual {
+    mes: number;
+    nombre: string;
+    diasEmpresaAsignados: number;
+    porcentajePromedio: number;
+    porcentajeMaximo: number;
+    diasConRebase: number;
+    diasEsperadosSiFueraParejo: number;
+}
+
+export interface GrupoProgramacionAnual {
+    grupoId: number;
+    nombre: string;
+    area: string;
+    plantilla: number;
+    diasEmpresaAsignados: number;
+    diasPorEmpleado: number;
+    diasConRebase: number;
+}
+
+export interface DashboardProgramacionAnual {
+    anio: number;
+    porcentajeMaximoGlobal: number;
+    plantillaTotal: number;
+    diasEmpresaAsignados: number;
+    empleadosConDiasEmpresa: number;
+    diasConRebase: number;
+    meses: MesProgramacionAnual[];
+    dias: DiaProgramacionAnual[];
+    grupos: GrupoProgramacionAnual[];
+}

@@ -44,6 +44,7 @@ builder.Services.AddScoped<tiempo_libre.Services.ReservaVacacionesService>();
 builder.Services.AddScoped<tiempo_libre.Services.BloquesReservacionService>();
 builder.Services.AddScoped<tiempo_libre.Services.EstadosBloquesService>();
 builder.Services.AddScoped<tiempo_libre.Services.ValidadorPorcentajeService>();
+builder.Services.AddScoped<tiempo_libre.Services.DashboardProgramacionAnualService>();
 builder.Services.AddScoped<tiempo_libre.Services.ReprogramacionService>();
 builder.Services.AddScoped<tiempo_libre.Services.FestivoTrabajadoService>();
 builder.Services.AddScoped<tiempo_libre.Services.VacacionLaboradaService>();
