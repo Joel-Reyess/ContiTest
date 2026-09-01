@@ -29,6 +29,29 @@ problema y truena cuando alguien abre la pantalla que usa esa tabla, así que se
 ve como un bug de la pantalla, no como un despliegue incompleto.
 → **El esquema va antes que el binario.** Siempre.
 
+**3b. El `appsettings.Test.json` que se borró con `/MIR`.** Variante de la
+anterior, y la que tumbó pruebas el 1 de septiembre. El archivo está en
+`.gitignore` (el repo es público y ahí van credenciales), así que **no viene en
+el paquete**; `robocopy /MIR` borra del destino todo lo que no esté en el
+origen, y se lo llevó. El sitio arrancó igual, con `environment: Test`
+correcto, pero cargando solo `appsettings.json` — el del repo — y por eso el
+health check reportaba `database: FreeTime`, `connected: false`: es la cadena
+de desarrollo, `ALEX\SQLEXPRESS`. En el navegador se veía como un error de
+CORS, porque la respuesta de error de IIS no pasa por el middleware que agrega
+los encabezados.
+→ Excluye siempre `appsettings*.json` del copiado, **y** deja la cadena de
+conexión en una variable de entorno del sitio, que ningún copiado puede borrar:
+
+```powershell
+Import-Module WebAdministration
+Add-WebConfigurationProperty -PSPath 'IIS:\Sites\<sitio>' `
+  -Filter 'system.webServer/aspNetCore/environmentVariables' -Name '.' `
+  -Value @{name='ConnectionStrings__DefaultConnection'; value='Server=...;Database=...;User Id=...;Password=...;TrustServerCertificate=True'}
+```
+
+Los dos guiones bajos son cómo .NET representa `ConnectionStrings:DefaultConnection`,
+y las variables de entorno **ganan** sobre el appsettings.
+
 **3. El `appsettings.json` del repo encima del del servidor.** El del repo apunta a
 `ALEX\SQLEXPRESS` (la máquina de desarrollo). Si se copia sobre producción, el
 backend queda sin base. `dotnet publish -o <carpeta del servidor>` y un robocopy

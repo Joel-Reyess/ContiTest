@@ -175,10 +175,18 @@ if (-not $SoloFrontend) {
     if (-not (Test-Path (Join-Path $uncApi "web.config"))) {
         Write-Host "OJO: no hay web.config en $uncApi; IIS no va a saber arrancar el modulo de ASP.NET Core." -ForegroundColor Red
     }
-    $cfg = Join-Path $uncApi "appsettings.json"
-    if (-not (Test-Path $cfg)) {
-        Write-Host "ALTO: $uncApi no tiene appsettings.json propio." -ForegroundColor Red
-        Write-Host "Se excluyo del copiado a proposito. Colocalo a mano con la cadena de conexion de $baseEsperada antes de arrancar." -ForegroundColor Red
+    # Sin operador ternario: Windows PowerShell 5.1 no lo tiene.
+    $cfgAmbiente = if ($Ambiente -eq "test") { "appsettings.Test.json" } else { "appsettings.Production.json" }
+    foreach ($nombre in @("appsettings.json", $cfgAmbiente)) {
+        # El de ambiente esta en .gitignore, asi que no viaja en el paquete; si
+        # falta en el destino, .NET se queda con appsettings.json (el del repo,
+        # que apunta a la base de desarrollo) y el sitio arranca pegado a la
+        # nada. Paso justo esto el 1-sep-2026.
+        if (-not (Test-Path (Join-Path $uncApi $nombre))) {
+            Write-Host "ALTO: falta $nombre en $uncApi." -ForegroundColor Red
+            Write-Host "Se excluye del copiado a proposito. Restauralo del respaldo *.bak-$sello o colocalo a mano" -ForegroundColor Red
+            Write-Host "con la cadena de conexion de $baseEsperada ANTES de arrancar el sitio." -ForegroundColor Red
+        }
     }
 
     if (-not $SinIIS) {
