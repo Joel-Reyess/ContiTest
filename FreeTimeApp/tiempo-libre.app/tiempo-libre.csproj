@@ -9,6 +9,21 @@
     <AssemblyName>tiempo-libre</AssemblyName>
   </PropertyGroup>
 
+  <!--
+    Los appsettings de ambiente NO viajan en el paquete que se envia al
+    servidor. El de cada servidor tiene su propia cadena de conexion; cuando el
+    publish se llevo el local (Server=ALEX\SQLEXPRESS, la maquina de
+    desarrollo) y el copiado lo puso encima del bueno, el sitio de pruebas
+    quedo apuntando a una instancia inexistente y en el navegador se veia como
+    un error de CORS. Siguen copiandose al bin para `dotnet run` en local; lo
+    unico que cambia es que publish ya no los incluye.
+  -->
+  <ItemGroup>
+    <Content Update="appsettings.Test.json" CopyToPublishDirectory="Never" />
+    <Content Update="appsettings.Production.json" CopyToPublishDirectory="Never" />
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.8" />
