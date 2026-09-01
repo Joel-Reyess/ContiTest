@@ -480,19 +480,35 @@ namespace tiempo_libre.Services
                         "No tiene permisos para aprobar permutas");
                 }
 
-                // Si es Jefe de Área (y no es SuperUsuario ni Delegado), validar que sea del área correcta
-                if (esJefeArea && !esSuperUsuario && !esDelegadoSindical && usuarioAprobador.AreaId.HasValue)
+                // Si es Jefe de Área (y no es SuperUsuario ni Delegado), validar que sea del área correcta.
+                //
+                // Antes esto comparaba UNICAMENTE Users.AreaId, y tenia los dos
+                // errores a la vez: al jefe registrado en AreaJefes (o co-jefe de
+                // varias areas) le rechazaba permutas de su propia area, y al jefe
+                // sin AreaId le dejaba aprobar las de CUALQUIER area, porque el
+                // guard entero colgaba de .HasValue. Es la misma falla que el boton
+                // "Aprobar" de reprogramaciones; se resuelve con la misma fuente.
+                if (esJefeArea && !esSuperUsuario && !esDelegadoSindical)
                 {
                     var areaEmpleado = permuta.EmpleadoOrigen?.Grupo?.Area?.AreaId;
-                    _logger.LogInformation("Validando área - ÁreaEmpleado (via Grupo): {AreaEmpleado}, ÁreaJefe: {AreaJefe}",
-                        areaEmpleado, usuarioAprobador.AreaId);
+                    var areasDelJefe = await AreasVisiblesHelper.AreasVisiblesAsync(_db, jefeAreaId);
 
-                    if (!areaEmpleado.HasValue || usuarioAprobador.AreaId != areaEmpleado.Value)
+                    // Las areas que todavia no se migraron a AreaJefes solo dejan
+                    // rastro en Users.AreaId.
+                    if (usuarioAprobador.AreaId.HasValue && !areasDelJefe.Contains(usuarioAprobador.AreaId.Value))
+                        areasDelJefe.Add(usuarioAprobador.AreaId.Value);
+
+                    _logger.LogInformation("Validando área - ÁreaEmpleado (via Grupo): {AreaEmpleado}, ÁreasDelJefe: {Areas}",
+                        areaEmpleado, string.Join(", ", areasDelJefe));
+
+                    if (!areaEmpleado.HasValue || !areasDelJefe.Contains(areaEmpleado.Value))
                     {
-                        _logger.LogWarning("Jefe de área diferente. ÁreaJefe: {AreaJefe}, ÁreaEmpleado: {AreaEmpleado}",
-                            usuarioAprobador.AreaId, areaEmpleado);
+                        _logger.LogWarning("Jefe fuera de alcance. ÁreasDelJefe: {Areas}, ÁreaEmpleado: {AreaEmpleado}",
+                            string.Join(", ", areasDelJefe), areaEmpleado);
                         return new ApiResponse<object>(false, null,
-                            "No tiene permisos para aprobar permutas de esta área");
+                            areaEmpleado.HasValue
+                                ? "No tiene permisos para aprobar permutas de esta área"
+                                : "El empleado de la permuta no tiene grupo ni área asignada; no se puede validar el alcance");
                     }
                 }
 
