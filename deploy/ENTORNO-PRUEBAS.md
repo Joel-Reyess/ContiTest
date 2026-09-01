@@ -3,6 +3,11 @@
 Guía para levantar una copia de la app en el mismo servidor IIS, aislada de
 producción. Se hace **una sola vez**; después cada despliegue son dos comandos.
 
+> Para **producción** el procedimiento completo (esquema, respaldo, envío y
+> vuelta atrás) está en [PASO-A-PASO-PRODUCCION.md](PASO-A-PASO-PRODUCCION.md).
+> El copiado al servidor, en cualquiera de los dos ambientes, lo hace
+> `deploy\enviar-al-servidor.ps1`, que respalda antes y comprueba después.
+
 ## Mapa de puertos del servidor
 
 Convención: **5xxx = producción, 6xxx = pruebas**, conservando los últimos tres
