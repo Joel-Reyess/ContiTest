@@ -164,16 +164,22 @@ if (-not $SoloFrontend) {
         Write-Host "Recuerda: el sitio $SitioApi debe estar DETENIDO o los DLL estaran bloqueados." -ForegroundColor Yellow
     }
 
-    # /MIR deja el destino identico. Se excluyen los appsettings porque el del
-    # repo apunta a la base de desarrollo: copiarlos deja al servidor sin
-    # cadena de conexion valida.
-    robocopy $origenApi $uncApi /MIR /XF appsettings.json appsettings.Test.json appsettings.Development.json appsettings.Production.json /NFL /NDL /NJH /NJS /R:2 /W:2
+    # /MIR deja el destino identico. Se excluyen:
+    #  * appsettings*.json  -> el del repo apunta a la base de desarrollo.
+    #  * web.config         -> ahi vive ASPNETCORE_ENVIRONMENT. El que genera
+    #    dotnet publish NO lleva esa seccion, asi que copiarlo deja al sitio
+    #    de pruebas corriendo como Production: no carga appsettings.Test.json,
+    #    se queda con el del repo y termina apuntando a ALEX\SQLEXPRESS.
+    #    Paso el 1-sep-2026 y se veia como un error de CORS en el navegador.
+    robocopy $origenApi $uncApi /MIR /XF appsettings.json appsettings.Test.json appsettings.Development.json appsettings.Production.json web.config /NFL /NDL /NJH /NJS /R:2 /W:2
     $codigo = $LASTEXITCODE
     if ($codigo -ge 8) { throw "robocopy del backend fallo con codigo $codigo. NO se arranco el sitio; el respaldo sigue en $uncApi.bak-$sello" }
     Write-Host "Backend copiado (robocopy $codigo)." -ForegroundColor Green
 
     if (-not (Test-Path (Join-Path $uncApi "web.config"))) {
-        Write-Host "OJO: no hay web.config en $uncApi; IIS no va a saber arrancar el modulo de ASP.NET Core." -ForegroundColor Red
+        Write-Host "ALTO: no hay web.config en $uncApi." -ForegroundColor Red
+        Write-Host "Se excluye del copiado para no perder ASPNETCORE_ENVIRONMENT. Si es un sitio nuevo," -ForegroundColor Red
+        Write-Host "copia el de envio\$Ambiente\backend\web.config y agregale la variable de ambiente." -ForegroundColor Red
     }
     # Sin operador ternario: Windows PowerShell 5.1 no lo tiene.
     $cfgAmbiente = if ($Ambiente -eq "test") { "appsettings.Test.json" } else { "appsettings.Production.json" }

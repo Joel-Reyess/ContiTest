@@ -29,6 +29,30 @@ problema y truena cuando alguien abre la pantalla que usa esa tabla, así que se
 ve como un bug de la pantalla, no como un despliegue incompleto.
 → **El esquema va antes que el binario.** Siempre.
 
+**3c. El `web.config` del publish encima del del servidor.** Es la que tumbó
+pruebas el 1 de septiembre. `ASPNETCORE_ENVIRONMENT` estaba declarado en el
+`web.config` del sitio; el que genera `dotnet publish` no trae esa sección, así
+que al copiar el backend la variable desapareció. El sitio siguió arrancando
+—`/api/Health/ping` respondía— pero como Production: no cargó
+`appsettings.Test.json` y se quedó con el `appsettings.json` del repo,
+`ALEX\SQLEXPRESS`. El health check lo decía (`environment: Production`,
+`database: FreeTime`, `connected: false`), pero en el navegador se veía como un
+error de CORS, porque la conexión cortada no lleva encabezados.
+→ Excluye `web.config` del copiado del backend, **y** declara la variable en el
+grupo de aplicaciones, que vive en `applicationHost.config` y no lo alcanza
+ningún copiado:
+
+```powershell
+Import-Module WebAdministration
+Add-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' `
+  -Filter "system.applicationHost/applicationPools/add[@name='<pool>']/environmentVariables" `
+  -Name '.' -Value @{name='ASPNETCORE_ENVIRONMENT'; value='Test'}
+Restart-WebAppPool -Name '<pool>'
+```
+
+Y la lección general: **el health check es la comprobación, no un trámite.**
+Ese `environment: Production` estuvo ahí desde el primer intento.
+
 **3b. El `appsettings.Test.json` que se borró con `/MIR`.** Variante de la
 anterior, y la que tumbó pruebas el 1 de septiembre. El archivo está en
 `.gitignore` (el repo es público y ahí van credenciales), así que **no viene en
