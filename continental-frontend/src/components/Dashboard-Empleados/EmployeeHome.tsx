@@ -1,6 +1,7 @@
 import useAuth from "@/hooks/useAuth";
 import { PeriodLight } from "./PeriodLight";
 import { NavbarUser } from "../ui/navbar-user";
+import { MiTurnoBanner } from "./MiTurnoBanner";
 import { EntornoBadge } from "../ui/entorno-badge";
 import { Info } from "./Info";
 import { Calendar, CalendarClock, Users2, Users, CalendarDays } from "lucide-react";
@@ -67,6 +68,8 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
     const isDelegadoSindical =
         isUnionCommittee || hasRole(UserRole.UNION_REPRESENTATIVE) || user?.area?.nombreGeneral === "Sindicato";
     const canManageReprogramming = currentPeriod === PeriodOptions.reprogramming && isDelegadoSindical;
+    // Año de la captura anual, para saber de qué año es el turno del operador.
+    const [anioCaptura, setAnioCaptura] = useState<number | null>(null);
     console.log('¿Es delegado sindical?', isDelegadoSindical);
     console.log('Roles del usuario:', user?.roles);
     // Cargar datos de vacaciones del usuario
@@ -89,6 +92,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                         anio = undefined;
                     }
                 }
+                setAnioCaptura(anio ?? null);
                 const resp = await getVacacionesAsignadasPorEmpleado(empleadoId, anio);
                 setVacacionesData(resp);
                 console.log('📊 Datos de vacaciones cargados:', resp);
@@ -269,6 +273,14 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                 </div>
                 <NavbarUser />
             </header>
+
+            {/* Cuándo le toca capturar. Antes solo se veía en la pantalla de
+                login, que se cierra sola a los diez segundos. */}
+            {currentPeriod === PeriodOptions.annual && !selectedEmployee && user?.id && (
+                <div className="mt-6">
+                    <MiTurnoBanner empleadoId={user.id} anio={anioCaptura} />
+                </div>
+            )}
 
             {canManageReprogramming && (
                 <div className="mt-6 rounded-lg border border-continental-blue-dark/20 bg-continental-blue-dark/10 p-4 shadow-sm">

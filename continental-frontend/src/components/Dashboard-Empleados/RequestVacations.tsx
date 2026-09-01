@@ -14,6 +14,7 @@ import type { VacacionesAsignadasResponse, VacacionAsignada, ResumenVacaciones, 
 import { UserRole } from "@/interfaces/User.interface";
 import { vacacionesService } from '@/services/vacacionesService';
 import { obtenerMovimientosDiasEmpresa, marcarDiaAsignado, type DiaAsignado } from '@/utils/diasEmpresaMovimientos';
+import { MiTurnoBanner } from './MiTurnoBanner';
 
 // Datos de respaldo para ocupación por mes (fallback)
 const fallbackOccupationData = [
@@ -283,7 +284,14 @@ const RequestVacations = () => {
             }
         } catch (error) {
             console.error('❌ Error en reserva:', error);
-            toast.error("Error al procesar la solicitud de vacaciones");
+            // El backend explica POR QUE no se pudo ("Todavia no es tu turno:
+            // tu bloque inicia el ... a las ..."); httpClient lo deja en
+            // message. El texto fijo lo tiraba y el operador se quedaba sin
+            // saber que hacer.
+            const motivo = error instanceof Error
+                ? error.message
+                : (error as { message?: string })?.message;
+            toast.error(motivo || "Error al procesar la solicitud de vacaciones", { duration: 8000 });
         } finally {
             setLoading(false);
         }
@@ -350,6 +358,14 @@ const RequestVacations = () => {
                 </div>
                 <NavbarUser />
             </header>
+            {/* El horario del turno vive aqui, no solo en la pantalla de login:
+                esa se cierra sola a los diez segundos y adentro de la app el
+                operador no tenia donde consultar cuando le toca. */}
+            {user?.id && (
+                <div className="pb-4">
+                    <MiTurnoBanner empleadoId={user.id} anio={anioCaptura} />
+                </div>
+            )}
             {aniosDisponibles.length > 1 && (
                 <div className="flex items-center gap-2 px-2 pb-3 text-sm">
                     <span className="text-slate-600">Año:</span>
