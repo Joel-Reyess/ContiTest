@@ -75,6 +75,9 @@ export const Reportes = () => {
   const { currentPeriod, loading: configLoading, config } = useVacationConfig();
   const isReprogramming = currentPeriod === PeriodOptions.reprogramming;
   const [selectedYear, setSelectedYear] = useState<string>("");
+  // Ver la nota del mismo estado en Dashboard-Admin/Reportes: los reportes de
+  // bloques van contra el anio en preparacion mientras no se elija otro.
+  const [anioTocado, setAnioTocado] = useState(false);
 
   useEffect(() => {
     if (config?.anioVigente && !selectedYear) {
@@ -568,7 +571,9 @@ export const Reportes = () => {
             }
         } else if (reportId === 7) {
             try {
-                const anio = selectedYear ? parseInt(selectedYear) : config?.anioVigente;
+                const anio = anioTocado && selectedYear
+                    ? parseInt(selectedYear)
+                    : (config?.anioProgramacionAnual ?? config?.anioVigente);
                 if (!anio) {
                     toast.error("Selecciona el año para generar el reporte");
                     return;
@@ -581,7 +586,7 @@ export const Reportes = () => {
                 );
                 toast.dismiss(loadingToast);
                 if (data.totalEmpleadosNoRespondio === 0) {
-                    toast.info("No hay empleados que no hayan respondido");
+                    toast.info(`No hay empleados que no hayan respondido en ${anio}`);
                     return;
                 }
                 const { generarExcelEmpleadosNoRespondieron } = await import("@/utils/empleadosNoRespondieronExcel");
@@ -652,7 +657,7 @@ export const Reportes = () => {
 
                 <div className="space-y-2">
                     <Label className="text-base font-medium text-continental-black">Año</Label>
-                    <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <Select value={selectedYear} onValueChange={(v) => { setAnioTocado(true); setSelectedYear(v); }}>
                         <SelectTrigger className="w-full max-w-xs">
                             <SelectValue placeholder="Seleccionar año" />
                         </SelectTrigger>

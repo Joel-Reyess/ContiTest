@@ -110,6 +110,10 @@ export const Reportes = () => {
     const [selectedArea, setSelectedArea] = useState<string>("");
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
     const [selectedYear, setSelectedYear] = useState<string>("");
+    // Si el usuario no ha tocado el selector, los reportes de la PROGRAMACION
+    // ANUAL (bloques) usan el anio en preparacion y no el vigente: los bloques
+    // del 2027 no viven en el 2026 y el reporte salia en blanco.
+    const [anioTocado, setAnioTocado] = useState(false);
     const [loadingGeneral, setLoadingGeneral] = useState(false);
 
     const [timeFrom, setTimeFrom] = useState<string>("");
@@ -939,18 +943,27 @@ export const Reportes = () => {
                 const config = await vacacionesService.getConfig();
 
                 const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
+                // Era ?.liderId: se mandaba el id del LIDER del grupo donde el
+                // backend espera el GrupoId, asi que el filtro por grupo no
+                // encontraba ningun bloque y el reporte salia vacio.
                 const grupoIdFilter =
-                    selectedGroups.length === 1 ? availableGroups.find((g) => g.value === selectedGroups[0])?.liderId : undefined;
+                    selectedGroups.length === 1 ? availableGroups.find((g) => g.value === selectedGroups[0])?.grupoId : undefined;
+
+                const anioBloques = anioTocado && selectedYear
+                    ? parseInt(selectedYear)
+                    : (config.anioProgramacionAnual ?? config.anioVigente);
 
                 const empleadosNoRespondieron = await BloquesReservacionService.obtenerEmpleadosNoRespondieron(
-                    selectedYear ? parseInt(selectedYear) : config.anioVigente,
+                    anioBloques,
                     areaIdFilter,
                     grupoIdFilter
                 );
 
                 if (empleadosNoRespondieron.totalEmpleadosNoRespondio === 0) {
                     toast.dismiss(loadingToast);
-                    toast.info("No hay empleados que no hayan respondido");
+                    // Con el anio a la vista: un reporte vacio del anio
+                    // equivocado se lee igual que un reporte sin incidencias.
+                    toast.info(`No hay empleados que no hayan respondido en ${anioBloques}`);
                     return;
                 }
 
@@ -1176,7 +1189,7 @@ export const Reportes = () => {
 
                 <div className="space-y-2">
                     <Label className="text-base font-medium text-continental-black">Año</Label>
-                    <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <Select value={selectedYear} onValueChange={(v) => { setAnioTocado(true); setSelectedYear(v); }}>
                         <SelectTrigger className="w-full max-w-sm">
                             <SelectValue placeholder="Seleccionar año" />
                         </SelectTrigger>
