@@ -1,7 +1,7 @@
 // Verifica que el build compilado apunte al backend del entorno correcto.
 //
-//   node scripts/verificar-build.mjs test   → exige 6050 (pruebas) y que NO haya 5050
-//   node scripts/verificar-build.mjs prod   → exige 5050 (producción) y que NO haya 6050
+//   node scripts/verificar-build.mjs test   → exige slas052a:6050 y que NO haya slas052a:5050
+//   node scripts/verificar-build.mjs prod   → exige slas052a:5050 y que NO haya slas052a:6050
 //
 // Con un segundo argumento revisa OTRA carpeta en vez de .\build — sirve para
 // comprobar lo que ya está desplegado o lo que estás por enviar al servidor:
@@ -13,6 +13,13 @@
 // y el "sitio de pruebas" termina pegándole a la base de PRODUCCIÓN sin que
 // nada lo avise. Con esto, `npm run build:test` aborta en vez de dejar un
 // bundle cruzado.
+//
+// Solo se juzgan los puertos que van pegados a `slas052a`. El `localhost:5050`
+// de src/config/env.ts es el valor por omisión de getEnvVar: está en el bundle
+// SIEMPRE, también en un build de pruebas correcto, y tomarlo por una señal
+// hacía que un paquete bueno se reportara como cruzado. Si el build de verdad
+// cayó al fallback, lo que se nota es la AUSENCIA de slas052a:<puerto>, no la
+// presencia de localhost.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -42,18 +49,49 @@ if (archivos.length === 0) {
   process.exit(1);
 }
 
-const hallados = new Set();
+const enServidor = new Set(); // puertos vistos como slas052a:NNNN
+const enLocalhost = new Set(); // puertos vistos como localhost:NNNN (informativo)
+let marcaPruebas = false; // VITE_APP_NAME de .env.test
+
 for (const f of archivos) {
   const ruta = join(dir, f);
   if (!statSync(ruta).isFile()) continue;
   const txt = readFileSync(ruta, "utf8");
-  for (const m of txt.matchAll(/(?:slas052a|localhost):(\d{4})/g)) hallados.add(m[1]);
+  for (const m of txt.matchAll(/slas052a:(\d{4})/g)) enServidor.add(m[1]);
+  for (const m of txt.matchAll(/localhost:(\d{4})/g)) enLocalhost.add(m[1]);
+  if (txt.includes("Continental (PRUEBAS)")) marcaPruebas = true;
 }
 
-const lista = [...hallados].sort().join(", ") || "(ninguno)";
-if (!hallados.has(esperado) || hallados.has(prohibido)) {
-  console.error(`✖ Build ${modo.toUpperCase()} INVÁLIDO en ${dir}: puertos de API en el bundle = ${lista}`);
-  console.error(`  Se esperaba ${esperado} y NO ${prohibido}.`);
+const listar = (s) => [...s].sort().join(", ") || "(ninguno)";
+const problemas = [];
+
+if (!enServidor.has(esperado)) {
+  problemas.push(
+    `no aparece slas052a:${esperado} en ningún bundle` +
+      (enServidor.size === 0
+        ? ` (no hay ninguna URL de slas052a: el build tomó el fallback localhost, señal de que faltó .env.${
+            modo === "test" ? "test" : "production"
+          } o el --mode)`
+        : "")
+  );
+}
+if (enServidor.has(prohibido)) {
+  problemas.push(`aparece slas052a:${prohibido}, que es el backend del otro ambiente`);
+}
+
+// Segunda señal, independiente del puerto: .env.test pone
+// VITE_APP_NAME="Continental (PRUEBAS)" y .env.production no.
+if (modo === "test" && !marcaPruebas) {
+  problemas.push('falta el nombre "Continental (PRUEBAS)": el build no tomó .env.test');
+}
+if (modo === "prod" && marcaPruebas) {
+  problemas.push('el bundle trae "Continental (PRUEBAS)": se compiló con .env.test');
+}
+
+if (problemas.length > 0) {
+  console.error(`✖ Build ${modo.toUpperCase()} INVÁLIDO en ${dir}:`);
+  for (const p of problemas) console.error(`  - ${p}`);
+  console.error(`  Puertos slas052a hallados: ${listar(enServidor)}`);
   console.error(
     modo === "test"
       ? "  Compila con `npm run build:test` (usa .env.test) y verifica que .env.test exista en esta copia del repo."
@@ -61,4 +99,8 @@ if (!hallados.has(esperado) || hallados.has(prohibido)) {
   );
   process.exit(1);
 }
-console.log(`✔ Build ${modo.toUpperCase()} correcto en ${dir}: API en puerto ${esperado} (puertos hallados: ${lista}).`);
+
+console.log(`✔ Build ${modo.toUpperCase()} correcto en ${dir}: API en slas052a:${esperado}.`);
+if (enLocalhost.size > 0) {
+  console.log(`  (localhost:${listar(enLocalhost)} es el valor por omisión de src/config/env.ts; no se usa.)`);
+}
