@@ -39,6 +39,20 @@ import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/interfaces/User.interface';
 import { getSAPEntry } from '@/utils/sapNomenclatura';
 
+// ─── Clave de fecha para cruzar con las ausencias ────────────────────────────
+// OJO: NO usar date.toISOString(). El calendario construye cada día con
+// new Date(anio, mes, dia), que es medianoche LOCAL; en México (UTC-6) el
+// toISOString lo convierte a las 18:00 del dia ANTERIOR, asi que la celda del
+// 11 de agosto terminaba buscando las ausencias del 10. Resultado: todo el
+// calendario corrido un dia y operadores que salian con "V" en el rol semanal
+// pero no aparecian como personal no disponible.
+const claveFecha = (date: Date): string => {
+    const anio = date.getFullYear();
+    const mes = String(date.getMonth() + 1).padStart(2, '0');
+    const dia = String(date.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+};
+
 // ─── Cobertura de operadores ausentes ────────────────────────────────────────
 // En la vista diaria el jefe de área marca qué operador disponible cubre a cada
 // ausente. Se guarda en el navegador del jefe: todavía no existe tabla en la
@@ -108,7 +122,7 @@ export const MonthlyView: React.FC<ViewProps> = ({ calendarData, currentDate, se
                 {calendarData.days.map((day) => {
                     // Obtener datos reales de ausencias para este día
                     const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day.day);
-                    const dateString = dayDate.toISOString().split('T')[0];
+                    const dateString = claveFecha(dayDate);
                     const ausenciasDelDia = ausenciasData.find(a => a.fecha === dateString);
 
                     const labelFor = (id: string) => {
@@ -260,7 +274,7 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
                     const dayData = calendarData.days.find(d => d.day === date.getDate());
 
                     // Obtener datos reales de ausencias para este día
-                    const dateString = date.toISOString().split('T')[0];
+                    const dateString = claveFecha(date);
                     const ausenciasDelDia = ausenciasData.find(a => a.fecha === dateString);
 
                     const labelFor = (id: string) => {
@@ -386,7 +400,7 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
 
     // Obtener datos reales de ausencias para este día
     const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
-    const dateString = dayDate.toISOString().split('T')[0];
+    const dateString = claveFecha(dayDate);
     const ausenciasDelDia = ausenciasData.find(a => a.fecha === dateString);
 
     // Guarda (o limpia, si llega null) quién cubre a un operador ausente ese día.

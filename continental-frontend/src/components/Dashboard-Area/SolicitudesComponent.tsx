@@ -154,7 +154,16 @@ const SolicitudesComponent: React.FC = () => {
                         }
                     />
                 )}
-                {config?.periodoActual === 'Reprogramacion' && (
+                {/* Las solicitudes del ano EN CURSO no se detienen porque se este
+                    programando el siguiente: permisos, incapacidades, festivos
+                    trabajados y permutas siguen llegando y el jefe las tiene que
+                    aprobar. Antes este bloque solo salia con el periodo en
+                    "Reprogramacion", asi que al abrir la programacion anual el jefe
+                    se quedaba nada mas con los bloques y perdia de vista todo lo
+                    pendiente del ano vigente. Se muestra en los dos periodos; con
+                    el periodo cerrado sigue oculto (arriba ya se explica por que). */}
+                {(config?.periodoActual === 'Reprogramacion' ||
+                  config?.periodoActual === 'ProgramacionAnual') && (
                     <>
                         {/* Dropdown selector */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">

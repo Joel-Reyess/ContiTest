@@ -49,7 +49,18 @@ export const reportesService = {
       });
 
       if (!response.ok) {
-        throw new Error(`Error al descargar el reporte: ${response.statusText}`);
+        // El backend contesta con un ApiResponse en JSON ("No hay datos para
+        // exportar", "No tienes areas asignadas...", "Esa area no esta dentro de
+        // tu alcance"). Sin esto el usuario solo veia "Bad Request" y no sabia
+        // si era un problema de permisos o simplemente que no habia datos.
+        let detalle = '';
+        try {
+          const cuerpo = await response.clone().json();
+          detalle = cuerpo?.message || cuerpo?.Message || '';
+        } catch {
+          /* no era JSON: nos quedamos con el statusText */
+        }
+        throw new Error(detalle || `Error al descargar el reporte: ${response.statusText}`);
       }
 
       // Obtener el blob del archivo

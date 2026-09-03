@@ -614,6 +614,28 @@ export const Reportes = () => {
                 toast.dismiss();
                 toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
             }
+        } else if (reportId === 8) {
+            // Estaba listado en la pantalla del jefe pero sin rama aqui, asi que
+            // caia al "en desarrollo" de abajo. El endpoint ya existia; lo unico
+            // que faltaba era llamarlo y que el backend lo acotara a sus areas
+            // (ver ResolverAreasPermitidasAsync en ReportesController).
+            try {
+                const loadingToast = toast.loading("Generando reporte de vacaciones por área...");
+                const anio = selectedYear ? parseInt(selectedYear) : undefined;
+                const areaIdFiltro = selectedArea === "all" ? undefined : (selectedArea as number);
+
+                await reportesService.exportarVacacionesPorArea(anio, areaIdFiltro);
+
+                toast.dismiss(loadingToast);
+                toast.success("Reporte de vacaciones por área descargado");
+            } catch (error) {
+                toast.dismiss();
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : "No se pudo descargar el reporte de vacaciones por área"
+                );
+            }
         } else {
             toast.info("Funcionalidad en desarrollo para este tipo de reporte");
         }

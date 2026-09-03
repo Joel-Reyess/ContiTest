@@ -14,6 +14,7 @@ namespace tiempo_libre.Controllers
         private readonly VacacionesExportService _exportService;
         private readonly ReportesVacacionesService _reportesService;
         private readonly EdicionDiasEmpresaService _edicionDiasEmpresaService;
+        private readonly FreeTimeDbContext _db;
         private readonly ILogger<ReportesController> _logger;
 
         private static DateTime? ParseFechaHora(string? fecha, string? hora, bool esInicio)
@@ -31,12 +32,43 @@ namespace tiempo_libre.Controllers
             VacacionesExportService exportService,
             ReportesVacacionesService reportesService,
             EdicionDiasEmpresaService edicionDiasEmpresaService,
+            FreeTimeDbContext db,
             ILogger<ReportesController> logger)
         {
             _exportService = exportService;
             _reportesService = reportesService;
             _edicionDiasEmpresaService = edicionDiasEmpresaService;
+            _db = db;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Areas que el usuario autenticado puede exportar.
+        ///
+        /// null = sin restriccion (SuperUsuario). Lista vacia = tiene alcance por
+        /// area pero no tiene ninguna asignada, y entonces no debe salir nada.
+        /// Mismo criterio que AusenciaController para que un jefe no se lleve la
+        /// planta completa en un Excel.
+        /// </summary>
+        private async Task<List<int>?> ResolverAreasPermitidasAsync()
+        {
+            if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
+                return null;
+
+            var tieneAlcancePorArea =
+                User.IsInRole("Jefe De Area") || User.IsInRole("JefeArea") || User.IsInRole("JefeDeArea") ||
+                User.IsInRole("Lider De Grupo") || User.IsInRole("LiderDeGrupo") ||
+                User.IsInRole("Ingeniero Industrial") || User.IsInRole("IngenieroIndustrial") ||
+                User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT") ||
+                User.IsInRole("RH");
+
+            if (!tieneAlcancePorArea) return null;
+
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(claim, out var userId))
+                return new List<int>();
+
+            return await Helpers.AreasVisiblesHelper.AreasVisiblesAsync(_db, userId);
         }
 
         /// <summary>
@@ -51,7 +83,22 @@ namespace tiempo_libre.Controllers
             {
                 _logger.LogInformation("Solicitada exportación de vacaciones por área. Año: {Year}", year?.ToString() ?? "Todos");
 
-                var (stream, fileName) = await _exportService.GenerarExcelPorAreaAsync(year, areaId);
+                // El jefe de area pide el reporte sin areaId cuando quiere "todas":
+                // para el, "todas" son las suyas, no la planta. Sin este filtro el
+                // endpoint (solo [Authorize]) le devolvia el Excel completo.
+                var areasPermitidas = await ResolverAreasPermitidasAsync();
+                if (areasPermitidas != null)
+                {
+                    if (areasPermitidas.Count == 0)
+                        return BadRequest(new ApiResponse<object>(false, null,
+                            "No tienes áreas asignadas, así que no hay nada que exportar."));
+
+                    if (areaId.HasValue && !areasPermitidas.Contains(areaId.Value))
+                        return StatusCode(403, new ApiResponse<object>(false, null,
+                            "Esa área no está dentro de tu alcance."));
+                }
+
+                var (stream, fileName) = await _exportService.GenerarExcelPorAreaAsync(year, areaId, areasPermitidas);
 
                 // Devolver el archivo Excel
                 return File(

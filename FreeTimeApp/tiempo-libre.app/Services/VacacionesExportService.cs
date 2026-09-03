@@ -24,7 +24,13 @@ namespace tiempo_libre.Services
         /// </summary>
         /// <param name="year">Año a filtrar (opcional, si es null exporta todas)</param>
         /// <returns>MemoryStream con el archivo Excel generado</returns>
-        public async Task<(MemoryStream Stream, string FileName)> GenerarExcelPorAreaAsync(int? year = null, int? areaId = null)
+        /// <param name="areasPermitidas">
+        /// Alcance del usuario que pide el reporte. null = sin restriccion
+        /// (SuperUsuario). Con lista, el Excel solo trae esas areas: es lo que
+        /// permite que el jefe de area descargue el reporte sin llevarse la planta.
+        /// </param>
+        public async Task<(MemoryStream Stream, string FileName)> GenerarExcelPorAreaAsync(
+            int? year = null, int? areaId = null, List<int>? areasPermitidas = null)
         {
             try
             {
@@ -48,6 +54,12 @@ namespace tiempo_libre.Services
                 if (areaId.HasValue)
                 {
                     query = query.Where(v => v.Empleado.AreaId == areaId.Value);
+                }
+
+                if (areasPermitidas != null)
+                {
+                    query = query.Where(v => v.Empleado.AreaId.HasValue &&
+                                             areasPermitidas.Contains(v.Empleado.AreaId.Value));
                 }
 
                 var vacaciones = await query
