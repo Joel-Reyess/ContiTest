@@ -31,7 +31,21 @@ import { ChangePasswordModal } from "@/components/Empleado/ChangePasswordModal";
 import { SolicitarPermisoModal } from "./SolicitarPermisoModal";
 import { SolicitarReprogramacionPostIncapacidadModal } from "./SolicitarReprogramacionPostIncapacidadModal";
 
-const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
+/**
+ * `permiteReprogramacion` va aparte de `currentPeriod` porque la reprogramación
+ * del año en curso sigue abierta mientras se prepara el año siguiente. Con el
+ * periodo en "ProgramacionAnual" estas acciones (festivo trabajado,
+ * post-incapacidad y el lápiz de mover un día) quedaban muertas para el
+ * delegado aunque el backend las siguiera aceptando.
+ */
+const MyVacations = ({
+    currentPeriod,
+    permiteReprogramacion,
+}: {
+    currentPeriod: Period;
+    permiteReprogramacion?: boolean;
+}) => {
+    const reprogramacionAbierta = permiteReprogramacion ?? currentPeriod === PeriodOptions.reprogramming;
     const [searchParams] = useSearchParams();
     const employeeId = searchParams.get('empleadoId');
     const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth() + 1);
@@ -362,11 +376,11 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                         selectedDays={selectedDays}
                         handleEdit={handleEdit}
                         isViewMode
-                        period={currentPeriod}
+                        period={reprogramacionAbierta ? PeriodOptions.reprogramming : currentPeriod}
                         isDelegadoSindicato={isDelegadoSindical}
                     />
                     {
-                        currentPeriod === PeriodOptions.reprogramming && isDelegadoSindical && (
+                        reprogramacionAbierta && isDelegadoSindical && (
                             <Button variant="continental" className="w-full cursor-pointer" size="lg" onClick={handleRequestFestiveWorked}>
                                 <CalendarPlus2 className="mr-2 h-4 w-4" />
                                 Solicitar Festivo Trabajado
@@ -384,7 +398,7 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                             Solicitar Permiso/Incapacidad
                         </Button>
                     )}
-                    {currentPeriod === PeriodOptions.reprogramming && isDelegadoSindical && (
+                    {reprogramacionAbierta && isDelegadoSindical && (
                         <Button
                             variant="outline"
                             className="w-full cursor-pointer border-blue-300 text-blue-700 hover:bg-blue-50"

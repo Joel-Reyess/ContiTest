@@ -130,6 +130,11 @@ namespace tiempo_libre.Services
                 // en ContarAusentesAsync.
                 var ausentes = new Dictionary<(int Grupo, DateOnly Fecha), HashSet<int>>();
                 var diasEmpresa = new Dictionary<(int Grupo, DateOnly Fecha), int>();
+                // La otra barra: lo que capturó el operador en su turno (o el
+                // jefe a su nombre). Se lleva aparte porque el cliente quiere
+                // ver cómo el porcentaje del día arranca con lo de la empresa y
+                // va subiendo conforme la gente captura.
+                var diasCapturados = new Dictionary<(int Grupo, DateOnly Fecha), int>();
                 var empleadosConDiasEmpresa = new HashSet<int>();
 
                 void Marcar(int empleadoId, DateOnly fecha)
@@ -151,11 +156,19 @@ namespace tiempo_libre.Services
                     // "Automatica" es lo que escribe AsignacionAutomaticaService:
                     // son los días que puso la empresa, no los que capturó el
                     // operador en su turno.
-                    if (v.TipoVacacion == "Automatica" && grupoDeUsuario.TryGetValue(v.EmpleadoId, out var g))
+                    if (!grupoDeUsuario.TryGetValue(v.EmpleadoId, out var g))
+                        continue;
+
+                    var claveDia = (g, v.FechaVacacion);
+                    if (v.TipoVacacion == "Automatica")
                     {
-                        var clave = (g, v.FechaVacacion);
-                        diasEmpresa[clave] = diasEmpresa.GetValueOrDefault(clave) + 1;
+                        diasEmpresa[claveDia] = diasEmpresa.GetValueOrDefault(claveDia) + 1;
                         empleadosConDiasEmpresa.Add(v.EmpleadoId);
+                    }
+                    else
+                    {
+                        // "Anual" (captura en su bloque) y "Reprogramacion".
+                        diasCapturados[claveDia] = diasCapturados.GetValueOrDefault(claveDia) + 1;
                     }
                 }
 
@@ -183,6 +196,7 @@ namespace tiempo_libre.Services
                 {
                     var totalAusentes = 0;
                     var totalDiasEmpresa = 0;
+                    var totalDiasCapturados = 0;
                     var gruposEnRebase = new List<string>();
                     var excedenteMaximo = 0m;
 
@@ -194,6 +208,7 @@ namespace tiempo_libre.Services
 
                         totalAusentes += ausentesGrupo;
                         totalDiasEmpresa += diasEmpresa.GetValueOrDefault(clave);
+                        totalDiasCapturados += diasCapturados.GetValueOrDefault(clave);
 
                         if (plantillaGrupo == 0 || ausentesGrupo == 0) continue;
 
@@ -213,6 +228,7 @@ namespace tiempo_libre.Services
                     {
                         Fecha = fecha,
                         DiasEmpresa = totalDiasEmpresa,
+                        DiasCapturados = totalDiasCapturados,
                         Ausentes = totalAusentes,
                         Plantilla = plantillaTotal,
                         Porcentaje = plantillaTotal > 0
@@ -225,6 +241,7 @@ namespace tiempo_libre.Services
 
                 // ── Resúmenes ───────────────────────────────────────────────
                 var totalDias = dias.Sum(d => d.DiasEmpresa);
+                var totalCapturados = dias.Sum(d => d.DiasCapturados);
                 var cultura = new CultureInfo("es-MX");
 
                 var meses = dias
@@ -235,6 +252,17 @@ namespace tiempo_libre.Services
                         Mes = g.Key,
                         Nombre = cultura.DateTimeFormat.GetMonthName(g.Key),
                         DiasEmpresaAsignados = g.Sum(d => d.DiasEmpresa),
+                        DiasCapturadosPorOperador = g.Sum(d => d.DiasCapturados),
+                        // Porcentaje del mes = días-persona del mes entre
+                        // (plantilla x días del mes). Es la misma base que usa
+                        // el porcentaje diario, promediada sobre el mes, para
+                        // que las dos barras se puedan leer contra el máximo.
+                        PorcentajeEmpresa = plantillaTotal > 0
+                            ? Math.Round((decimal)g.Sum(d => d.DiasEmpresa) / (plantillaTotal * g.Count()) * 100m, 2)
+                            : 0m,
+                        PorcentajeCapturado = plantillaTotal > 0
+                            ? Math.Round((decimal)g.Sum(d => d.DiasCapturados) / (plantillaTotal * g.Count()) * 100m, 2)
+                            : 0m,
                         PorcentajePromedio = Math.Round(g.Average(d => d.Porcentaje), 2),
                         PorcentajeMaximo = g.Max(d => d.Porcentaje),
                         DiasConRebase = g.Count(d => d.GruposEnRebase.Count > 0),
@@ -243,6 +271,10 @@ namespace tiempo_libre.Services
                     .ToList();
 
                 var diasEmpresaPorGrupo = diasEmpresa
+                    .GroupBy(kv => kv.Key.Grupo)
+                    .ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value));
+
+                var diasCapturadosPorGrupo = diasCapturados
                     .GroupBy(kv => kv.Key.Grupo)
                     .ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value));
 
@@ -258,6 +290,7 @@ namespace tiempo_libre.Services
                             Area = g.Area?.NombreGeneral ?? "",
                             Plantilla = plantilla,
                             DiasEmpresaAsignados = asignados,
+                            DiasCapturadosPorOperador = diasCapturadosPorGrupo.GetValueOrDefault(g.GrupoId),
                             DiasPorEmpleado = plantilla > 0
                                 ? Math.Round((decimal)asignados / plantilla, 2)
                                 : 0m,
@@ -273,6 +306,7 @@ namespace tiempo_libre.Services
                     PorcentajeMaximoGlobal = porcentajeGlobal,
                     PlantillaTotal = plantillaTotal,
                     DiasEmpresaAsignados = totalDias,
+                    DiasCapturadosPorOperador = totalCapturados,
                     EmpleadosConDiasEmpresa = empleadosConDiasEmpresa.Count,
                     DiasConRebase = dias.Count(d => d.GruposEnRebase.Count > 0),
                     Meses = meses,

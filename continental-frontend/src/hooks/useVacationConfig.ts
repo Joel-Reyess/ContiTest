@@ -6,6 +6,19 @@ import type { VacationConfig } from '../interfaces/Api.interface';
 interface UseVacationConfigState {
   config: VacationConfig | null;
   currentPeriod: Period;
+  /**
+   * Los dos periodos NO son excluyentes y tratarlos como si lo fueran es lo que
+   * dejó al delegado sin las solicitudes del año en curso en cuanto se abrió la
+   * programación anual del siguiente. Mientras se prepara 2027, la
+   * reprogramación de 2026 sigue viva: los permisos, incapacidades y permutas
+   * del año que se está trabajando no se detienen.
+   *
+   * Es la misma regla que ya aplica el backend en /estado-periodo
+   * (PermiteProgramacionAnual / PermiteReprogramacion); aquí se replica para no
+   * meter una llamada extra en cada pantalla.
+   */
+  permiteAnual: boolean;
+  permiteReprogramacion: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -23,6 +36,8 @@ export const useVacationConfig = (): UseVacationConfigReturn => {
   const [state, setState] = useState<UseVacationConfigState>({
     config: null,
     currentPeriod: 'annual', // Default fallback
+    permiteAnual: true,
+    permiteReprogramacion: false,
     loading: false,
     error: null,
   });
@@ -36,11 +51,20 @@ export const useVacationConfig = (): UseVacationConfigReturn => {
       // Mapear el período de la API al período local
       const apiPeriod = config.periodoActual as ApiPeriod;
       const mappedPeriod = ApiPeriodMapping[apiPeriod] || 'annual';
-      
+
+      const cerrado = mappedPeriod === 'closed';
+      // Hay captura anual si el periodo lo dice o si hay un año en preparación.
+      const permiteAnual =
+        !cerrado && (mappedPeriod === 'annual' || config.anioProgramacionAnual != null);
+      // La reprogramación del año vigente sólo la apaga "Cerrado".
+      const permiteReprogramacion = !cerrado;
+
       setState(prev => ({
         ...prev,
         config,
         currentPeriod: mappedPeriod,
+        permiteAnual,
+        permiteReprogramacion,
         loading: false,
         error: null,
       }));

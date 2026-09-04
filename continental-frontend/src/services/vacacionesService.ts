@@ -102,7 +102,15 @@ Object.assign(vacacionesService, {
 
 // Nuevo: reservar vacaciones anuales
 export const reservarVacacionesAnuales = async (request: ReservaAnualRequest): Promise<ReservaAnualResponse> => {
-  const resp = await httpClient.post<ApiResponse<ReservaAnualResponse>>('/api/vacaciones/reservar-anual', request);
+  // OJO con el timeout. El default son 10 s y este endpoint valida CADA fecha
+  // por separado (día inhábil, calendario de turnos del grupo, porcentaje de
+  // ausencia del día y duplicados): con 15 días son ~60 consultas contra la
+  // base. Al pasarse de 10 s el navegador aborta, el operador ve un error
+  // genérico... y el backend sigue guardando del otro lado, así que además
+  // quedaba con la duda de si se registró o no.
+  const resp = await httpClient.post<ApiResponse<ReservaAnualResponse>>('/api/vacaciones/reservar-anual', request, {
+    timeout: 120000,
+  });
   if (resp?.data) {
     return resp.data as unknown as ReservaAnualResponse;
   }

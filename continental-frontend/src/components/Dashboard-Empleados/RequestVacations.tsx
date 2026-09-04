@@ -8,7 +8,7 @@ import Calendar from "@/components/Calendar/Calendar";
 import { NavbarUser } from "../ui/navbar-user";
 import useAuth from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
-import { PeriodOptions, type Period } from "@/interfaces/Calendar.interface";
+import { ApiPeriodMapping, PeriodOptions, type ApiPeriod, type Period } from "@/interfaces/Calendar.interface";
 import { getVacacionesAsignadasPorEmpleado, getDisponibilidadVacaciones, reservarVacacionesAnuales } from '@/services/vacacionesService';
 import type { VacacionesAsignadasResponse, VacacionAsignada, ResumenVacaciones, DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse } from '@/interfaces/Api.interface';
 import { UserRole } from "@/interfaces/User.interface";
@@ -39,7 +39,11 @@ const RequestVacations = () => {
     // La captura de programación anual se hace sobre el calendario mensual por
     // rol (turnos 1/2/3/D, descansos e inhábiles en gris): abre directo en
     // enero del año que se captura. La vista anual queda como resumen opcional.
-    const [selectedMonth, setSelectedMonth] = useState<number | null>(1);
+    // Arranca en el resumen anual, no en enero. El operador entraba directo al
+    // calendario de un mes y no tenía dónde ver cómo quedó repartido el año ni
+    // qué meses le quedan con días disponibles; el resumen ya existía pero
+    // estaba a un clic escondido detrás de "Ver resumen anual".
+    const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
     const [selectedDays, setSelectedDays] = useState<{ date: string }[]>([]);
     const [realAssignedDays, setRealAssignedDays] = useState<DiaAsignado[]>([]);
     const [vacacionesData, setVacacionesData] = useState<VacacionesAsignadasResponse | null>(null);
@@ -117,7 +121,12 @@ const RequestVacations = () => {
         const fetchPeriod = async () => {
             try {
                 const config = await vacacionesService.getConfig();
-                setCurrentPeriod(config.periodoActual as Period);
+                // El backend manda "ProgramacionAnual"/"Reprogramacion"/"Cerrado"
+                // y aquí se compara contra PeriodOptions ("annual"/"reprogramming"),
+                // así que el cast directo nunca casaba con nada: hay que mapear.
+                setCurrentPeriod(
+                    ApiPeriodMapping[config.periodoActual as ApiPeriod] ?? PeriodOptions.annual
+                );
                 // El año que se captura es el que está en preparación cuando la
                 // programación anual del siguiente año convive con la
                 // reprogramación del actual; si no hay preparación en curso, el
@@ -288,10 +297,18 @@ const RequestVacations = () => {
             // tu bloque inicia el ... a las ..."); httpClient lo deja en
             // message. El texto fijo lo tiraba y el operador se quedaba sin
             // saber que hacer.
-            const motivo = error instanceof Error
-                ? error.message
-                : (error as { message?: string })?.message;
-            toast.error(motivo || "Error al procesar la solicitud de vacaciones", { duration: 8000 });
+            const detalle = error as { message?: string; status?: number };
+            const motivo = error instanceof Error ? error.message : detalle?.message;
+            // Sin el status, un fallo de red y un rechazo del backend se ven
+            // idénticos en pantalla y no hay forma de saber por dónde empezar a
+            // buscar. Si de plano no vino motivo, se dice, en vez de inventar uno.
+            const conStatus = detalle?.status ? `${motivo ?? 'Error'} (HTTP ${detalle.status})` : motivo;
+            toast.error(
+                conStatus ||
+                "No se pudo guardar la solicitud y el servidor no devolvió el motivo. " +
+                "Vuelve a intentar; si sigue igual, avisa a sistemas.",
+                { duration: 10000 }
+            );
         } finally {
             setLoading(false);
         }
@@ -402,7 +419,7 @@ const RequestVacations = () => {
                             onClick={() => setSelectedMonth(new Date().getFullYear() === anioCaptura ? new Date().getMonth() + 1 : 1)}
                             className="flex items-center gap-2 cursor-pointer p-2 w-fit"
                         >
-                            <ArrowLeft /> Volver al calendario
+                            <ArrowLeft /> Abrir el calendario del mes
                         </div>
                     )}
                     {selectedMonth ? (

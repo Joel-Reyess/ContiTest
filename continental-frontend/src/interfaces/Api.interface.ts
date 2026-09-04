@@ -1288,6 +1288,8 @@ export interface CrearRotacionesProgramadasResponse {
 export interface DiaProgramacionAnual {
     fecha: string;
     diasEmpresa: number;
+    /** Días que capturó el operador ese día (todo lo que no es "Automatica"). */
+    diasCapturados: number;
     ausentes: number;
     plantilla: number;
     porcentaje: number;
@@ -1299,6 +1301,11 @@ export interface MesProgramacionAnual {
     mes: number;
     nombre: string;
     diasEmpresaAsignados: number;
+    diasCapturadosPorOperador: number;
+    /** Los dos porcentajes por separado: el piso que puso la empresa y lo que
+     *  se le fue apilando encima con la captura de los operadores. */
+    porcentajeEmpresa: number;
+    porcentajeCapturado: number;
     porcentajePromedio: number;
     porcentajeMaximo: number;
     diasConRebase: number;
@@ -1311,6 +1318,7 @@ export interface GrupoProgramacionAnual {
     area: string;
     plantilla: number;
     diasEmpresaAsignados: number;
+    diasCapturadosPorOperador: number;
     diasPorEmpleado: number;
     diasConRebase: number;
 }
@@ -1320,6 +1328,7 @@ export interface DashboardProgramacionAnual {
     porcentajeMaximoGlobal: number;
     plantillaTotal: number;
     diasEmpresaAsignados: number;
+    diasCapturadosPorOperador: number;
     empleadosConDiasEmpresa: number;
     diasConRebase: number;
     meses: MesProgramacionAnual[];

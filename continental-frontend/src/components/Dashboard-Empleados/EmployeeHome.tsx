@@ -19,7 +19,22 @@ import type { VacacionesAsignadasResponse, UsuarioInfoDto, ConfiguracionEdicionD
 import { PermutaModal } from "../Empleado/PermutaModal";
 import { edicionDiasEmpresaService } from "@/services/edicionDiasEmpresaService";
 
-const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
+/**
+ * `permiteAnual` y `permiteReprogramacion` llegan por separado porque las dos
+ * etapas conviven: mientras se prepara el año siguiente, la reprogramación del
+ * año en curso sigue abierta. Con un solo `currentPeriod` la pantalla escondía
+ * el bloque de solicitudes en cuanto se abría la captura anual, que es lo que
+ * reportaron ("solo aparecen los bloques, no las solicitudes del año en curso").
+ */
+const EmployeeHome = ({
+    currentPeriod,
+    permiteAnual,
+    permiteReprogramacion,
+}: {
+    currentPeriod: Period;
+    permiteAnual?: boolean;
+    permiteReprogramacion?: boolean;
+}) => {
     const { user } = useAuth();
     console.log({ user })
     const navigate = useNavigate();
@@ -67,7 +82,9 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
     const isUnionRepresentative = hasRole(UserRole.UNION_REPRESENTATIVE) || isUnionCommittee;
     const isDelegadoSindical =
         isUnionCommittee || hasRole(UserRole.UNION_REPRESENTATIVE) || user?.area?.nombreGeneral === "Sindicato";
-    const canManageReprogramming = currentPeriod === PeriodOptions.reprogramming && isDelegadoSindical;
+    const anualAbierta = permiteAnual ?? currentPeriod === PeriodOptions.annual;
+    const reprogramacionAbierta = permiteReprogramacion ?? currentPeriod === PeriodOptions.reprogramming;
+    const canManageReprogramming = reprogramacionAbierta && isDelegadoSindical;
     // Año de la captura anual, para saber de qué año es el turno del operador.
     const [anioCaptura, setAnioCaptura] = useState<number | null>(null);
     console.log('¿Es delegado sindical?', isDelegadoSindical);
@@ -84,7 +101,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                 // En captura anual, los datos son del año que se captura (el que
                 // está en preparación, o el vigente si no hay preparación).
                 let anio: number | undefined;
-                if (currentPeriod === PeriodOptions.annual) {
+                if (anualAbierta) {
                     try {
                         const cfg = await vacacionesService.getConfig();
                         anio = cfg.anioProgramacionAnual ?? cfg.anioVigente;
@@ -105,7 +122,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
         };
 
         fetchVacaciones();
-    }, [user?.id, selectedEmployee?.id, currentPeriod]);
+    }, [user?.id, selectedEmployee?.id, currentPeriod, anualAbierta]);
 
     // Cargar estadisticas de solicitudes de reprogramacion
     useEffect(() => {
@@ -117,7 +134,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                 return;
             }
 
-            if (currentPeriod !== PeriodOptions.reprogramming) {
+            if (!reprogramacionAbierta) {
                 setLoadingSolicitudes(false);
                 return;
             }
@@ -242,7 +259,11 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
             <header className="flex justify-between">
                 <div className="flex flex-col min-w-[200px]">
                     {
-                        currentPeriod === PeriodOptions.annual || currentPeriod === PeriodOptions.closed ? (
+                        /* El buscador de empleados es la herramienta del
+                           delegado durante la reprogramación. Con las dos
+                           etapas abiertas, el sindicalizado normal necesita ver
+                           su bienvenida y su captura; el delegado, el buscador. */
+                        !reprogramacionAbierta || (anualAbierta && !isDelegadoSindical) ? (
                             <>
                                 <h1 className="text-2xl font-bold  text-slate-800">
                                     Bienvenido, {user?.fullName.split(" ")[0].toUpperCase()}
@@ -269,14 +290,18 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                 </div>
                 <div className="flex items-center gap-3">
                     <EntornoBadge />
-                    <PeriodLight currenPeriod={currentPeriod} />
+                    <PeriodLight
+                        currenPeriod={currentPeriod}
+                        anualActiva={anualAbierta}
+                        reprogramacionActiva={reprogramacionAbierta}
+                    />
                 </div>
                 <NavbarUser />
             </header>
 
             {/* Cuándo le toca capturar. Antes solo se veía en la pantalla de
                 login, que se cierra sola a los diez segundos. */}
-            {currentPeriod === PeriodOptions.annual && !selectedEmployee && user?.id && (
+            {anualAbierta && !selectedEmployee && user?.id && (
                 <div className="mt-6">
                     <MiTurnoBanner empleadoId={user.id} anio={anioCaptura} />
                 </div>
@@ -300,7 +325,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
             )}
 
 
-            {currentPeriod === PeriodOptions.annual ? (
+            {anualAbierta ? (
                 <div className="mt-8">
                     <Info
                         nomina={user?.username || ""}
@@ -309,13 +334,18 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                         grupo={user?.grupo?.rol.toString() || ""}
                     />
                 </div>
-            ) : currentPeriod === PeriodOptions.reprogramming && !isDelegadoSindical ? (
+            ) : reprogramacionAbierta && !isDelegadoSindical ? (
                 <div className="mt-8">
                     <Notifications selectedEmployee={selectedEmployee.fullName ? selectedEmployee : user as unknown as UsuarioInfoDto} />
                 </div>
             ) : null}
             <div className="mt-8 flex gap-4 justify-between h-full">
-                {currentPeriod === PeriodOptions.annual ? (
+                {/* Las dos tarjetas son independientes. Antes eran un if/else
+                    sobre un único periodo, así que al abrir la programación
+                    anual del año siguiente desaparecía el bloque de solicitudes
+                    de reprogramación del año en curso: el delegado se quedaba
+                    sin ver lo que tenía pendiente. */}
+                {anualAbierta && (
                     <div className="flex-1 flex flex-col items-center justify-center gap-4 h-full p-8 border border-continental-yellow bg-continental-yellow rounded-lg shadow-lg hover:shadow-xl transition-shadow">
                         <Calendar size={50} />
                         <h1 className="text-2xl font-bold">Solicitar vacaciones</h1>
@@ -329,7 +359,8 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                             </Button> : null
                         }
                     </div>
-                ) : currentPeriod === PeriodOptions.reprogramming ? (
+                )}
+                {reprogramacionAbierta && (
                     <div className="flex-1 flex flex-col items-center justify-center gap-4 h-full p-8 border border-continental-blue-dark bg-continental-blue-dark/20 rounded-lg shadow-lg hover:shadow-xl transition-shadow">
                         <Calendar size={50} />
                         <h1 className="text-2xl font-bold">
@@ -429,7 +460,7 @@ const EmployeeHome = ({ currentPeriod }: { currentPeriod: Period }) => {
                             </p>
                         )}
                     </div>
-                ) : null}
+                )}
                 <div className="flex-1 flex flex-col items-center justify-center gap-4 h-full p-8 border border-continental-yellow bg-continental-white rounded-lg shadow-lg hover:shadow-xl transition-shadow">
                     <CalendarClock size={50} />
                     <h1 className="text-2xl font-bold">{selectedEmployee.fullName ? `Calendario de ${selectedEmployee.fullName}` : "Mi Calendario"}</h1>

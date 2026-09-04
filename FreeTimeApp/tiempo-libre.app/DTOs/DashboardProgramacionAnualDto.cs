@@ -20,6 +20,15 @@ namespace tiempo_libre.DTOs
         /// <summary>Total de días-persona que asignó la empresa en el año.</summary>
         public int DiasEmpresaAsignados { get; set; }
 
+        /// <summary>
+        /// Días-persona que capturó el propio operador (o el jefe a su nombre):
+        /// todo lo que NO es "Automatica". Es la otra mitad de la foto: la
+        /// empresa arranca el año con un piso asignado y encima se va apilando
+        /// lo que cada quien pide, así que el porcentaje del día sube conforme
+        /// avanza la captura.
+        /// </summary>
+        public int DiasCapturadosPorOperador { get; set; }
+
         /// <summary>Cuántos empleados distintos recibieron al menos un día.</summary>
         public int EmpleadosConDiasEmpresa { get; set; }
 
@@ -36,6 +45,18 @@ namespace tiempo_libre.DTOs
         public int Mes { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public int DiasEmpresaAsignados { get; set; }
+
+        /// <summary>Días del mes que capturó el operador (no "Automatica").</summary>
+        public int DiasCapturadosPorOperador { get; set; }
+
+        /// <summary>
+        /// Los dos porcentajes que pidió el cliente por separado: cuánto de la
+        /// plantilla se va en días de empresa y cuánto en días capturados. Suman
+        /// (aprox.) el porcentaje total de ausencia por vacaciones del mes.
+        /// </summary>
+        public decimal PorcentajeEmpresa { get; set; }
+        public decimal PorcentajeCapturado { get; set; }
+
         public decimal PorcentajePromedio { get; set; }
         public decimal PorcentajeMaximo { get; set; }
         public int DiasConRebase { get; set; }
@@ -54,6 +75,9 @@ namespace tiempo_libre.DTOs
 
         /// <summary>Días que asignó la empresa ese día (TipoVacacion = Automatica).</summary>
         public int DiasEmpresa { get; set; }
+
+        /// <summary>Días que capturó el operador ese día (todo lo que no es Automatica).</summary>
+        public int DiasCapturados { get; set; }
 
         /// <summary>Ausentes por cualquier motivo: vacaciones, permisos y festivos.</summary>
         public int Ausentes { get; set; }
@@ -77,6 +101,7 @@ namespace tiempo_libre.DTOs
         public string Area { get; set; } = string.Empty;
         public int Plantilla { get; set; }
         public int DiasEmpresaAsignados { get; set; }
+        public int DiasCapturadosPorOperador { get; set; }
 
         /// <summary>Días por empleado activo: la cifra que delata un reparto plano.</summary>
         public decimal DiasPorEmpleado { get; set; }

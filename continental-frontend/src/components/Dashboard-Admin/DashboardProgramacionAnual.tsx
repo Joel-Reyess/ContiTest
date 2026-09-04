@@ -78,8 +78,15 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
         return datos.meses.reduce((a, b) => (b.diasEmpresaAsignados > a.diasEmpresaAsignados ? b : a));
     }, [datos]);
 
+    // La escala la marca el mes más alto contando las DOS barras: si se
+    // escalara solo con los días de empresa, en cuanto la captura del operador
+    // creciera la barra se saldría del recuadro.
     const maxDiasMes = useMemo(
-        () => Math.max(1, ...(datos?.meses ?? []).map((m) => m.diasEmpresaAsignados)),
+        () =>
+            Math.max(
+                1,
+                ...(datos?.meses ?? []).map((m) => m.diasEmpresaAsignados + m.diasCapturadosPorOperador)
+            ),
         [datos]
     );
 
@@ -134,9 +141,13 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                 </select>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 {[
-                    { etiqueta: "Días asignados", valor: datos.diasEmpresaAsignados.toLocaleString("es-MX") },
+                    { etiqueta: "Asignados por la empresa", valor: datos.diasEmpresaAsignados.toLocaleString("es-MX") },
+                    {
+                        etiqueta: "Capturados por el operador",
+                        valor: datos.diasCapturadosPorOperador.toLocaleString("es-MX"),
+                    },
                     { etiqueta: "Empleados con días", valor: `${datos.empleadosConDiasEmpresa} de ${datos.plantillaTotal}` },
                     { etiqueta: "Máximo permitido", valor: `${datos.porcentajeMaximoGlobal}%` },
                     {
@@ -164,10 +175,23 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
             {/* Los doce meses. La línea punteada es el reparto parejo: lo que
                 traería cada mes si la asignación no se hubiera apilado. */}
             <div>
-                <h3 className="text-sm font-semibold mb-2">Los 12 meses</h3>
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                    <h3 className="text-sm font-semibold">Los 12 meses</h3>
+                    <div className="flex items-center gap-4 text-xs text-continental-gray-1">
+                        <span className="flex items-center gap-1.5">
+                            <span className="inline-block size-3 rounded-sm bg-continental-blue-dark/70" />
+                            Asignados por la empresa
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <span className="inline-block size-3 rounded-sm bg-continental-yellow" />
+                            Capturados por el operador
+                        </span>
+                    </div>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     {datos.meses.map((m) => {
-                        const alto = Math.round((m.diasEmpresaAsignados / maxDiasMes) * 100);
+                        const altoEmpresa = Math.round((m.diasEmpresaAsignados / maxDiasMes) * 100);
+                        const altoCaptura = Math.round((m.diasCapturadosPorOperador / maxDiasMes) * 100);
                         const parejo = Math.round((m.diasEsperadosSiFueraParejo / maxDiasMes) * 100);
                         const abierto = mesAbierto === m.mes;
                         return (
@@ -182,15 +206,26 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                 <div className="flex items-baseline justify-between">
                                     <span className="font-semibold">{MESES_CORTOS[m.mes - 1]}</span>
                                     <span className="text-xs tabular-nums text-continental-gray-1">
-                                        {m.diasEmpresaAsignados} días
+                                        {m.diasEmpresaAsignados + m.diasCapturadosPorOperador} días
                                     </span>
                                 </div>
-                                <div className="relative h-16 mt-2 bg-slate-100 rounded">
+                                {/* Barra apilada: abajo el piso que puso la
+                                    empresa, encima lo que va capturando la
+                                    gente. Así se ve de un vistazo cuánto del
+                                    porcentaje del mes ya venía dado y cuánto se
+                                    generó durante la captura. */}
+                                <div className="relative h-16 mt-2 bg-slate-100 rounded overflow-hidden">
                                     <div
-                                        className={`absolute bottom-0 left-0 right-0 rounded ${
+                                        className={`absolute bottom-0 left-0 right-0 ${
                                             m.diasConRebase > 0 ? "bg-red-400" : "bg-continental-blue-dark/70"
                                         }`}
-                                        style={{ height: `${alto}%` }}
+                                        style={{ height: `${altoEmpresa}%` }}
+                                        title={`Empresa: ${m.diasEmpresaAsignados} días (${m.porcentajeEmpresa}%)`}
+                                    />
+                                    <div
+                                        className="absolute left-0 right-0 bg-continental-yellow"
+                                        style={{ bottom: `${altoEmpresa}%`, height: `${altoCaptura}%` }}
+                                        title={`Operador: ${m.diasCapturadosPorOperador} días (${m.porcentajeCapturado}%)`}
                                     />
                                     <div
                                         className="absolute left-0 right-0 border-t border-dashed border-slate-500"
@@ -199,6 +234,9 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                     />
                                 </div>
                                 <p className="text-xs mt-2 tabular-nums">
+                                    Empresa {m.porcentajeEmpresa}% · operador {m.porcentajeCapturado}%
+                                </p>
+                                <p className="text-xs tabular-nums text-continental-gray-1">
                                     Prom. {m.porcentajePromedio}% · máx. {m.porcentajeMaximo}%
                                 </p>
                                 {m.diasConRebase > 0 && (
@@ -250,6 +288,7 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                             title={
                                                 `${d.fecha}\n` +
                                                 `Días de empresa: ${d.diasEmpresa}\n` +
+                                                `Capturados por el operador: ${d.diasCapturados}\n` +
                                                 `Ausentes: ${d.ausentes} de ${d.plantilla} (${d.porcentaje}%)` +
                                                 (d.gruposEnRebase.length > 0
                                                     ? `\nRebasan: ${d.gruposEnRebase.join(", ")}`

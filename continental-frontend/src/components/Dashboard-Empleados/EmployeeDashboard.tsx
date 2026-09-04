@@ -18,7 +18,7 @@ import ConsultaConstancia from './ConsultaConstancia';
 
 
 const EmployeeDashboard = (): JSX.Element => {
-    const { currentPeriod, loading, error, config } = useVacationConfig();
+    const { currentPeriod, permiteAnual, permiteReprogramacion, loading, error, config } = useVacationConfig();
     const { user } = useAuth();
 
     const hasRole = (roleName: string) =>
@@ -85,20 +85,33 @@ const EmployeeDashboard = (): JSX.Element => {
             {/* Main Content */}
             <div className="flex-1 min-h-screen h-full">
                 <Routes>
-                    <Route index element={<EmployeeHome currentPeriod={periodoEfectivo} />} />
+                    <Route
+                        index
+                        element={
+                            <EmployeeHome
+                                currentPeriod={periodoEfectivo}
+                                permiteAnual={permiteAnual}
+                                permiteReprogramacion={permiteReprogramacion}
+                            />
+                        }
+                    />
 
-                    {/* Rutas condicionales basadas en el período actual */}
-                    {(currentPeriod === PeriodOptions.annual || anioEnPreparacion) && (
+                    {/* Cada etapa registra su ruta con su propio permiso. Antes
+                        las dos colgaban de un único periodo, así que al abrir la
+                        programación anual el delegado se quedaba sin
+                        /mis-solicitudes, que es donde da seguimiento a las
+                        reprogramaciones del año EN CURSO. */}
+                    {permiteAnual && (
                         <Route path="solicitar-vacaciones" element={<RequestVacations />} />
                     )}
 
-                    {currentPeriod === PeriodOptions.reprogramming && (
+                    {permiteReprogramacion && (
                         <Route path="mis-solicitudes" element={<MyRequests />} />
                     )}
 
                     {/* Rutas disponibles en todos los períodos */}
                     <Route path="plantilla" element={<Plantilla />} />
-                    <Route path="mis-vacaciones" element={<MyVacations currentPeriod={currentPeriod} />} />
+                    <Route path="mis-vacaciones" element={<MyVacations currentPeriod={currentPeriod} permiteReprogramacion={permiteReprogramacion} />} />
                     <Route path="roles-semanales" element={<WeeklyRoles />} />
                     <Route path="mis-permutas" element={<MisPermutas />} />
                     <Route path="edicion-dias-empresa" element={<EdicionDiasEmpresa />} />
