@@ -38,8 +38,15 @@ namespace tiempo_libre.Services
             _logger = logger;
         }
 
+        /// <param name="areasPermitidas">
+        /// Alcance de quien pide el tablero. null = toda la planta
+        /// (superusuario e ingeniería industrial). Con lista, todo lo que se
+        /// calcula —plantilla, porcentajes y grupos del selector— se limita a
+        /// esas áreas: el jefe de área ve su propia foto del año, no la de la
+        /// planta.
+        /// </param>
         public async Task<ApiResponse<DashboardProgramacionAnualResponse>> ObtenerAsync(
-            int anio, int? areaId = null, int? grupoId = null)
+            int anio, int? areaId = null, int? grupoId = null, List<int>? areasPermitidas = null)
         {
             try
             {
@@ -55,13 +62,22 @@ namespace tiempo_libre.Services
 
                 // ── Grupos incluidos ────────────────────────────────────────
                 var queryGrupos = _db.Grupos.Include(g => g.Area).AsQueryable();
+
+                // El recorte por alcance va PRIMERO y no se puede saltar con el
+                // filtro: si el jefe pide un grupo que no es suyo, aquí se queda
+                // sin resultados en vez de devolverle datos de otra área.
+                if (areasPermitidas != null)
+                    queryGrupos = queryGrupos.Where(g => areasPermitidas.Contains(g.AreaId));
+
                 if (grupoId.HasValue) queryGrupos = queryGrupos.Where(g => g.GrupoId == grupoId.Value);
                 else if (areaId.HasValue) queryGrupos = queryGrupos.Where(g => g.AreaId == areaId.Value);
 
                 var grupos = await queryGrupos.ToListAsync();
                 if (grupos.Count == 0)
                     return new ApiResponse<DashboardProgramacionAnualResponse>(false, null,
-                        "No hay grupos para los filtros seleccionados");
+                        areasPermitidas != null
+                            ? "No hay grupos dentro de tus áreas para los filtros seleccionados"
+                            : "No hay grupos para los filtros seleccionados");
 
                 var grupoIds = grupos.Select(g => g.GrupoId).ToList();
 

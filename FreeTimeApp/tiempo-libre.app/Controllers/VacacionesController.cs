@@ -274,16 +274,49 @@ namespace tiempo_libre.Controllers
         /// mirar areas ni disponibilidad.
         /// </summary>
         [HttpGet("dashboard-programacion-anual")]
-        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,IngenieroIndustrial," +
+                           "Jefe De Area,JefeArea,JefeDeArea,Lider De Grupo,LiderDeGrupo,Gerente BT,GerenteBT")]
         public async Task<IActionResult> DashboardProgramacionAnual(
             [FromQuery] int anio,
             [FromQuery] int? areaId = null,
             [FromQuery] int? grupoId = null)
         {
-            var response = await _dashboardAnualService.ObtenerAsync(anio, areaId, grupoId);
+            // El jefe de área ve el tablero, pero acotado a lo suyo. El alcance
+            // sale de AreasVisiblesHelper, el mismo que usan las ausencias y los
+            // reportes, para que no haya dos ideas distintas de "mis áreas".
+            var areasPermitidas = await ResolverAreasVisiblesAsync();
+            if (areasPermitidas != null)
+            {
+                if (areasPermitidas.Count == 0)
+                    return BadRequest(new ApiResponse<object>(false, null,
+                        "No tienes áreas asignadas, así que no hay nada que mostrar."));
+
+                if (areaId.HasValue && !areasPermitidas.Contains(areaId.Value))
+                    return StatusCode(403, new ApiResponse<object>(false, null,
+                        "Esa área no está dentro de tu alcance."));
+            }
+
+            var response = await _dashboardAnualService.ObtenerAsync(anio, areaId, grupoId, areasPermitidas);
             if (!response.Success)
                 return BadRequest(response);
             return Ok(response);
+        }
+
+        /// <summary>
+        /// Áreas que puede ver quien hace la petición. null = sin restricción
+        /// (superusuario e ingeniería industrial, que miran toda la planta).
+        /// </summary>
+        private async Task<List<int>?> ResolverAreasVisiblesAsync()
+        {
+            if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario") ||
+                User.IsInRole("Ingeniero Industrial") || User.IsInRole("IngenieroIndustrial"))
+                return null;
+
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(claim, out var userId))
+                return new List<int>();
+
+            return await Helpers.AreasVisiblesHelper.AreasVisiblesAsync(_context, userId);
         }
 
         [HttpGet("reporte-rebase-porcentaje")]

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle, Filter, TrendingUp } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import useAuth from "@/hooks/useAuth";
+import { UserRole } from "@/interfaces/User.interface";
 import { getDashboardProgramacionAnual } from "@/services/vacacionesService";
 import type { DashboardProgramacionAnual as Datos, DiaProgramacionAnual } from "@/interfaces/Api.interface";
 
@@ -34,6 +36,15 @@ interface Props {
 }
 
 export const DashboardProgramacionAnual = ({ anio }: Props) => {
+    const { user } = useAuth();
+    // El backend ya recorta los datos al alcance de quien pregunta; aquí sólo se
+    // usa el rol para no rotular como "toda la planta" lo que para un jefe de
+    // área son nada más sus áreas.
+    const veTodaLaPlanta = (user?.roles || []).some((rol) => {
+        const nombre = typeof rol === "string" ? rol : (rol as { name?: string })?.name;
+        return nombre === UserRole.SUPER_ADMIN || nombre === "Super Usuario" || nombre === UserRole.INDUSTRIAL;
+    });
+    const alcance = veTodaLaPlanta ? "toda la planta" : "tus áreas";
     const [datos, setDatos] = useState<Datos | null>(null);
     const [cargando, setCargando] = useState(true);
     const [grupoId, setGrupoId] = useState<number | null>(null);
@@ -118,7 +129,7 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                     Días asignados por la empresa — {datos.anio}
                 </h2>
                 <p className="text-sm text-continental-gray-1 mt-1">
-                    Distribución de toda la planta. El porcentaje de cada día es el mismo que usa el
+                    Distribución de {alcance}. El porcentaje de cada día es el mismo que usa el
                     candado de captura: ausentes entre plantilla activa del grupo.
                 </p>
             </div>
@@ -132,7 +143,7 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                     onChange={(e) => setGrupoId(e.target.value ? Number(e.target.value) : null)}
                     className="w-full border rounded px-2 py-1.5 text-sm mt-1"
                 >
-                    <option value="">Toda la planta</option>
+                    <option value="">{veTodaLaPlanta ? "Toda la planta" : "Todas mis áreas"}</option>
                     {catalogoGrupos.map((g) => (
                         <option key={g.grupoId} value={g.grupoId}>
                             {g.nombre} — {g.area}
