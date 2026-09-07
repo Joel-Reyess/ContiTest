@@ -31,15 +31,40 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
     const nombreDeArea = (bloque: BloqueReservacion): string =>
       (bloque.nombreArea ?? '').trim() || 'Sin área';
 
-    // Agrupar bloques por área
+    // Agrupar bloques por área. La llave es el AreaId, NO el nombre: en la
+    // BD hay áreas distintas que se llaman igual ("Mtto. A" existe con AreaId
+    // 10 y 12, "Mtto. B" con 8 y 13, "Mtto. C Vulca" con 9 y 15). Agrupando
+    // por nombre, los bloques de las dos caían en la misma hoja mezclados y
+    // sin forma de distinguirlos, porque la columna Área decía lo mismo en
+    // todos los renglones. Cuando el id no viene, se cae al nombre para no
+    // romper con respuestas viejas.
+    const llaveDeArea = (bloque: BloqueReservacion): string =>
+      bloque.areaId != null ? `id:${bloque.areaId}` : `nombre:${nombreDeArea(bloque)}`;
+
     const bloquesPorArea = bloques.reduce((acc, bloque) => {
-      const area = nombreDeArea(bloque);
-      if (!acc[area]) {
-        acc[area] = [];
+      const llave = llaveDeArea(bloque);
+      if (!acc[llave]) {
+        acc[llave] = [];
       }
-      acc[area].push(bloque);
+      acc[llave].push(bloque);
       return acc;
     }, {} as Record<string, BloqueReservacion[]>);
+
+    // Nombre visible de cada grupo de bloques. Si dos áreas comparten nombre,
+    // se les pega el id para que se puedan separar en el Excel.
+    const nombresRepetidos = new Set<string>();
+    const vistos = new Set<string>();
+    Object.values(bloquesPorArea).forEach((bloquesArea) => {
+      const nombre = nombreDeArea(bloquesArea[0]);
+      if (vistos.has(nombre)) nombresRepetidos.add(nombre);
+      vistos.add(nombre);
+    });
+
+    const etiquetaDeArea = (bloquesArea: BloqueReservacion[]): string => {
+      const nombre = nombreDeArea(bloquesArea[0]);
+      const id = bloquesArea[0].areaId;
+      return nombresRepetidos.has(nombre) && id != null ? `${nombre} (id ${id})` : nombre;
+    };
 
     // Crear un nuevo libro de Excel
     const workbook = XLSX.utils.book_new();
@@ -55,16 +80,16 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
     const empleadosDeArea = (bloquesArea: BloqueReservacion[]): number =>
       bloquesArea.reduce((sum, b) => sum + b.empleadosAsignados.length, 0);
 
-    const desglosePorArea = Object.entries(bloquesPorArea)
-      .map(([area, bloquesArea]) => ({
-        'Concepto': `  ${area}`,
+    const desglosePorArea = Object.values(bloquesPorArea)
+      .map((bloquesArea) => ({
+        'Concepto': `  ${etiquetaDeArea(bloquesArea)}`,
         'Valor': `${bloquesArea.length} bloque(s) · ${empleadosDeArea(bloquesArea)} empleado(s)`
       }))
       .sort((a, b) => a.Concepto.localeCompare(b.Concepto, 'es'));
 
-    const areasSinEmpleados = Object.entries(bloquesPorArea)
-      .filter(([, bloquesArea]) => empleadosDeArea(bloquesArea) === 0)
-      .map(([area]) => area);
+    const areasSinEmpleados = Object.values(bloquesPorArea)
+      .filter((bloquesArea) => empleadosDeArea(bloquesArea) === 0)
+      .map((bloquesArea) => etiquetaDeArea(bloquesArea));
 
     const resumenData = [
       { 'Concepto': 'Año', 'Valor': anioVigente },
@@ -94,7 +119,8 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
     XLSX.utils.book_append_sheet(workbook, resumenWorksheet, 'Resumen');
 
     // Crear una hoja por cada área
-    Object.entries(bloquesPorArea).forEach(([nombreArea, bloquesArea]) => {
+    Object.values(bloquesPorArea).forEach((bloquesArea) => {
+      const nombreArea = etiquetaDeArea(bloquesArea);
       const excelRows: ExcelBloqueRow[] = [];
 
       // Ordenar bloques por número de bloque

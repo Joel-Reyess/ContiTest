@@ -312,6 +312,10 @@ export interface EmpleadoBloque {
 
 
 export interface BloqueReservacion {
+    /** Hay áreas distintas con el MISMO nombre en la BD ("Mtto. A" es AreaId
+     *  10 y 12, "Mtto. B" 8 y 13, "Mtto. C Vulca" 9 y 15). Sin el id no se
+     *  pueden separar y el Excel de turnos las junta en una sola hoja. */
+    areaId?: number;
     nombreArea: string;
     duracionHoras: number;
     empleadosAsignados: EmpleadoBloque[];

@@ -753,6 +753,7 @@ namespace tiempo_libre.Services
                     Id = b.Id,
                     GrupoId = b.GrupoId,
                     NombreGrupo = b.Grupo.Rol,
+                    AreaId = b.Grupo.AreaId,
                     NombreArea = b.Grupo.Area.NombreGeneral,
                     NumeroBloque = b.NumeroBloque,
                     FechaHoraInicio = b.FechaHoraInicio,

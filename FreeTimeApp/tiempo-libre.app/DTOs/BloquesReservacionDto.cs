@@ -165,6 +165,14 @@ namespace tiempo_libre.DTOs
 
     public class BloqueDetalladoDto : BloqueDto
     {
+        /// <summary>
+        /// Area a la que pertenece el grupo del bloque. Va junto al nombre
+        /// porque hay areas distintas que se llaman IGUAL en la BD ("Mtto. A"
+        /// existe con AreaId 10 y 12, "Mtto. B" con 8 y 13, "Mtto. C Vulca"
+        /// con 9 y 15): sin el id, el Excel de turnos las junta en una sola
+        /// hoja y no hay manera de saber cual bloque es de cual area.
+        /// </summary>
+        public int AreaId { get; set; }
         public string NombreArea { get; set; } = string.Empty;
         public int DuracionHoras { get; set; }
         public DateTime? FechaAprobacion { get; set; }
