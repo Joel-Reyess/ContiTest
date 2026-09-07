@@ -15,6 +15,10 @@ interface ExcelBloqueRow {
   'Nombre': string;
   'Fecha Ingreso': string;
   'Antigüedad (años)': number;
+  /** Asignado / Reservado / Completado / Saltado / NoRespondio. El DTO ya lo
+   *  traía y el Excel lo tiraba, así que el archivo de turnos no decía quién
+   *  ya capturó y quién sigue pendiente — que es justo para lo que se baja. */
+  'Estado': string;
 }
 
 /**
@@ -139,7 +143,8 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
             'Nómina': '',
             'Nombre': 'Sin empleados asignados',
             'Fecha Ingreso': '',
-            'Antigüedad (años)': 0
+            'Antigüedad (años)': 0,
+            'Estado': ''
           });
         } else {
           // Ordenar empleados por posición en el bloque
@@ -156,7 +161,8 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
               'Nómina': empleado.nomina,
               'Nombre': empleado.nombreCompleto,
               'Fecha Ingreso': empleado.fechaIngreso ? format(new Date(empleado.fechaIngreso), "dd/MM/yyyy", { locale: es }) : '',
-              'Antigüedad (años)': empleado.antiguedadAnios
+              'Antigüedad (años)': empleado.antiguedadAnios,
+              'Estado': empleado.estado ?? ''
             });
           });
         }
@@ -177,6 +183,7 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
         { wch: 35 },  // Nombre
         { wch: 15 },  // Fecha Ingreso
         { wch: 15 },  // Antigüedad
+        { wch: 14 },  // Estado
       ];
 
       // Excel no acepta : \ / ? * [ ] en el nombre de la hoja, ni más de 31
