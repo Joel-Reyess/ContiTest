@@ -238,17 +238,50 @@ export const Reportes = () => {
     try {
       loadingToast = toast.loading("Generando PDF de Constancia de Antiguedad...");
 
-      const empleadosResponse = await runWithTimeout(
+      // El endpoint es paginado y aqui se pedia UNA pagina de 1000. Con un
+      // area chica nunca se noto, pero al elegir "toda la planta" el empleado
+      // 1001 en adelante simplemente no salia en la constancia y nadie se
+      // enteraba: no habia error, el PDF salia bien, nada mas incompleto. Se
+      // recorren todas las paginas y, si el servidor dijera que hay mas de las
+      // que alcanzamos a traer, se avisa en vez de entregar un PDF a medias.
+      const TAMANO_PAGINA = 500;
+      const MAX_PAGINAS = 40; // 20 000 empleados: techo de seguridad
+
+      const empleadosResponsePrimera = await runWithTimeout(
         empleadosService.getEmpleadosSindicalizados({
           AreaId: areaId,
           Page: 1,
-          PageSize: 1000
+          PageSize: TAMANO_PAGINA
         }),
         60000,
         "empleados sindicalizados"
       );
 
-      const empleadosLista = empleadosResponse.usuarios || [];
+      const empleadosLista = [...(empleadosResponsePrimera.usuarios || [])];
+
+      const totalPaginas = Math.min(empleadosResponsePrimera.totalPages || 1, MAX_PAGINAS);
+      for (let pagina = 2; pagina <= totalPaginas; pagina++) {
+        const siguiente = await runWithTimeout(
+          empleadosService.getEmpleadosSindicalizados({
+            AreaId: areaId,
+            Page: pagina,
+            PageSize: TAMANO_PAGINA
+          }),
+          60000,
+          `empleados sindicalizados (pagina ${pagina})`
+        );
+        empleadosLista.push(...(siguiente.usuarios || []));
+      }
+
+      const totalEnServidor = empleadosResponsePrimera.totalUsers ?? empleadosLista.length;
+      if (totalEnServidor > empleadosLista.length) {
+        toast.dismiss(loadingToast);
+        toast.error(
+          `Son ${totalEnServidor} empleados y solo se pudieron traer ${empleadosLista.length}. ` +
+          "Genera la constancia por área o por grupo para que salga completa."
+        );
+        return;
+      }
       const empleadosPorNomina = new Map(empleadosLista.map((emp) => [String(emp.nomina), emp]));
 
       // Los códigos de grupo no se escriben igual en todos lados (R0144_02 /
@@ -369,6 +402,18 @@ export const Reportes = () => {
         },
         targetYear: parseInt(selectedYear)
       };
+
+      // El PDF se arma en el navegador y lleva una hoja por empleado. Con un
+      // area normal son decenas y no se siente; con "toda la planta" son miles
+      // y la pestaña se queda pensando varios minutos sin dar señales, que es
+      // justo cuando la gente la cierra creyendo que se trabo.
+      if (empleadosData.length > 300) {
+        toast.dismiss(loadingToast);
+        loadingToast = toast.loading(
+          `Armando ${empleadosData.length} constancias. Esto tarda varios minutos; ` +
+          "no cierres la pestaña."
+        );
+      }
 
       await downloadConstanciaAntiguedadPDF(pdfData);
       toast.success(`PDF de Constancia de Antiguedad generado para ${empleadosData.length} empleado(s)`);

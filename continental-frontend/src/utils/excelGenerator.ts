@@ -44,18 +44,53 @@ export const generarExcelBloques = (bloques: BloqueReservacion[], anioVigente: n
     // Crear un nuevo libro de Excel
     const workbook = XLSX.utils.book_new();
 
-    // Crear una hoja de resumen
+    // Crear una hoja de resumen.
+    //
+    // Antes traía los totales y la lista de áreas pegada con comas, que con
+    // veintitantas áreas es ilegible: para saber si un área quedó fuera había
+    // que ir hoja por hoja. Por eso costó tanto ver que Acabado no salía. Ahora
+    // el resumen desglosa área por área cuántos bloques y cuántos empleados
+    // trae, así que un área con 0 empleados salta a la vista en el primer
+    // renglón que se lee.
+    const empleadosDeArea = (bloquesArea: BloqueReservacion[]): number =>
+      bloquesArea.reduce((sum, b) => sum + b.empleadosAsignados.length, 0);
+
+    const desglosePorArea = Object.entries(bloquesPorArea)
+      .map(([area, bloquesArea]) => ({
+        'Concepto': `  ${area}`,
+        'Valor': `${bloquesArea.length} bloque(s) · ${empleadosDeArea(bloquesArea)} empleado(s)`
+      }))
+      .sort((a, b) => a.Concepto.localeCompare(b.Concepto, 'es'));
+
+    const areasSinEmpleados = Object.entries(bloquesPorArea)
+      .filter(([, bloquesArea]) => empleadosDeArea(bloquesArea) === 0)
+      .map(([area]) => area);
+
     const resumenData = [
       { 'Concepto': 'Año', 'Valor': anioVigente },
       { 'Concepto': 'Total de Bloques', 'Valor': bloques.length },
       { 'Concepto': 'Total de Empleados Asignados', 'Valor': bloques.reduce((sum, b) => sum + b.empleadosAsignados.length, 0) },
       { 'Concepto': 'Total de Áreas', 'Valor': Object.keys(bloquesPorArea).length },
-      { 'Concepto': 'Áreas', 'Valor': Object.keys(bloquesPorArea).join(', ') },
-      { 'Concepto': 'Fecha de Generación', 'Valor': format(new Date(), "dd/MM/yyyy HH:mm", { locale: es }) }
+      { 'Concepto': 'Fecha de Generación', 'Valor': format(new Date(), "dd/MM/yyyy HH:mm", { locale: es }) },
+      { 'Concepto': '', 'Valor': '' },
+      { 'Concepto': 'DESGLOSE POR ÁREA', 'Valor': '' },
+      ...desglosePorArea,
+      { 'Concepto': '', 'Valor': '' },
+      {
+        'Concepto': 'Áreas sin empleados asignados',
+        'Valor': areasSinEmpleados.length > 0
+          ? areasSinEmpleados.join(', ')
+          : 'Ninguna: todas las áreas traen empleados.'
+      },
+      {
+        'Concepto': 'Nota',
+        'Valor': 'Un área que no aparece en este desglose no tiene bloques generados para el año. '
+          + 'Revisa que sus grupos tengan empleados con nómina y fecha de ingreso.'
+      }
     ];
 
     const resumenWorksheet = XLSX.utils.json_to_sheet(resumenData);
-    resumenWorksheet['!cols'] = [{ wch: 25 }, { wch: 50 }];
+    resumenWorksheet['!cols'] = [{ wch: 32 }, { wch: 70 }];
     XLSX.utils.book_append_sheet(workbook, resumenWorksheet, 'Resumen');
 
     // Crear una hoja por cada área

@@ -42,30 +42,35 @@ namespace tiempo_libre.Controllers
             _logger = logger;
         }
 
+        /// <summary>Roles que miran la planta completa, sin recorte por area.</summary>
+        private static readonly string[] RolesSinRestriccion =
+            { "SuperUsuario", "Super Usuario", "Administrador" };
+
+        /// <summary>Roles cuyo alcance sale de las areas que tienen asignadas.</summary>
+        private static readonly string[] RolesConAlcancePorArea =
+            { "Jefe De Area", "Jefe Suplente", "Lider De Grupo", "Ingeniero Industrial",
+              "Gerente BT", "RH" };
+
         /// <summary>
         /// Areas que el usuario autenticado puede exportar.
         ///
-        /// null = sin restriccion (SuperUsuario). Lista vacia = tiene alcance por
-        /// area pero no tiene ninguna asignada, y entonces no debe salir nada.
-        /// Mismo criterio que AusenciaController para que un jefe no se lleve la
-        /// planta completa en un Excel.
+        /// null = sin restriccion. Lista vacia = no debe salir nada. Y si el rol
+        /// no es de ninguno de los dos grupos, se devuelve lista vacia: antes
+        /// caia en "null" y el endpoint le entregaba el Excel de la planta a
+        /// cualquiera con token, sindicalizados incluidos. La comparacion es
+        /// normalizada (RolesHelper) porque Roles.Name difiere entre local y
+        /// productivo -- con guion bajo en uno y con espacios en el otro.
         /// </summary>
         private async Task<List<int>?> ResolverAreasPermitidasAsync()
         {
-            if (User.IsInRole("SuperUsuario") || User.IsInRole("Super Usuario"))
+            if (Helpers.RolesHelper.TieneRolClaim(User, RolesSinRestriccion))
                 return null;
-
-            var tieneAlcancePorArea =
-                User.IsInRole("Jefe De Area") || User.IsInRole("JefeArea") || User.IsInRole("JefeDeArea") ||
-                User.IsInRole("Lider De Grupo") || User.IsInRole("LiderDeGrupo") ||
-                User.IsInRole("Ingeniero Industrial") || User.IsInRole("IngenieroIndustrial") ||
-                User.IsInRole("Gerente BT") || User.IsInRole("GerenteBT") ||
-                User.IsInRole("RH");
-
-            if (!tieneAlcancePorArea) return null;
 
             var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(claim, out var userId))
+                return new List<int>();
+
+            if (!Helpers.RolesHelper.TieneRolClaim(User, RolesConAlcancePorArea))
                 return new List<int>();
 
             return await Helpers.AreasVisiblesHelper.AreasVisiblesAsync(_db, userId);
@@ -82,6 +87,14 @@ namespace tiempo_libre.Controllers
             try
             {
                 _logger.LogInformation("Solicitada exportación de vacaciones por área. Año: {Year}", year?.ToString() ?? "Todos");
+
+                // Este reporte es de jefatura. Se corta aqui y no con
+                // [Authorize(Roles=...)] porque el atributo compara literal y
+                // Roles.Name difiere entre ambientes.
+                if (!Helpers.RolesHelper.TieneRolClaim(User, RolesSinRestriccion) &&
+                    !Helpers.RolesHelper.TieneRolClaim(User, RolesConAlcancePorArea))
+                    return StatusCode(403, new ApiResponse<object>(false, null,
+                        "Este reporte es para jefes de área y coordinación."));
 
                 // El jefe de area pide el reporte sin areaId cuando quiere "todas":
                 // para el, "todas" son las suyas, no la planta. Sin este filtro el

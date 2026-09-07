@@ -49,6 +49,22 @@ namespace tiempo_libre.Helpers
         }
 
         /// <summary>
+        /// ¿El usuario autenticado trae alguno de estos roles? Compara
+        /// normalizado sobre los claims de rol, así que no depende de cómo se
+        /// escribió Roles.Name en la BD del ambiente ni de que el claim se
+        /// hubiera emitido en esa variante exacta. Es la versión de TieneRol
+        /// para un ClaimsPrincipal.
+        /// </summary>
+        public static bool TieneRolClaim(System.Security.Claims.ClaimsPrincipal? usuario, params string[] nombres)
+        {
+            if (usuario == null) return false;
+            var set = nombres.Select(Normalizar).ToHashSet();
+            return usuario.Claims
+                .Where(c => c.Type == System.Security.Claims.ClaimTypes.Role)
+                .Any(c => set.Contains(Normalizar(c.Value)));
+        }
+
+        /// <summary>
         /// Variantes del nombre de rol para emitir como claims: el original,
         /// con guiones bajos como espacios, y sin separadores. Así los
         /// [Authorize(Roles="Jefe De Area")] existentes matchean sin importar
