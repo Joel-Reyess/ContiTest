@@ -790,9 +790,28 @@ namespace tiempo_libre.Services
             if (miPosicion <= 0)
                 return (true, string.Empty);
 
+            // Estados que YA NO detienen la fila. Los tres primeros son obvios
+            // (ya capturó, o el jefe lo saltó a propósito).
+            //
+            // "NoRespondio" es el que faltaba, y dejaba la fila trabada para
+            // siempre: cuando un bloque vence, EstadosBloquesService marca la
+            // asignación original como "Transferido" y crea una NUEVA en el
+            // bloque cola con estado "NoRespondio". O sea que en el bloque cola
+            // TODOS entran como "NoRespondio" — es el estado con el que se
+            // nace ahí. Con la lista anterior, dentro de la cola sólo podía
+            // capturar el de mayor antigüedad: los demás quedaban esperando a
+            // que capturaran unos compañeros que, por definición, ya habían
+            // dejado pasar su turno y podían no volver nunca.
+            //
+            // El sentido de "no respondió" es justamente que la fila avanza sin
+            // él: conserva su derecho a capturar en la cola, pero deja de
+            // detener a los que vienen atrás. Es la misma semántica de
+            // "Saltado".
+            var estadosQueNoDetienenLaFila = new[] { "Reservado", "Completado", "Saltado", "NoRespondio" };
+
             var pendientes = ordenados
                 .Take(miPosicion)
-                .Where(a => a.Estado != "Reservado" && a.Estado != "Completado" && a.Estado != "Saltado")
+                .Where(a => !estadosQueNoDetienenLaFila.Contains(a.Estado))
                 .Select(a => a.Empleado.FullName ?? a.Empleado.Nomina?.ToString() ?? "compañero")
                 .ToList();
 

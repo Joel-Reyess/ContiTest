@@ -17,7 +17,10 @@ import type { BloqueReservacion, EmpleadoBloque } from "@/interfaces/Api.interfa
  *
  * Las tres reglas son las mismas del backend (ValidarTurnoDeCapturaAsync):
  * el bloque tiene que haber abierto, no haber cerrado, y dentro del bloque
- * manda la antigüedad. 'Saltado' no bloquea: para eso lo salta el jefe.
+ * manda la antigüedad. Ni 'Saltado' ni 'NoRespondio' bloquean: el primero
+ * porque para eso lo salta el jefe, y el segundo porque ya dejó pasar su
+ * turno. Este filtro TIENE que decir lo mismo que el del backend; si se
+ * separan, el banner promete un turno que la captura después rechaza.
  */
 
 interface Props {
@@ -46,9 +49,10 @@ const compañerosPendientes = (bloque: BloqueReservacion, empleadoId: number): E
     });
     const miPosicion = ordenados.findIndex((e) => e.empleadoId === empleadoId);
     if (miPosicion <= 0) return [];
+    const estadosQueNoDetienenLaFila = ["Reservado", "Completado", "Saltado", "NoRespondio"];
     return ordenados
         .slice(0, miPosicion)
-        .filter((e) => e.estado !== "Reservado" && e.estado !== "Completado" && e.estado !== "Saltado");
+        .filter((e) => !estadosQueNoDetienenLaFila.includes(e.estado));
 };
 
 export const MiTurnoBanner = ({ empleadoId, anio }: Props) => {
