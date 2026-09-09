@@ -390,18 +390,34 @@ export const VacacionesGeneral = ({
     }
   };
 
-  const handleEliminarBloques = async () => {
+  // El año va por parámetro. Antes estaba fijo en anioVigente, así que el
+  // único botón de borrar que existía apuntaba SIEMPRE al año en curso: quien
+  // estuviera preparando el siguiente y quisiera rehacer sus bloques borraba,
+  // sin aviso, el historial de capturas del año vigente. Y como el panel de
+  // preparación no tenía botón propio, tampoco había forma de rehacer los del
+  // año que se está preparando, que es justo lo que se necesita al probar.
+  const handleEliminarBloques = async (anio: number) => {
+    // Borrar bloques arrastra sus asignaciones y no se puede deshacer. Las
+    // vacaciones ya capturadas NO se borran (viven en VacacionesProgramadas),
+    // así que quien ya capturó se queda con sus días y al regenerar aparecerá
+    // como duplicado si intenta capturar otra vez.
+    const confirmado = window.confirm(
+      `Se van a borrar los bloques de ${anio} y todas sus asignaciones.\n\n` +
+      `Esto NO se puede deshacer. Las vacaciones ya capturadas no se borran: ` +
+      `siguen registradas y habrá que revisarlas aparte.\n\n` +
+      `¿Borrar los bloques de ${anio}?`
+    );
+    if (!confirmado) return;
+
     try {
       setIsEliminandoBloques(true);
 
-      const response = await BloquesReservacionService.eliminarBloques(
-        anioVigente
-      );
+      const response = await BloquesReservacionService.eliminarBloques(anio);
 
       onNotification(
         "success",
         "Bloques Eliminados",
-        `Se eliminaron ${response.totalBloquesEliminados} bloques de ${response.gruposAfectados} grupos.`
+        `Se eliminaron ${response.totalBloquesEliminados} bloques de ${response.gruposAfectados} grupos del año ${anio}.`
       );
 
       // Actualizar estadísticas (debería quedar en 0)
@@ -782,6 +798,36 @@ export const VacacionesGeneral = ({
                   <span>Descargar turnos {anioPreparacion}</span>
                 </Button>
 
+                {/* Rehacer los bloques del año en preparación. Generar se niega
+                    si el año ya tiene bloques ("Ya existen bloques generados
+                    para el año X; si quieres rehacerlos, primero elimínalos
+                    desde la misma pantalla"), y hasta ahora esa pantalla no
+                    tenía el botón: sólo estaba el del año vigente, que borraba
+                    el año equivocado. */}
+                <Button
+                  onClick={() => handleEliminarBloques(anioPreparacion)}
+                  variant="outline"
+                  disabled={isEliminandoBloques}
+                  className="flex items-center gap-2 border-red-300 text-red-600 hover:bg-red-50"
+                >
+                  {isEliminandoBloques ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                      Eliminando...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Borrar bloques {anioPreparacion}
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-gray-600 max-w-sm">
+                  Bórralos sólo si vas a volver a generarlos: al hacerlo se
+                  pierden las asignaciones de {anioPreparacion} y hay que
+                  rehacer el reparto por antigüedad.
+                </p>
+
                 <div className="pt-2 border-t space-y-3">
                   <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-3 space-y-1">
                     <p className="font-medium text-gray-800">
@@ -1149,7 +1195,7 @@ export const VacacionesGeneral = ({
 
                 {/* Botón para borrar bloques */}
                 <Button
-                  onClick={handleEliminarBloques}
+                  onClick={() => handleEliminarBloques(anioVigente)}
                   variant="outline"
                   disabled={isEliminandoBloques}
                   className="flex items-center gap-2 border-red-300 text-red-600 hover:bg-red-50"
@@ -1162,7 +1208,7 @@ export const VacacionesGeneral = ({
                   ) : (
                     <>
                       <Trash2 className="w-4 h-4" />
-                      Borrar bloques
+                      Borrar bloques {anioVigente}
                     </>
                   )}
                 </Button>
