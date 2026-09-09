@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, XCircle, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Download, XCircle, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
 import { EstadisticasBloques } from "./EstadisticasBloques";
 import { EstadisticasEmpleados } from "./EstadisticasEmpleados";
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
@@ -47,11 +47,52 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [showConfirmConclude, setShowConfirmConclude] = useState(false);
   const [isDownloadingNoRespondieron, setIsDownloadingNoRespondieron] = useState(false);
+  const [isEliminandoBloques, setIsEliminandoBloques] = useState(false);
 
   // Año sobre el que operan cancelar/concluir: el que está en preparación si
   // lo hay. Con el vigente se habría revertido el año en curso (bloques,
   // vacaciones y solicitudes de 2026) al cancelar la preparación de 2027.
   const anioObjetivo = configVacaciones?.anioProgramacionAnual ?? anioVigente;
+
+  /**
+   * Rehacer los turnos SIN tocar nada más.
+   *
+   * Es distinto de "Cancelar Programación": aquel revierte el año completo
+   * —incluidas las vacaciones que ya asignó la empresa— y obliga a repetir
+   * toda la programación automática. Esto sólo tira los bloques y sus
+   * asignaciones, que es lo que se necesita cuando la ventana de captura se
+   * venció antes de que alcanzaran a capturar. Generar se niega mientras el
+   * año conserve un solo bloque, así que sin este botón no había forma de
+   * rehacerlos desde esta pantalla.
+   */
+  const handleBorrarBloques = async () => {
+    const confirmado = window.confirm(
+      `Se van a borrar los bloques de ${anioObjetivo} y sus asignaciones, para poder generarlos de nuevo.\n\n` +
+      `NO se tocan las vacaciones ya asignadas ni las capturadas: para eso es "Cancelar Programación", que es otra cosa.\n\n` +
+      `Esto no se puede deshacer. ¿Borrar los bloques de ${anioObjetivo}?`
+    );
+    if (!confirmado) return;
+
+    try {
+      setIsEliminandoBloques(true);
+      const r = await BloquesReservacionService.eliminarBloques(anioObjetivo);
+      onNotification(
+        "success",
+        "Bloques borrados",
+        `Se eliminaron ${r.totalBloquesEliminados} bloques de ${r.gruposAfectados} grupos del año ${anioObjetivo}. ` +
+        "Ya puedes generarlos otra vez con la fecha de hoy."
+      );
+      onEstadisticasUpdate();
+    } catch (error) {
+      onNotification(
+        "error",
+        "No se pudieron borrar los bloques",
+        error instanceof Error ? error.message : "Intenta nuevamente."
+      );
+    } finally {
+      setIsEliminandoBloques(false);
+    }
+  };
 
   const handleCancelarProgramacion = async () => {
     if (!showConfirmCancel) {
@@ -396,14 +437,39 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
               </p>
             </div>
           </div>
-          <Button
-            onClick={onDescargarTurnos}
-            variant="continental"
-            className="flex items-center gap-2 h-12 px-6"
-          >
-            <Download size={18} />
-            <span>Descargar turnos</span>
-          </Button>
+          <div className="flex flex-col items-end gap-2">
+            <Button
+              onClick={onDescargarTurnos}
+              variant="continental"
+              className="flex items-center gap-2 h-12 px-6"
+            >
+              <Download size={18} />
+              <span>Descargar turnos</span>
+            </Button>
+
+            <Button
+              onClick={handleBorrarBloques}
+              variant="outline"
+              disabled={isEliminandoBloques}
+              className="flex items-center gap-2 border-red-300 text-red-600 hover:bg-red-50"
+            >
+              {isEliminandoBloques ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                  Borrando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Borrar bloques {anioObjetivo}
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-gray-600 max-w-xs text-right">
+              Sólo los turnos, para volver a generarlos si se venció la ventana
+              de captura. No toca las vacaciones asignadas.
+            </p>
+          </div>
         </div>
       </div>
 
