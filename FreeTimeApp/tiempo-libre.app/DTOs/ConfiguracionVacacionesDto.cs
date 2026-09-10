@@ -106,6 +106,12 @@ namespace tiempo_libre.DTOs
 
         [MaxLength(500)]
         public string? Motivo { get; set; }
+
+        /// <summary>
+        /// Grupo al que aplica. null = toda el área (lo de siempre). Sólo se
+        /// usa al crear: una excepción no cambia de grupo al editarla.
+        /// </summary>
+        public int? GrupoId { get; set; }
     }
 
     public class ExcepcionManningResponse
@@ -113,6 +119,9 @@ namespace tiempo_libre.DTOs
         public int Id { get; set; }
         public int AreaId { get; set; }
         public string NombreArea { get; set; } = string.Empty;
+        /// <summary>null = excepción de toda el área.</summary>
+        public int? GrupoId { get; set; }
+        public string? NombreGrupo { get; set; }
         public int Anio { get; set; }
         public int Mes { get; set; }
         public string MesNombre { get; set; } = string.Empty;

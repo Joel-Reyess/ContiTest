@@ -918,9 +918,20 @@ public partial class FreeTimeDbContext : DbContext
                 .HasForeignKey(e => e.CreadoPorUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Índice único para área-año-mes (solo una excepción por combinación)
-            entity.HasIndex(e => new { e.AreaId, e.Anio, e.Mes })
-                .IsUnique();
+            // Relación con Grupo (NULL = excepción de toda el área)
+            entity.HasOne(e => e.Grupo)
+                .WithMany()
+                .HasForeignKey(e => e.GrupoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Una excepción ACTIVA por área-grupo-año-mes. GrupoId NULL cuenta
+            // como un valor más, así que sigue habiendo una sola de área por mes.
+            // Filtrado por Activa porque eliminar = desactivar: con el índice sin
+            // filtro no se podía volver a crear la del mismo mes.
+            // (Lo crea AddGrupoExcepcionesManning.sql; aquí sólo se describe.)
+            entity.HasIndex(e => new { e.AreaId, e.GrupoId, e.Anio, e.Mes })
+                .IsUnique()
+                .HasFilter("[Activa] = 1");
         });
 
         modelBuilder.Entity<VacacionesProgramadas>(entity =>

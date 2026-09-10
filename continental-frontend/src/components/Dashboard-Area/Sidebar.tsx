@@ -19,6 +19,8 @@ interface SidebarProps {
     areaNombre?: string;
     manningBase?: number;
     areas?: { id: string; name: string; manning?: number }[];
+    /** Avisa al calendario que vuelva a pedir las ausencias (traen el manning por grupo). */
+    onExcepcionesManningCambiadas?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -26,12 +28,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     onManningChange,
     activeView,
     currentDate,
+    selectedGroups = [],
     showManning = true,
     currentAreaGroups = [],
     areaId,
     areaNombre,
     manningBase,
-    areas
+    areas,
+    onExcepcionesManningCambiadas
 }) => {
     const { hasRole } = useAuth();
 
@@ -67,6 +71,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                     manningBase={manningBase || manningRequerido}
                     onManningChange={onManningChange}
                     areas={areas}
+                    // Sin esto el panel no sabía qué grupos estaban marcados y
+                    // todo cambio de manning era de toda el área.
+                    selectedGroups={selectedGroups}
+                    currentAreaGroups={currentAreaGroups}
+                    onExcepcionesCambiadas={onExcepcionesManningCambiadas}
                 />
             )}
 

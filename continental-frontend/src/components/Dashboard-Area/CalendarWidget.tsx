@@ -96,6 +96,12 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
     const debouncedView = useDebounce(filters.view, 300);
     const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
     const [ausenciasData, setAusenciasData] = useState<AusenciasPorFecha[]>([]);
+    // Sube cada vez que Industrial guarda o quita una excepción de manning. El
+    // manning de cada grupo lo calcula el backend dentro de las ausencias, y esa
+    // consulta sólo se repetía al cambiar fecha, vista, área o grupos: después
+    // de guardar el manning de un grupo el calendario seguía con el número
+    // viejo y parecía que no había funcionado.
+    const [recargaAusencias, setRecargaAusencias] = useState(0);
     // Carga interna del calendario; no bloquea la UI para evitar flasheo
     const [_, setLoading] = useState(false);
     const [manningRequerido, setManningRequerido] = useState<number>(48);
@@ -224,7 +230,7 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
         return () => {
             abortRef.current?.abort();
         };
-    }, [debouncedDate.toISOString(), debouncedView, selectedArea, JSON.stringify(safeCurrentGroups.map((g: any) => g.grupoId))]);
+    }, [debouncedDate.toISOString(), debouncedView, selectedArea, JSON.stringify(safeCurrentGroups.map((g: any) => g.grupoId)), recargaAusencias]);
 
     // Cargar nombres de líderes por grupo (usa caché local para evitar llamadas repetidas)
     useEffect(() => {
@@ -595,6 +601,7 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
                             areaNombre={currentAreaGroups.length > 0 ? currentAreaGroups[0]?.areaNombre : undefined}
                             manningBase={getManningBase()}
                             areas={areas}
+                            onExcepcionesManningCambiadas={() => setRecargaAusencias(n => n + 1)}
                         />
                     )}
                 </div>

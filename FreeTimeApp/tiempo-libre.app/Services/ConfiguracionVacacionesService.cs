@@ -227,6 +227,7 @@ namespace tiempo_libre.Services
                 var query = _db.ExcepcionesManning
                     .Include(e => e.Area)
                     .Include(e => e.CreadoPor)
+                    .Include(e => e.Grupo)
                     .AsQueryable();
 
                 if (soloActivas)
@@ -259,21 +260,37 @@ namespace tiempo_libre.Services
         {
             try
             {
-                // Verificar si ya existe una excepción para el mismo área, año y mes
+                // Una activa por área-GRUPO-año-mes. GrupoId null es la de toda el
+                // área; comparar contra un null lo traduce EF a IS NULL, así que la
+                // de área y la de cada grupo del mismo mes conviven sin chocar.
                 var existente = await _db.ExcepcionesManning
                     .FirstOrDefaultAsync(e => e.AreaId == excepcion.AreaId &&
+                                             e.GrupoId == excepcion.GrupoId &&
                                              e.Anio == excepcion.Anio &&
                                              e.Mes == excepcion.Mes &&
                                              e.Activa);
 
                 if (existente != null)
                     return new ApiResponse<ExcepcionesManning>(false, null,
-                        $"Ya existe una excepción activa para el área {excepcion.AreaId} en {excepcion.Mes}/{excepcion.Anio}");
+                        excepcion.GrupoId.HasValue
+                            ? $"Ya existe una excepción activa para el grupo {excepcion.GrupoId} en {excepcion.Mes}/{excepcion.Anio}"
+                            : $"Ya existe una excepción activa para el área {excepcion.AreaId} en {excepcion.Mes}/{excepcion.Anio}");
 
                 // Verificar que el área existe
                 var area = await _db.Areas.FindAsync(excepcion.AreaId);
                 if (area == null)
                     return new ApiResponse<ExcepcionesManning>(false, null, $"El área con ID {excepcion.AreaId} no existe");
+
+                // Y que el grupo, si viene, sea de esa área: si no, el manning
+                // quedaría colgado de un área y aplicado a un grupo ajeno.
+                if (excepcion.GrupoId.HasValue)
+                {
+                    var grupoDelArea = await _db.Grupos
+                        .AnyAsync(g => g.GrupoId == excepcion.GrupoId.Value && g.AreaId == excepcion.AreaId);
+                    if (!grupoDelArea)
+                        return new ApiResponse<ExcepcionesManning>(false, null,
+                            $"El grupo {excepcion.GrupoId} no pertenece al área {excepcion.AreaId}");
+                }
 
                 excepcion.CreadoPorUserId = usuarioId;
                 excepcion.CreatedAt = DateTime.UtcNow;

@@ -567,7 +567,10 @@ namespace tiempo_libre.Controllers
 
             foreach (var grupo in grupos)
             {
-                var excManning = excepcionesManning.FirstOrDefault(e => e.AreaId == grupo.AreaId);
+                // Grupo primero, luego la de toda el área (GrupoId null): con manning
+                // por grupo, la excepción de otro grupo ya no se toma como la del área.
+                var excManning = excepcionesManning.FirstOrDefault(e => e.GrupoId == grupo.GrupoId)
+                    ?? excepcionesManning.FirstOrDefault(e => e.AreaId == grupo.AreaId && e.GrupoId == null);
                 var manningBase = grupo.Area?.Manning ?? 0;
                 var manningExc = excManning?.ManningRequeridoExcepcion;
                 var manning = (double)(manningExc ?? manningBase);
@@ -781,7 +784,10 @@ namespace tiempo_libre.Controllers
 
                 foreach (var grupo in grupos)
                 {
-                    var excManning = excepcionesManning.FirstOrDefault(e => e.AreaId == grupo.AreaId);
+                    // Grupo primero, luego la de toda el área (GrupoId null): con manning
+                    // por grupo, la excepción de otro grupo ya no se toma como la del área.
+                    var excManning = excepcionesManning.FirstOrDefault(e => e.GrupoId == grupo.GrupoId)
+                        ?? excepcionesManning.FirstOrDefault(e => e.AreaId == grupo.AreaId && e.GrupoId == null);
                     var manning = (double)(excManning?.ManningRequeridoExcepcion ?? grupo.Area?.Manning ?? 0);
                     if (manning <= 0) continue;
 

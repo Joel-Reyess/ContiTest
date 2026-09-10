@@ -166,9 +166,18 @@ namespace tiempo_libre.Services
                             .Where(e => e.Nomina.HasValue)
                             .Select(e => e.Nomina!.Value).ToHashSet();
 
-                        // Manning
+                        // Manning: primero la excepción de ESTE grupo, luego la de
+                        // toda el área (GrupoId null), luego el base del área.
+                        // Antes sólo existía la de área y cualquier ajuste movía el
+                        // manning de todos los grupos, aunque se hubiera querido
+                        // cambiar uno solo.
                         var excManning = excepcionesManning
+                            .FirstOrDefault(e => e.GrupoId == grupo.GrupoId &&
+                                                 e.Anio == fecha.Year &&
+                                                 e.Mes == fecha.Month)
+                            ?? excepcionesManning
                             .FirstOrDefault(e => e.AreaId == grupo.AreaId &&
+                                                 e.GrupoId == null &&
                                                  e.Anio == fecha.Year &&
                                                  e.Mes == fecha.Month);
                         var manning = excManning?.ManningRequeridoExcepcion
@@ -398,7 +407,7 @@ namespace tiempo_libre.Services
                 throw new ArgumentException($"Grupo con ID {grupoId} no encontrado");
 
             // 2) Manning requerido (con fallback)
-            var manningRequerido = await ObtenerManningRequeridoAsync(grupo.AreaId, fecha);
+            var manningRequerido = await ObtenerManningRequeridoAsync(grupo.GrupoId, grupo.AreaId, fecha);
             if (manningRequerido <= 0) manningRequerido = 1; // evita división por cero
 
             // 3) Personal total del grupo (con fallback)
@@ -661,11 +670,19 @@ namespace tiempo_libre.Services
         /// <summary>
         /// Obtener el manning requerido considerando excepciones por mes
         /// </summary>
-        private async Task<decimal> ObtenerManningRequeridoAsync(int areaId, DateOnly fecha)
+        private async Task<decimal> ObtenerManningRequeridoAsync(int grupoId, int areaId, DateOnly fecha)
         {
-            // Buscar excepción específica para esta área y mes
+            // Primero la excepción de este grupo; si no hay, la de toda el área
+            // (GrupoId null). Sin ese filtro, en cuanto existiera una de grupo
+            // esta consulta podía devolverla como si fuera la del área.
             var excepcion = await _db.ExcepcionesManning
+                .FirstOrDefaultAsync(e => e.GrupoId == grupoId
+                                       && e.Anio == fecha.Year
+                                       && e.Mes == fecha.Month
+                                       && e.Activa)
+                ?? await _db.ExcepcionesManning
                 .FirstOrDefaultAsync(e => e.AreaId == areaId
+                                       && e.GrupoId == null
                                        && e.Anio == fecha.Year
                                        && e.Mes == fecha.Month
                                        && e.Activa);

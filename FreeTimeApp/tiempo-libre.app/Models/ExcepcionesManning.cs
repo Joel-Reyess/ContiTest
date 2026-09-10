@@ -18,6 +18,15 @@ namespace tiempo_libre.Models
         [ForeignKey("AreaId")]
         public Area? Area { get; set; }
 
+        /// <summary>
+        /// Grupo al que aplica la excepcion. NULL = toda el area, que es lo que
+        /// habia antes y lo que conservan las filas existentes. Con valor, solo
+        /// ese grupo: el manning de un grupo se resuelve grupo -> area -> base.
+        /// </summary>
+        public int? GrupoId { get; set; }
+        [ForeignKey("GrupoId")]
+        public Grupo? Grupo { get; set; }
+
         [Required]
         public int Anio { get; set; }
 

@@ -179,7 +179,11 @@ export const excepcionesManningService = {
     async getExcepcionActivaParaMes(areaId: number, anio: number, mes: number): Promise<ExcepcionManning | null> {
         try {
             const excepciones = await this.getExcepcionesManning(areaId, anio, mes, true);
-            return excepciones.length > 0 ? excepciones[0] : null;
+            // Sólo la de toda el área (grupoId null). Con manning por grupo, el
+            // mismo mes puede traer también las de cada grupo, y excepciones[0]
+            // podía ser la de un grupo mostrada como si fuera la del área —
+            // justo al revés del bug que se corrige.
+            return excepciones.find(e => e.grupoId == null) ?? null;
         } catch (error) {
             console.error("Error getting active exception for month:", error);
             return null;

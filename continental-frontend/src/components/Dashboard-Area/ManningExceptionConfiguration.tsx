@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { useVacationConfig } from '@/hooks/useVacationConfig';
 import { excepcionesManningService } from '@/services/excepcionesManningService';
 import type { ExcepcionManning } from '@/interfaces/Api.interface';
+import type { Grupo } from '@/interfaces/Grupo.interface';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -15,6 +16,12 @@ interface ManningExceptionConfigurationProps {
     manningBase: number;
     onManningChange: (newManning: number) => void;
     areas?: { id: string; name: string; manning?: number }[];
+    /** Grupos marcados en el calendario (ids como string, igual que los filtros). */
+    selectedGroups?: string[];
+    /** Grupos del área, para saber si están todos marcados o sólo una parte. */
+    currentAreaGroups?: Grupo[];
+    /** Se llama tras guardar, editar o quitar una excepción, para refrescar el calendario. */
+    onExcepcionesCambiadas?: () => void;
 }
 
 interface ExceptionFormData {
@@ -34,7 +41,10 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
     areaId,
     manningBase,
     onManningChange,
-    areas
+    areas,
+    selectedGroups,
+    currentAreaGroups,
+    onExcepcionesCambiadas
 }) => {
     const { config } = useVacationConfig();
     const [excepciones, setExcepciones] = useState<ExcepcionManning[]>([]);
@@ -65,6 +75,83 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
 
     const actualManningBase = getManningBase();
 
+    // ─── ¿A quién le aplica el cambio? ─────────────────────────────────────
+    // Antes todo ajuste se guardaba como excepción de ÁREA, así que con un solo
+    // grupo marcado se movía el manning de todos. Ahora: con todos los grupos
+    // del área marcados (o si esta vista no maneja grupos) es la excepción de
+    // área, como siempre; con sólo una parte, una excepción por grupo marcado.
+    const gruposDelArea = currentAreaGroups ?? [];
+    const idsSeleccionados = (selectedGroups ?? [])
+        .map(id => parseInt(id, 10))
+        .filter(id => !Number.isNaN(id) && gruposDelArea.some(g => g.grupoId === id));
+    const sinGruposSeleccionados = gruposDelArea.length > 0 && idsSeleccionados.length === 0;
+    const alcancePorGrupo =
+        gruposDelArea.length > 0 &&
+        idsSeleccionados.length > 0 &&
+        idsSeleccionados.length < gruposDelArea.length;
+    const nombreDeGrupo = (grupoId: number) =>
+        gruposDelArea.find(g => g.grupoId === grupoId)?.rol ?? `Grupo ${grupoId}`;
+
+    const excepcionDeArea = (anio: number, mes: number) =>
+        excepciones.find(e => e.anio === anio && e.mes === mes && e.activa && e.grupoId == null);
+    const excepcionDeGrupo = (anio: number, mes: number, grupoId: number) =>
+        excepciones.find(e => e.anio === anio && e.mes === mes && e.activa && e.grupoId === grupoId);
+    // Lo que de verdad le aplica a un grupo: la suya, si no la del área, si no el base.
+    const manningEfectivoDeGrupo = (anio: number, mes: number, grupoId: number) =>
+        excepcionDeGrupo(anio, mes, grupoId)?.manningRequeridoExcepcion
+        ?? excepcionDeArea(anio, mes)?.manningRequeridoExcepcion
+        ?? actualManningBase;
+    // Grupos que este mes tienen manning propio: un cambio de área NO los mueve.
+    const gruposConManningPropio = gruposDelArea.filter(
+        g => excepcionDeGrupo(currentYear, currentMonth, g.grupoId)
+    );
+
+    /**
+     * Crea o actualiza la excepción del mes para cada destino del alcance
+     * actual: la de área, o una por cada grupo marcado. Si el destino ya tenía
+     * excepción ese mes se actualiza en vez de chocar con "Ya existe una
+     * excepción activa". Devuelve cuántas guardó.
+     */
+    const guardarParaAlcance = async (
+        anio: number,
+        mes: number,
+        manning: number,
+        opciones: { motivo?: string; motivoSiEsNueva?: string } = {}
+    ): Promise<number> => {
+        const destinos: (number | null)[] = alcancePorGrupo ? idsSeleccionados : [null];
+        const guardadas: ExcepcionManning[] = [];
+        for (const grupoId of destinos) {
+            const existente = grupoId == null
+                ? excepcionDeArea(anio, mes)
+                : excepcionDeGrupo(anio, mes, grupoId);
+            if (existente) {
+                guardadas.push(await excepcionesManningService.updateExcepcionManning(existente.id, {
+                    areaId: areaId!,
+                    anio,
+                    mes,
+                    manningRequeridoExcepcion: manning,
+                    motivo: opciones.motivo ?? existente.motivo ?? undefined,
+                }));
+            } else {
+                guardadas.push(await excepcionesManningService.createExcepcionManning({
+                    areaId: areaId!,
+                    grupoId,
+                    anio,
+                    mes,
+                    manningRequeridoExcepcion: manning,
+                    motivo: opciones.motivo ?? opciones.motivoSiEsNueva,
+                }));
+            }
+        }
+        setExcepciones(prev => {
+            const porId = new Map(prev.map(e => [e.id, e]));
+            guardadas.forEach(g => porId.set(g.id, g));
+            return Array.from(porId.values());
+        });
+        onExcepcionesCambiadas?.();
+        return guardadas.length;
+    };
+
     // Resetear el override cuando cambia el área
     useEffect(() => {
         setBaseOverride(null);
@@ -77,41 +164,29 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
             toast.error('El manning debe ser mayor a 0');
             return;
         }
+        // Sin grupos marcados, "guardar" caería al alcance de área y movería a
+        // todos: justo lo que se está corrigiendo.
+        if (sinGruposSeleccionados) {
+            toast.error('Marca al menos un grupo para editar su manning');
+            return;
+        }
         setSavingBase(true);
         try {
-            // Aislamos por mes: guardamos como excepción del mes mostrado, NO
-            // como manning base global. Si ya existe excepción del mes, la
-            // actualizamos; si no, la creamos. Los dashboards leen
-            // ExcepcionesManning por (anio, mes) con fallback al base, así que
-            // este cambio no contamina los demás meses.
-            const existingExc = excepciones.find(
-                e => e.anio === currentYear && e.mes === currentMonth && e.activa
-            );
-            if (existingExc) {
-                const updated = await excepcionesManningService.updateExcepcionManning(
-                    existingExc.id,
-                    {
-                        areaId,
-                        anio: currentYear,
-                        mes: currentMonth,
-                        manningRequeridoExcepcion: baseDraft,
-                        motivo: existingExc.motivo || undefined,
-                    }
-                );
-                setExcepciones(prev => prev.map(e => e.id === updated.id ? updated : e));
-            } else {
-                const created = await excepcionesManningService.createExcepcionManning({
-                    areaId,
-                    anio: currentYear,
-                    mes: currentMonth,
-                    manningRequeridoExcepcion: baseDraft,
-                    motivo: 'Ajuste de manning del mes',
-                });
-                setExcepciones(prev => [...prev, created]);
-            }
+            // Aislado por mes (excepción del mes mostrado, nunca el base global)
+            // y ahora también por alcance: área completa o sólo los grupos
+            // marcados. Los tableros resuelven grupo -> área -> base.
+            const n = await guardarParaAlcance(currentYear, currentMonth, baseDraft, {
+                motivoSiEsNueva: 'Ajuste de manning del mes',
+            });
             setEditingBase(false);
-            onManningChange(baseDraft);
-            toast.success(`Manning de ${MESES[currentMonth - 1]} ${currentYear} actualizado`);
+            // El número de arriba del calendario es el del ÁREA: sólo se mueve
+            // cuando el cambio fue de área.
+            if (!alcancePorGrupo) onManningChange(baseDraft);
+            toast.success(
+                alcancePorGrupo
+                    ? `Manning de ${MESES[currentMonth - 1]} ${currentYear} actualizado para ${n} grupo(s)`
+                    : `Manning de ${MESES[currentMonth - 1]} ${currentYear} actualizado`
+            );
         } catch (error: any) {
             console.error('Error updating month manning:', error);
             toast.error(error?.message || 'Error al actualizar el manning del mes');
@@ -147,10 +222,13 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
     // Aplicar excepción del mes actual al manning
     useEffect(() => {
         if (areaId && excepciones.length >= 0) {
+            // Sólo la de toda el área: este valor es el número del área en el
+            // calendario. La de un grupo no debe sustituirlo.
             const excepcionActual = excepciones.find(exc =>
                 exc.anio === currentYear &&
                 exc.mes === currentMonth &&
-                exc.activa
+                exc.activa &&
+                exc.grupoId == null
             );
 
             if (excepcionActual) {
@@ -192,18 +270,22 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
             toast.error('Por favor complete todos los campos requeridos');
             return;
         }
+        if (sinGruposSeleccionados) {
+            toast.error('Marca al menos un grupo para crear su excepción');
+            return;
+        }
 
         try {
-            const newException = await excepcionesManningService.createExcepcionManning({
-                areaId,
-                anio: formData.anio,
-                mes: formData.mes,
-                manningRequeridoExcepcion: formData.manningRequeridoExcepcion,
-                motivo: formData.motivo || undefined
+            // Con alcance de área es la excepción de siempre; con grupos
+            // marcados, una por grupo.
+            const n = await guardarParaAlcance(formData.anio, formData.mes, formData.manningRequeridoExcepcion, {
+                motivo: formData.motivo || undefined,
             });
-
-            setExcepciones(prev => [...prev, newException]);
-            toast.success('Excepción de manning creada correctamente');
+            toast.success(
+                alcancePorGrupo
+                    ? `Excepción de manning guardada para ${n} grupo(s)`
+                    : 'Excepción de manning creada correctamente'
+            );
             resetForm();
         } catch (error: any) {
             console.error('Error creating manning exception:', error);
@@ -229,6 +311,7 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
             setExcepciones(prev =>
                 prev.map(exc => exc.id === editingException.id ? updatedException : exc)
             );
+            onExcepcionesCambiadas?.();
             toast.success('Excepción de manning actualizada correctamente');
             resetForm();
         } catch (error: any) {
@@ -243,6 +326,7 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
         try {
             await excepcionesManningService.deleteExcepcionManning(excepcionId);
             setExcepciones(prev => prev.filter(exc => exc.id !== excepcionId));
+            onExcepcionesCambiadas?.();
             toast.success('Excepción de manning eliminada correctamente');
         } catch (error: any) {
             console.error('Error deleting manning exception:', error);
@@ -273,7 +357,9 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
     };
 
     const getExcepcionParaMes = (mes: number) => {
-        return excepciones.find(exc => exc.anio === currentYear && exc.mes === mes && exc.activa);
+        // La de área. Sin el filtro de grupo, una de grupo aparecía aquí y al
+        // editar "el manning del área" se sobreescribía la de ese grupo.
+        return excepcionDeArea(currentYear, mes);
     };
 
     const getCurrentMonthException = () => {
@@ -303,7 +389,52 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
 
             {/* Header con información del mes actual */}
             <div className="space-y-3 mb-4">
+                {/* A quién le va a pegar el cambio. Antes no se decía, y aun con
+                    un grupo marcado se estaba moviendo el manning de toda el área. */}
+                <div className={`text-xs rounded p-2 border ${
+                    sinGruposSeleccionados
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : alcancePorGrupo
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : 'bg-gray-50 text-gray-700 border-gray-200'
+                }`}>
+                    {sinGruposSeleccionados ? (
+                        'Marca al menos un grupo para editar su manning.'
+                    ) : alcancePorGrupo ? (
+                        <>Los cambios aplican sólo a: <strong>{idsSeleccionados.map(nombreDeGrupo).join(', ')}</strong></>
+                    ) : (
+                        <>
+                            Los cambios aplican a toda el área.
+                            {gruposConManningPropio.length > 0 && (
+                                <span className="block mt-1 text-orange-700">
+                                    Ojo: {gruposConManningPropio.map(g => g.rol).join(', ')} tiene(n) manning
+                                    propio este mes y no cambia(n) con el del área.
+                                </span>
+                            )}
+                        </>
+                    )}
+                </div>
                 <div className="text-center">
+                    {alcancePorGrupo ? (
+                        // Con grupos marcados, el manning que de verdad le aplica
+                        // a cada uno (propio, del área o base).
+                        <div className="space-y-1 mb-1">
+                            {idsSeleccionados.map(gid => {
+                                const propia = excepcionDeGrupo(currentYear, currentMonth, gid);
+                                return (
+                                    <div key={gid} className="flex justify-between text-sm">
+                                        <span className="text-gray-600">{nombreDeGrupo(gid)}</span>
+                                        <span className="font-semibold text-gray-700">
+                                            {manningEfectivoDeGrupo(currentYear, currentMonth, gid)}
+                                            <span className={`text-xs ml-1 ${propia ? 'text-orange-600' : 'text-gray-500'}`}>
+                                                {propia ? '(Grupo)' : excepcionDeArea(currentYear, currentMonth) ? '(Área)' : '(Base)'}
+                                            </span>
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
                     <div className="text-lg font-semibold text-gray-700 mb-1">
                         {currentException ? (
                             <>
@@ -317,6 +448,7 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                             </>
                         )}
                     </div>
+                    )}
                     <div className="text-xs text-gray-500 mb-3">
                         {format(currentDate, "MMMM 'de' yyyy", { locale: es })}
                     </div>
@@ -349,11 +481,15 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                                 <X size={12} />
                             </Button>
                         </div>
-                    ) : (
+                    ) : sinGruposSeleccionados ? null : (
                         <div className="flex justify-center mb-2">
                             <Button
                                 onClick={() => {
-                                    setBaseDraft(actualManningBase);
+                                    setBaseDraft(
+                                        alcancePorGrupo
+                                            ? manningEfectivoDeGrupo(currentYear, currentMonth, idsSeleccionados[0])
+                                            : actualManningBase
+                                    );
                                     setEditingBase(true);
                                 }}
                                 variant="outline"
@@ -361,6 +497,9 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                             >
                                 <Edit2 size={12} className="mr-1" />
                                 Editar manning de {MESES[currentMonth - 1]}
+                                {alcancePorGrupo
+                                    ? ` (${idsSeleccionados.length} grupo${idsSeleccionados.length === 1 ? '' : 's'})`
+                                    : ''}
                             </Button>
                         </div>
                     )}
@@ -373,6 +512,7 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                 </div>
 
                 {/* Botón para agregar nueva excepción */}
+                {!sinGruposSeleccionados && (
                 <div className="flex justify-center">
                     <Button
                         onClick={() => setShowForm(true)}
@@ -383,6 +523,7 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                         Nueva Excepción
                     </Button>
                 </div>
+                )}
             </div>
 
             {/* Formulario de creación/edición */}
@@ -486,7 +627,68 @@ export const ManningExceptionConfiguration: React.FC<ManningExceptionConfigurati
                     </div>
                 ) : (
                     <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {MESES.map((mesNombre, index) => {
+                        {alcancePorGrupo ? (
+                            // Con grupos marcados: por mes, lo que le aplica a
+                            // cada grupo, con editar/quitar sobre SU excepción.
+                            MESES.map((mesNombre, index) => {
+                                const mes = index + 1;
+                                const isCurrentMonth = mes === currentMonth;
+                                return (
+                                    <div
+                                        key={mes}
+                                        className={`py-2 px-3 rounded border ${isCurrentMonth ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                                                {mesNombre}
+                                                {isCurrentMonth && <Calendar size={12} className="text-blue-600" />}
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    setFormData(prev => ({ ...prev, mes }));
+                                                    setShowForm(true);
+                                                }}
+                                                className="p-1 text-green-600 hover:text-green-700"
+                                                title="Excepción para los grupos marcados"
+                                            >
+                                                <Plus size={14} />
+                                            </button>
+                                        </div>
+                                        {idsSeleccionados.map(gid => {
+                                            const propia = excepcionDeGrupo(currentYear, mes, gid);
+                                            return (
+                                                <div key={gid} className="flex items-center justify-between text-xs text-gray-600 pl-2">
+                                                    <span>
+                                                        {nombreDeGrupo(gid)}: {manningEfectivoDeGrupo(currentYear, mes, gid)}{' '}
+                                                        <span className={propia ? 'text-orange-600' : 'text-gray-400'}>
+                                                            {propia ? '(Grupo)' : excepcionDeArea(currentYear, mes) ? '(Área)' : '(Base)'}
+                                                        </span>
+                                                    </span>
+                                                    {propia && (
+                                                        <span className="flex gap-1">
+                                                            <button
+                                                                onClick={() => startEdit(propia)}
+                                                                className="p-1 text-blue-600 hover:text-blue-700"
+                                                                title="Editar excepción del grupo"
+                                                            >
+                                                                <Edit2 size={12} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteException(propia.id)}
+                                                                className="p-1 text-red-600 hover:text-red-700"
+                                                                title="Quitar excepción del grupo"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })
+                        ) : MESES.map((mesNombre, index) => {
                             const mes = index + 1;
                             const excepcion = getExcepcionParaMes(mes);
                             const isCurrentMonth = mes === currentMonth;

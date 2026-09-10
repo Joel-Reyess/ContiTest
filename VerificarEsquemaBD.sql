@@ -29,6 +29,8 @@ FROM (VALUES
   ('ConfiguracionVacaciones.AnioProgramacionAnual','AddAnioProgramacionAnual.sql',                    IIF(COL_LENGTH('dbo.ConfiguracionVacaciones','AnioProgramacionAnual') IS NOT NULL,1,0)),
   ('Permutas.FechaDestino',                      'AddFechaDestinoPermutas.sql',                       IIF(COL_LENGTH('dbo.Permutas','FechaDestino') IS NOT NULL,1,0)),
   ('VacacionesProgramadas.CapturadoConRebase',   'AddRebasePorcentajeVacaciones.sql',                 IIF(COL_LENGTH('dbo.VacacionesProgramadas','CapturadoConRebase') IS NOT NULL,1,0)),
-  ('VacacionesProgramadas.PorcentajeAlCapturar', 'AddRebasePorcentajeVacaciones.sql',                 IIF(COL_LENGTH('dbo.VacacionesProgramadas','PorcentajeAlCapturar') IS NOT NULL,1,0))
+  ('VacacionesProgramadas.PorcentajeAlCapturar', 'AddRebasePorcentajeVacaciones.sql',                 IIF(COL_LENGTH('dbo.VacacionesProgramadas','PorcentajeAlCapturar') IS NOT NULL,1,0)),
+  ('ExcepcionesManning.GrupoId',                  'AddGrupoExcepcionesManning.sql',                    IIF(COL_LENGTH('dbo.ExcepcionesManning','GrupoId') IS NOT NULL,1,0)),
+  ('Indice UX_ExcepcionesManning_Area_Grupo_Anio_Mes','AddGrupoExcepcionesManning.sql',                IIF(EXISTS(SELECT 1 FROM sys.indexes WHERE name = 'UX_ExcepcionesManning_Area_Grupo_Anio_Mes'),1,0))
 ) AS v(Objeto, Script, Existe)
 ORDER BY Estado DESC, Objeto;

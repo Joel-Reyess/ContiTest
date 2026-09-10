@@ -605,6 +605,9 @@ export interface ExcepcionManning {
     id: number;
     areaId: number;
     nombreArea?: string;
+    /** null = excepción de toda el área. Con valor, sólo ese grupo. */
+    grupoId?: number | null;
+    nombreGrupo?: string | null;
     anio: number;
     mes: number;
     mesNombre?: string;
@@ -625,6 +628,8 @@ export interface ExcepcionManning {
 
 export interface CreateExcepcionManningRequest {
     areaId: number;
+    /** null / ausente = toda el área. */
+    grupoId?: number | null;
     anio: number;
     mes: number;
     manningRequeridoExcepcion: number;

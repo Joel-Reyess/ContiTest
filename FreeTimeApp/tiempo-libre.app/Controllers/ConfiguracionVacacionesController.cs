@@ -309,6 +309,8 @@ namespace tiempo_libre.Controllers
                         Id = e.Id,
                         AreaId = e.AreaId,
                         NombreArea = e.Area?.NombreGeneral ?? $"Área {e.AreaId}",
+                        GrupoId = e.GrupoId,
+                        NombreGrupo = e.Grupo?.Rol,
                         Anio = e.Anio,
                         Mes = e.Mes,
                         MesNombre = char.ToUpper(mesNombre[0]) + mesNombre.Substring(1),
@@ -358,6 +360,7 @@ namespace tiempo_libre.Controllers
                 var excepcion = new ExcepcionesManning
                 {
                     AreaId = request.AreaId,
+                    GrupoId = request.GrupoId,
                     Anio = request.Anio,
                     Mes = request.Mes,
                     ManningRequeridoExcepcion = request.ManningRequeridoExcepcion,

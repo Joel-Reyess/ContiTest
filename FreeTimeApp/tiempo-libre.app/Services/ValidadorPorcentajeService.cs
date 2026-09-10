@@ -60,8 +60,14 @@ namespace tiempo_libre.Services
             if (_manningCache.TryGetValue(clave, out var memorizado))
                 return memorizado ?? manningBaseArea;
 
+            // SÓLO la de toda el área (GrupoId null). Este candado compara el
+            // manning del ÁREA contra los disponibles de toda el área; una
+            // excepción de un grupo no es el requerido del área, y sin este
+            // filtro FirstOrDefault podía tomarla como si lo fuera y mover el
+            // candado de captura de todos los grupos.
             var excepcion = await _db.ExcepcionesManning
                 .Where(e => e.AreaId == areaId &&
+                            e.GrupoId == null &&
                             e.Anio == fecha.Year &&
                             e.Mes == fecha.Month &&
                             e.Activa)
