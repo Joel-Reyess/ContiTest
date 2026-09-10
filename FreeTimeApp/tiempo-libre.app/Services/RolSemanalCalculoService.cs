@@ -10,10 +10,10 @@ using tiempo_libre.Models;
 namespace tiempo_libre.Services
 {
     /// <summary>
-    /// Calcula el código de turno FINAL por empleado y día para un grupo,
-    /// aplicando exactamente la misma cadena de prioridades que
-    /// RolesSemanaController.ObtenerRolesSemanales (el rol semanal que ve el
-    /// usuario en WeeklyRoles.tsx).
+    /// Calcula el código de turno FINAL por empleado y día para un grupo. Es
+    /// LA fuente del rol semanal: RolesSemanaController.ObtenerRolesSemanales
+    /// (lo que ve el usuario en WeeklyRoles.tsx) llama a este método, no tiene
+    /// una copia propia. Un cambio aquí cambia esa pantalla.
     ///
     /// Esto permite que el dashboard de tiempo extra y ausencias cuente
     /// sobre la MISMA fuente que el rol, evitando divergencias por
@@ -262,12 +262,25 @@ namespace tiempo_libre.Services
 
             // Vacaciones (programadas no canceladas + legacy) y festivos:
             // sobre códigos "normales" {1,2,3,D,""} aplica F (festivo) o V (vacación).
-            var vacacionesProgramadas = await _db.VacacionesProgramadas
+            //
+            // Misma regla que el calendario de personal no disponible
+            // (AusenciaService): si hubo una reprogramación APROBADA desde ese
+            // día, la vacación original ya se movió y ese día no es "V", aunque
+            // el renglón original no haya quedado "Cancelada". La entrada nueva
+            // (PeriodoProgramacion = "Reprogramacion") siempre se conserva.
+            // reprogramadasSet ya se cargaba arriba, pero sólo se usaba para los
+            // permisos 1100 de SAP; aquí no se aplicaba, así que el rol pintaba
+            // "V" en días donde el calendario —con razón— ya no ponía al
+            // empleado como no disponible.
+            var vacacionesProgramadas = (await _db.VacacionesProgramadas
                 .Where(v => empleadosIds.Contains(v.EmpleadoId) &&
                             v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
                             v.EstadoVacacion != "Cancelada")
-                .Select(v => new { v.EmpleadoId, v.FechaVacacion })
-                .ToListAsync();
+                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.PeriodoProgramacion })
+                .ToListAsync())
+                .Where(v => v.PeriodoProgramacion == "Reprogramacion"
+                            || !reprogramadasSet.Contains((v.EmpleadoId, v.FechaVacacion)))
+                .ToList();
 
             var vacacionesLegacy = await _db.Vacaciones
                 .Where(v => empleadosIds.Contains(v.IdUsuarioEmpleadoSindicalizado) &&
