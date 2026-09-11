@@ -14,6 +14,13 @@ import { UserRole } from '@/interfaces/User.interface';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
+// YYYY-MM-DD con la fecha LOCAL. No usar toISOString(): convierte a UTC, y
+// en México eso mueve la fecha en cuanto la hora no es medianoche (a partir
+// de las 6 de la tarde "hoy" ya era mañana) o si la computadora no está en
+// UTC-6. El backend manda y espera fechas locales.
+const fechaLocalISO = (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 // ── Paleta unificada con WeeklyRoles chips ────────────────────────────────
 // Turno 1 (Mañana)   → emerald  bg-emerald-100 text-emerald-700  #10b981
 // Turno 2 (Tarde)    → yellow   bg-yellow-100  text-yellow-700   #eab308
@@ -250,10 +257,10 @@ export const Dashboard: React.FC = () => {
         if (semanaSel !== 'all') {
             const primerDia = (Number(semanaSel) - 1) * 7 + 1;
             const d = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
-            return d.toISOString().split('T')[0];
+            return fechaLocalISO(d);
         }
         const esHoy = anioSel === hoy.getFullYear() && mesSel === hoy.getMonth() + 1;
-        if (esHoy) return hoy.toISOString().split('T')[0];
+        if (esHoy) return fechaLocalISO(hoy);
         return `${anioSel}-${String(mesSel).padStart(2, '0')}-01`;
     }, [diaSel, semanaSel, anioSel, mesSel]);
 
@@ -313,7 +320,9 @@ export const Dashboard: React.FC = () => {
             .then(arrays => {
                 const data = arrays.flat();
                 if (view === 'daily') {
-                    const iso = fechaInicio.toISOString().split('T')[0];
+                    // Mismo formato local con el que se pidió el día; con
+                    // toISOString la búsqueda dependía de la zona horaria.
+                    const iso = fechaLocalISO(fechaInicio);
                     const diaDatos = data.filter(d => d.fecha === iso);
                     setGrupos(diaDatos.flatMap(d => d.ausenciasPorGrupo ?? []));
                     return;

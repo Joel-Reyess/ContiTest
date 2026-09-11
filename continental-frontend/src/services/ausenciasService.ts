@@ -77,6 +77,20 @@ class AusenciasService {
             fechaInicio: this.formatDate(filters.fechaInicio)
         };
 
+        // Si quien llama ya trae el rango completo, se respeta tal cual. El
+        // Dashboard de Ausencias arma la semana de LUNES a domingo (la misma
+        // que usa el backend para sus semanas) y la mandaba con fechaFin, pero
+        // aquí se tiraba y se recalculaba de domingo a sábado: la semana
+        // elegida perdía su domingo y ganaba el del fin de semana anterior.
+        // El calendario del jefe no manda fechaFin, así que para él no cambia.
+        const fechaFinExplicita =
+            filters.view !== 'daily' &&
+            filters.fechaFin &&
+            !isNaN(filters.fechaFin.getTime()) &&
+            filters.fechaFin.getTime() >= filters.fechaInicio.getTime()
+                ? filters.fechaFin
+                : null;
+
         // Configurar fechas según la vista
         switch (filters.view) {
             case 'daily':
@@ -84,6 +98,10 @@ class AusenciasService {
                 break;
                 
             case 'weekly':
+                if (fechaFinExplicita) {
+                    request.fechaFin = this.formatDate(fechaFinExplicita);
+                    break;
+                }
                 // Calcular el rango de la semana
                 const weekStart = this.getWeekStart(filters.fechaInicio);
                 const weekEnd = this.getWeekEnd(weekStart);
@@ -92,6 +110,10 @@ class AusenciasService {
                 break;
                 
             case 'monthly':
+                if (fechaFinExplicita) {
+                    request.fechaFin = this.formatDate(fechaFinExplicita);
+                    break;
+                }
                 // Calcular el rango del mes
                 const monthStart = this.getMonthStart(filters.fechaInicio);
                 const monthEnd = this.getMonthEnd(filters.fechaInicio);
