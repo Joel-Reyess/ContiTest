@@ -26,6 +26,15 @@ namespace tiempo_libre.DTOs
         /// </summary>
         [Range(2020, 2100, ErrorMessage = "El año de programación debe estar entre 2020 y 2100")]
         public int? AnioProgramacionAnual { get; set; }
+
+        /// <summary>
+        /// Porcentaje del año en preparación. null = ese año usa el general.
+        /// OJO: igual que AnioProgramacionAnual, el PUT persiste siempre lo que
+        /// reciba, así que los clientes deben reenviar el valor actual si no
+        /// quieren borrarlo.
+        /// </summary>
+        [Range(0.1, 100.0, ErrorMessage = "El porcentaje debe estar entre 0.1 y 100")]
+        public decimal? PorcentajeAusenciaPreparacion { get; set; }
     }
 
     public class ConfiguracionVacacionesResponse
@@ -35,6 +44,8 @@ namespace tiempo_libre.DTOs
         public string PeriodoActual { get; set; } = string.Empty;
         public int AnioVigente { get; set; }
         public int? AnioProgramacionAnual { get; set; }
+        /// <summary>Porcentaje propio del año en preparación. null = usa el general.</summary>
+        public decimal? PorcentajeAusenciaPreparacion { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public string? UpdatedByUser { get; set; }

@@ -6,6 +6,8 @@ export interface VacacionesConfig {
   /** Año cuya programación anual se está PREPARANDO mientras anioVigente sigue
    *  operando (coexistencia). null/undefined = sin preparación en curso. */
   anioProgramacionAnual?: number | null;
+  /** Porcentaje propio del año en preparación. null = ese año usa el general. */
+  porcentajeAusenciaPreparacion?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -17,4 +19,6 @@ export interface VacacionesConfigUpdateRequest {
   /** OJO: el backend persiste siempre este campo; si no quieres cambiarlo,
    *  reenvía el valor actual de la config (omitirlo equivale a borrarlo). */
   anioProgramacionAnual?: number | null;
+  /** Mismo cuidado que el anterior: omitirlo lo borra. */
+  porcentajeAusenciaPreparacion?: number | null;
 }

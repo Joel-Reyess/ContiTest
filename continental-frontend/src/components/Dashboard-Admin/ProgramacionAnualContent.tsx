@@ -182,6 +182,8 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
             periodoActual: habiaPreparacion ? configVacaciones.periodoActual : "Cerrado",
             anioVigente: configVacaciones.anioVigente,
             anioProgramacionAnual: null,
+            // Ya no hay año en preparación: su porcentaje deja de aplicar.
+            porcentajeAusenciaPreparacion: null,
           });
           onConfigUpdate(updatedConfig);
 
@@ -341,6 +343,7 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
         periodoActual: "Reprogramacion",
         anioVigente: configVacaciones.anioVigente,
         anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
+        porcentajeAusenciaPreparacion: configVacaciones.porcentajeAusenciaPreparacion ?? null,
       });
 
       onConfigUpdate(updatedConfig);

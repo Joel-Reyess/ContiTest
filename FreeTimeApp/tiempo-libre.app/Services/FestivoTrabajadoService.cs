@@ -136,7 +136,8 @@ namespace tiempo_libre.Services
                 var requiereAprobacion = false;
                 var configuracion = await _db.ConfiguracionVacaciones
                     .OrderByDescending(c => c.CreatedAt).FirstOrDefaultAsync();
-                var porcentajeMaximo = configuracion?.PorcentajeAusenciaMaximo ?? 4.5m;
+                var porcentajeMaximo = Helpers.PorcentajeAusenciaHelper.ParaAnio(
+                    configuracion, request.FechaNueva.Year);
 
                 if (empleado.GrupoId.HasValue)
                 {
@@ -1037,7 +1038,8 @@ namespace tiempo_libre.Services
                         .OrderByDescending(c => c.CreatedAt)
                         .FirstOrDefaultAsync();
 
-                    var porcentajeMaximo = configuracion?.PorcentajeAusenciaMaximo ?? 4.5m;
+                    var porcentajeMaximo = Helpers.PorcentajeAusenciaHelper.ParaAnio(
+                        configuracion, request.FechaNueva.Year);
 
                     if (porcentaje > porcentajeMaximo)
                     {

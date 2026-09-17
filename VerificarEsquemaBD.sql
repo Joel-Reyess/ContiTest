@@ -31,6 +31,7 @@ FROM (VALUES
   ('VacacionesProgramadas.CapturadoConRebase',   'AddRebasePorcentajeVacaciones.sql',                 IIF(COL_LENGTH('dbo.VacacionesProgramadas','CapturadoConRebase') IS NOT NULL,1,0)),
   ('VacacionesProgramadas.PorcentajeAlCapturar', 'AddRebasePorcentajeVacaciones.sql',                 IIF(COL_LENGTH('dbo.VacacionesProgramadas','PorcentajeAlCapturar') IS NOT NULL,1,0)),
   ('ExcepcionesManning.GrupoId',                  'AddGrupoExcepcionesManning.sql',                    IIF(COL_LENGTH('dbo.ExcepcionesManning','GrupoId') IS NOT NULL,1,0)),
-  ('Indice UX_ExcepcionesManning_Area_Grupo_Anio_Mes','AddGrupoExcepcionesManning.sql',                IIF(EXISTS(SELECT 1 FROM sys.indexes WHERE name = 'UX_ExcepcionesManning_Area_Grupo_Anio_Mes'),1,0))
+  ('Indice UX_ExcepcionesManning_Area_Grupo_Anio_Mes','AddGrupoExcepcionesManning.sql',                IIF(EXISTS(SELECT 1 FROM sys.indexes WHERE name = 'UX_ExcepcionesManning_Area_Grupo_Anio_Mes'),1,0)),
+  ('ConfiguracionVacaciones.PorcentajeAusenciaPreparacion','AddPorcentajePreparacion.sql',                IIF(COL_LENGTH('dbo.ConfiguracionVacaciones','PorcentajeAusenciaPreparacion') IS NOT NULL,1,0))
 ) AS v(Objeto, Script, Existe)
 ORDER BY Estado DESC, Objeto;

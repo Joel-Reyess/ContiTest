@@ -260,7 +260,8 @@ namespace tiempo_libre.Services
                     _totalEmpleadosCache[grupoId] = totalEmpleados;
                 }
 
-                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada, config.PorcentajeAusenciaMaximo);
+                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada,
+                    Helpers.PorcentajeAusenciaHelper.ParaAnio(config, fechaEvaluada.Year));
 
                 // Ausencias ya programadas para el día que se evalúa
                 ausenciasActuales ??= await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
@@ -345,7 +346,8 @@ namespace tiempo_libre.Services
 
             var dia = fecha ?? DateOnly.FromDateTime(DateTime.Today);
             var ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, dia);
-            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia, config.PorcentajeAusenciaMaximo);
+            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia,
+                Helpers.PorcentajeAusenciaHelper.ParaAnio(config, dia.Year));
             var estado = EvaluarRegla(totalEmpleados, ausenciasActuales, 0, porcentajeMaximo);
 
             var manningAreaEstado = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, dia);

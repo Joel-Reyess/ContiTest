@@ -129,11 +129,12 @@ namespace tiempo_libre.Services
                                 e.Fecha >= fechaMin && e.Fecha <= fechaMax)
                     .ToListAsync();
 
-                var configGlobal = await _db.ConfiguracionVacaciones
+                // El año en preparación puede tener su propio porcentaje, así que
+                // se resuelve por la fecha de cada día y no una sola vez para todo
+                // el rango (que además puede cruzar de un año al otro).
+                var configPorcentaje = await _db.ConfiguracionVacaciones
                     .OrderByDescending(c => c.Id)
-                    .Select(c => c.PorcentajeAusenciaMaximo)
                     .FirstOrDefaultAsync();
-                var porcentajeDefault = configGlobal > 0 ? configGlobal : PORCENTAJE_AUSENCIA_MAXIMO_DEFAULT;
 
                 // ─── 8. Mapas auxiliares para lookups O(1) ───────────────────────────
                 var nominaToEmpleado = empleadosPorGrupo
@@ -187,7 +188,8 @@ namespace tiempo_libre.Services
                         // Porcentaje máximo
                         var excPct = excepcionesPorcentaje
                             .FirstOrDefault(e => e.GrupoId == grupo.GrupoId && e.Fecha == fecha);
-                        var porcentajeMaximo = excPct?.PorcentajeMaximoPermitido ?? porcentajeDefault;
+                        var porcentajeMaximo = excPct?.PorcentajeMaximoPermitido
+                            ?? Helpers.PorcentajeAusenciaHelper.ParaAnio(configPorcentaje, fecha.Year);
 
                         // Ausentes del día (de memoria)
                         // Defensivo: aunque vacacionesBatch ya filtra EstadoVacacion="Activa",
@@ -633,12 +635,13 @@ namespace tiempo_libre.Services
             if (excepcion != null)
                 return excepcion.PorcentajeMaximoPermitido;
 
-            // Si no hay excepción, usar la configuración general
+            // Si no hay excepción, la configuración: el año en preparación puede
+            // traer su propio porcentaje.
             var config = await _db.ConfiguracionVacaciones
                 .OrderByDescending(c => c.Id)
                 .FirstOrDefaultAsync();
 
-            return config?.PorcentajeAusenciaMaximo ?? PORCENTAJE_AUSENCIA_MAXIMO_DEFAULT;
+            return Helpers.PorcentajeAusenciaHelper.ParaAnio(config, fecha.Year);
         }
 
         /// <summary>

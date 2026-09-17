@@ -68,6 +68,7 @@ namespace tiempo_libre.Services
                     configActual.PeriodoActual = nuevaConfig.PeriodoActual;
                     configActual.AnioVigente = nuevaConfig.AnioVigente;
                     configActual.AnioProgramacionAnual = nuevaConfig.AnioProgramacionAnual;
+                    configActual.PorcentajeAusenciaPreparacion = nuevaConfig.PorcentajeAusenciaPreparacion;
                     configActual.UpdatedAt = DateTime.Now;
                 }
 

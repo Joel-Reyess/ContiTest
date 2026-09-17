@@ -62,7 +62,7 @@ namespace tiempo_libre.Services
                 }
 
                 // Obtener configuración actual
-                var configuracion = await ObtenerConfiguracionVacacionesAsync();
+                var configuracion = await ObtenerConfiguracionVacacionesAsync(request.Anio);
 
                 var response = new DisponibilidadVacacionesResponse
                 {
@@ -380,7 +380,7 @@ namespace tiempo_libre.Services
             };
         }
 
-        private async Task<ConfiguracionVacacionesDto> ObtenerConfiguracionVacacionesAsync()
+        private async Task<ConfiguracionVacacionesDto> ObtenerConfiguracionVacacionesAsync(int anio)
         {
             var config = await _context.ConfiguracionVacaciones
                 .OrderByDescending(c => c.Id)
@@ -390,7 +390,8 @@ namespace tiempo_libre.Services
             {
                 PeriodoActual = config?.PeriodoActual ?? "Cerrado",
                 AnioVigente = config?.AnioVigente ?? DateTime.Now.Year,
-                PorcentajeAusenciaMaximo = config?.PorcentajeAusenciaMaximo ?? 4.5m,
+                // El porcentaje del año consultado: el que se prepara puede tener uno propio.
+                PorcentajeAusenciaMaximo = Helpers.PorcentajeAusenciaHelper.ParaAnio(config, anio),
                 FechaActualizacion = config?.UpdatedAt ?? config?.CreatedAt ?? DateTime.Now
             };
         }

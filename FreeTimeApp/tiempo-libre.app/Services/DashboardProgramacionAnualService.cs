@@ -58,7 +58,7 @@ namespace tiempo_libre.Services
                     return new ApiResponse<DashboardProgramacionAnualResponse>(false, null,
                         "No hay configuración de vacaciones cargada");
 
-                var porcentajeGlobal = config.PorcentajeAusenciaMaximo;
+                var porcentajeGlobal = Helpers.PorcentajeAusenciaHelper.ParaAnio(config, anio);
 
                 // ── Grupos incluidos ────────────────────────────────────────
                 var queryGrupos = _db.Grupos.Include(g => g.Area).AsQueryable();

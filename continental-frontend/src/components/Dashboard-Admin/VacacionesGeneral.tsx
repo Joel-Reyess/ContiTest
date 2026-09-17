@@ -169,6 +169,7 @@ export const VacacionesGeneral = ({
           periodoActual: "Cerrado",
           anioVigente: configVacaciones.anioVigente,
           anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
+          porcentajeAusenciaPreparacion: configVacaciones.porcentajeAusenciaPreparacion ?? null,
         });
         setConfigVacaciones(updatedConfig);
         onConfigUpdate?.(updatedConfig);
@@ -191,6 +192,7 @@ export const VacacionesGeneral = ({
         periodoActual: "ProgramacionAnual",
         anioVigente: configVacaciones.anioVigente,
         anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
+        porcentajeAusenciaPreparacion: configVacaciones.porcentajeAusenciaPreparacion ?? null,
       });
 
       setConfigVacaciones(updatedConfig);
@@ -226,6 +228,8 @@ export const VacacionesGeneral = ({
         periodoActual: configVacaciones.periodoActual,
         anioVigente: configVacaciones.anioVigente,
         anioProgramacionAnual: nuevoAnio,
+        porcentajeAusenciaPreparacion:
+          nuevoAnio == null ? null : (configVacaciones.porcentajeAusenciaPreparacion ?? null),
       });
       setConfigVacaciones(updatedConfig);
       onConfigUpdate?.(updatedConfig);
@@ -269,10 +273,14 @@ export const VacacionesGeneral = ({
     try {
       setCambiandoPreparacion(true);
       const updatedConfig = await vacacionesService.updateConfig({
-        porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
+        // El año preparado pasa a ser el vigente, así que SU porcentaje pasa a
+        // ser el general: si no, al cerrar el ciclo se caería al del año viejo.
+        porcentajeAusenciaMaximo:
+          configVacaciones.porcentajeAusenciaPreparacion ?? configVacaciones.porcentajeAusenciaMaximo,
         periodoActual: "Reprogramacion",
         anioVigente: anioNuevo,
         anioProgramacionAnual: null,
+        porcentajeAusenciaPreparacion: null,
       });
       setConfigVacaciones(updatedConfig);
       onConfigUpdate?.(updatedConfig);
@@ -619,6 +627,7 @@ export const VacacionesGeneral = ({
                         periodoActual: "ProgramacionAnual",
                         anioVigente: configVacaciones.anioVigente,
                         anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
+                        porcentajeAusenciaPreparacion: configVacaciones.porcentajeAusenciaPreparacion ?? null,
                       });
 
                       setConfigVacaciones(updatedConfig);
@@ -673,6 +682,7 @@ export const VacacionesGeneral = ({
                         periodoActual: "Cerrado",
                         anioVigente: configVacaciones.anioVigente,
                         anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
+                        porcentajeAusenciaPreparacion: configVacaciones.porcentajeAusenciaPreparacion ?? null,
                       });
 
                       setConfigVacaciones(updatedConfig);

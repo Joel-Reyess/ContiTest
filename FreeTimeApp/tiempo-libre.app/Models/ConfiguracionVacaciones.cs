@@ -29,6 +29,17 @@ namespace tiempo_libre.Models
         /// </summary>
         public int? AnioProgramacionAnual { get; set; }
 
+        /// <summary>
+        /// Porcentaje máximo de ausencia que rige el AÑO EN PREPARACIÓN
+        /// (AnioProgramacionAnual). NULL = ese año usa PorcentajeAusenciaMaximo.
+        ///
+        /// Existe porque el porcentaje era uno solo para todo: al ajustarlo para
+        /// que el año que se prepara pudiera repartir sus días, el año vigente
+        /// quedaba corriendo con ese mismo valor.
+        /// Requiere la columna en BD: ver AddPorcentajePreparacion.sql
+        /// </summary>
+        public decimal? PorcentajeAusenciaPreparacion { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
         public DateTime? UpdatedAt { get; set; }

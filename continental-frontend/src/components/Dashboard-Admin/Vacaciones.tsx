@@ -25,8 +25,9 @@ export const Vacaciones = () => {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [editableConfig, setEditableConfig] = useState<{ porcentajeAusenciaMaximo: string; periodoActual: string; anioVigente: string }>({
+  const [editableConfig, setEditableConfig] = useState<{ porcentajeAusenciaMaximo: string; periodoActual: string; anioVigente: string; porcentajeAusenciaPreparacion: string }>({
     porcentajeAusenciaMaximo: '',
+    porcentajeAusenciaPreparacion: '',
     periodoActual: 'Cerrado',
     anioVigente: new Date().getFullYear().toString()
   });
@@ -114,6 +115,7 @@ export const Vacaciones = () => {
         setConfig(cfg);
         setEditableConfig({
           porcentajeAusenciaMaximo: cfg.porcentajeAusenciaMaximo.toString(),
+          porcentajeAusenciaPreparacion: cfg.porcentajeAusenciaPreparacion?.toString() ?? '',
           periodoActual: cfg.periodoActual,
           anioVigente: cfg.anioVigente.toString()
         });
@@ -139,12 +141,17 @@ export const Vacaciones = () => {
         anioVigente: parseInt(editableConfig.anioVigente),
         // Preservar el año en preparación: el backend persiste lo que reciba
         // y omitirlo lo borraría.
-        anioProgramacionAnual: config?.anioProgramacionAnual ?? null
+        anioProgramacionAnual: config?.anioProgramacionAnual ?? null,
+        // Vacío = ese año usa el porcentaje general.
+        porcentajeAusenciaPreparacion: editableConfig.porcentajeAusenciaPreparacion.trim() === ''
+          ? null
+          : parseFloat(editableConfig.porcentajeAusenciaPreparacion)
       };
       const updated = await vacacionesService.updateConfig(payload);
       setConfig(updated);
       setEditableConfig({
         porcentajeAusenciaMaximo: updated.porcentajeAusenciaMaximo.toString(),
+        porcentajeAusenciaPreparacion: updated.porcentajeAusenciaPreparacion?.toString() ?? '',
         periodoActual: updated.periodoActual,
         anioVigente: updated.anioVigente.toString()
       });
@@ -179,7 +186,7 @@ export const Vacaciones = () => {
               />
             </div>
             <div className="flex flex-col">
-              <label className="text-xs font-medium text-continental-gray-1">Vacaciones para el año:</label>
+              <label className="text-xs font-medium text-continental-gray-1">Año vigente (en curso)</label>
               <Input
                 type="number"
                 className="w-32 mt-1"
@@ -187,9 +194,36 @@ export const Vacaciones = () => {
                 disabled={loadingConfig || savingConfig}
                 onChange={(e) => setEditableConfig(prev => ({ ...prev, anioVigente: e.target.value }))}
               />
+              <span className="text-[11px] text-continental-gray-1 mt-1 max-w-[16rem]">
+                Es el año que está corriendo, no el que se prepara. Para preparar el
+                siguiente usa «Preparar programación anual» más abajo.
+              </span>
             </div>
+            {/* El año que se prepara puede necesitar otro porcentaje para poder
+                repartir sus días; sin este campo, cambiarlo movía también el del
+                año en curso. */}
+            {config?.anioProgramacionAnual != null && (
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-continental-gray-1">
+                  % Ausencia Máximo {config.anioProgramacionAnual} (en preparación)
+                </label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  className="w-32 mt-1"
+                  placeholder="Usa el general"
+                  value={editableConfig.porcentajeAusenciaPreparacion}
+                  disabled={loadingConfig || savingConfig}
+                  onChange={(e) => setEditableConfig(prev => ({ ...prev, porcentajeAusenciaPreparacion: e.target.value }))}
+                />
+                <span className="text-[11px] text-continental-gray-1 mt-1 max-w-[16rem]">
+                  Vacío = {config.anioProgramacionAnual} usa el porcentaje general.
+                </span>
+              </div>
+            )}
             {config && (
               (editableConfig.porcentajeAusenciaMaximo !== config.porcentajeAusenciaMaximo.toString() ||
+                editableConfig.porcentajeAusenciaPreparacion !== (config.porcentajeAusenciaPreparacion?.toString() ?? '') ||
                 editableConfig.periodoActual !== config.periodoActual ||
                 editableConfig.anioVigente !== config.anioVigente.toString()) && (
                 <div className="flex gap-2 ml-auto">
@@ -199,6 +233,7 @@ export const Vacaciones = () => {
                     onClick={() => {
                       setEditableConfig({
                         porcentajeAusenciaMaximo: config.porcentajeAusenciaMaximo.toString(),
+                        porcentajeAusenciaPreparacion: config.porcentajeAusenciaPreparacion?.toString() ?? '',
                         periodoActual: config.periodoActual,
                         anioVigente: config.anioVigente.toString()
                       });
@@ -274,6 +309,7 @@ export const Vacaciones = () => {
               setConfig(updatedConfig);
               setEditableConfig({
                 porcentajeAusenciaMaximo: updatedConfig.porcentajeAusenciaMaximo.toString(),
+                porcentajeAusenciaPreparacion: updatedConfig.porcentajeAusenciaPreparacion?.toString() ?? '',
                 periodoActual: updatedConfig.periodoActual,
                 anioVigente: updatedConfig.anioVigente.toString(),
               });
