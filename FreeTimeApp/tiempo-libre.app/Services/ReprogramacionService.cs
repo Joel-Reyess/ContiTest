@@ -441,6 +441,44 @@ namespace tiempo_libre.Services
                     vacacion.UpdatedAt = DateTime.Now;
                     vacacion.UpdatedBy = usuarioAprobadorId;
 
+                    // El jefe SÍ puede aprobar un día que ya está al tope: la
+                    // aprobación de la reprogramación siempre fue manual y así se
+                    // queda. Lo que faltaba es que quedara REGISTRADO. La
+                    // reprogramación era el único camino que podía pasarse del
+                    // porcentaje sin dejar rastro: la marca de rebase sólo la
+                    // escribía la captura del jefe, así que estos días no salían
+                    // en el reporte de días capturados por encima del permitido.
+                    //
+                    // Se recalcula AQUÍ y no se usa el PorcentajeCalculado de la
+                    // solicitud: ese es del día en que se pidió, y entre la
+                    // solicitud y la aprobación el día pudo haberse llenado más.
+                    bool conRebase = false;
+                    decimal? porcentajeAlAprobar = null;
+                    try
+                    {
+                        var validacionAlAprobar = await _ausenciaService.ValidarDisponibilidadDiaAsync(
+                            new ValidacionDisponibilidadRequest
+                            {
+                                EmpleadoId = solicitud.EmpleadoId,
+                                Fecha = solicitud.FechaNuevaSolicitada
+                            });
+
+                        if (validacionAlAprobar.Success && validacionAlAprobar.Data != null)
+                        {
+                            conRebase = !validacionAlAprobar.Data.DiaDisponible;
+                            porcentajeAlAprobar = validacionAlAprobar.Data.PorcentajeAusenciaConEmpleado;
+                        }
+                    }
+                    catch (Exception exPorcentaje)
+                    {
+                        // Que no se caiga la aprobación por no poder calcular el
+                        // porcentaje: la decisión del jefe es lo que no se puede
+                        // perder. Queda el aviso en el log.
+                        _logger.LogWarning(exPorcentaje,
+                            "No se pudo calcular el porcentaje al aprobar la reprogramación {SolicitudId}",
+                            solicitud.Id);
+                    }
+
                     // Crear nueva vacación en la fecha nueva
                     var nuevaVacacion = new VacacionesProgramadas
                     {
@@ -452,6 +490,11 @@ namespace tiempo_libre.Services
                         PeriodoProgramacion = "Reprogramacion",
                         FechaProgramacion = vacacion.FechaProgramacion,
                         PuedeSerIntercambiada = vacacion.PuedeSerIntercambiada,
+                        // Con esto el día entra al reporte de rebases, y como
+                        // CreatedBy es el jefe que aprobó, el reporte ya puede
+                        // decir quién lo autorizó.
+                        CapturadoConRebase = conRebase,
+                        PorcentajeAlCapturar = porcentajeAlAprobar,
                         Observaciones = $"Reprogramada via solicitud {solicitud.Id}. Motivo: {solicitud.ObservacionesEmpleado}",
                         CreatedAt = DateTime.Now,
                         CreatedBy = usuarioAprobadorId,
