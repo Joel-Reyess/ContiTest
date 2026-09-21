@@ -12,6 +12,7 @@ import { OvertimeIndicator } from '../Dashboard-Area/OvertimeIndicator';
 import type { ExcepcionPorcentaje } from '@/interfaces/Api.interface';
 import { getSAPEntry, SAP_NOMENCLATURA, type SAPEntry, type SAPCodigo } from '@/utils/sapNomenclatura';
 import NomenclaturaLegend from './NomenclaturaLegend';
+import { fechaLocalISO } from '@/utils/fechaLocal';
 
 const localizer = dateFnsLocalizer({
   format,
@@ -196,7 +197,7 @@ const CustomDateCellWrapper = ({
           del número de turno. */}
       {excepciones.length > 0 && (
         <OvertimeIndicator
-          fecha={value.toISOString().split('T')[0]}
+          fecha={fechaLocalISO(value)}
           excepciones={excepciones}
           grupoId={groupId}
           posicionClassName="bottom-1 left-1"

@@ -3,6 +3,7 @@ import type { SlotInfo } from "react-big-calendar";
 import { CalendarService, type CalendarEntry } from "@/services/calendarService";
 import { authService } from '@/services/authService';
 import type { AusenciasPorFecha, AusenciasPorGrupo } from '@/interfaces/Api.interface';
+import { fechaLocalISO } from '@/utils/fechaLocal';
 
 export interface EventType {
     day: Date;
@@ -52,8 +53,11 @@ export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; us
                 let ausenciasData: AusenciasPorFecha[] | null = null;
                 if (groupId) {
                     try {
-                        const fechaInicio = start.toISOString().split('T')[0];
-                        const fechaFin = end.toISOString().split('T')[0];
+                        // Fechas locales: el backend responde con fechas sin zona
+                        // horaria y con toISOString el rango se corría un día en
+                        // cualquier computadora que no estuviera en UTC-6.
+                        const fechaInicio = fechaLocalISO(start);
+                        const fechaFin = fechaLocalISO(end);
                         const response = await CalendarService.calcularAusencias(fechaInicio, fechaFin, groupId);
                         ausenciasData = response as any;
                     } catch (ausenciasError) {
@@ -141,7 +145,10 @@ export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; us
                         }
 
                         // Buscar datos de ausencias para esta fecha
-                        const fechaString = day.toISOString().split('T')[0];
+                        // Misma llave local con la que responde el backend; con
+                        // toISOString, al este de Greenwich cada celda buscaba las
+                        // ausencias del día anterior.
+                        const fechaString = fechaLocalISO(day);
                         const ausenciasDelDia = ausenciasData?.find(
                             ausencia => ausencia.fecha === fechaString
                         )?.ausenciasPorGrupo[0] || null;

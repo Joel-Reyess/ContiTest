@@ -12,6 +12,7 @@ import { ApiPeriodMapping, PeriodOptions, type ApiPeriod, type Period } from "@/
 import { getVacacionesAsignadasPorEmpleado, getDisponibilidadVacaciones, reservarVacacionesAnuales } from '@/services/vacacionesService';
 import type { VacacionesAsignadasResponse, VacacionAsignada, ResumenVacaciones, DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse } from '@/interfaces/Api.interface';
 import { UserRole } from "@/interfaces/User.interface";
+import { fechaLocalISO } from '@/utils/fechaLocal';
 import { vacacionesService } from '@/services/vacacionesService';
 import { obtenerMovimientosDiasEmpresa, marcarDiaAsignado, type DiaAsignado } from '@/utils/diasEmpresaMovimientos';
 import { MiTurnoBanner } from './MiTurnoBanner';
@@ -253,9 +254,17 @@ const RequestVacations = () => {
             const anioVacaciones = anioCaptura ?? new Date().getFullYear() + 1;
 
             // Formatear fechas a formato YYYY-MM-DD (DateOnly)
+            // El calendario entrega la fecha como "Wed Jun 16 2027" y antes se
+            // serializaba con toISOString(), que pasa a UTC. En México (UTC-6)
+            // acertaba de casualidad; en una computadora al este de Greenwich
+            // (UTC+) la medianoche local cae en el día ANTERIOR y se reservaba
+            // todo corrido un día, así que el backend rechazaba los días con
+            // "Día de descanso" o "Día inhábil" sin que se entendiera por qué.
             const fechasFormateadas = selectedDays.map(day => {
-                const fecha = day.date.includes('-') ? new Date(day.date + 'T00:00:00') : new Date(day.date);
-                return fecha.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+                const fecha = day.date.includes('-')
+                    ? new Date(day.date + 'T00:00:00')
+                    : new Date(day.date);
+                return fechaLocalISO(fecha);
             });
 
             console.log('📅 Fechas seleccionadas:', selectedDays);
