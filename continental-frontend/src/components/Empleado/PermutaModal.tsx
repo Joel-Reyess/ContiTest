@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from "react";
+﻿import { fechaLocalISO } from '@/utils/fechaLocal';
+import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -451,7 +452,7 @@ export const PermutaModal = ({
                                 value={fechaPermuta}
                                 onChange={(e) => setFechaPermuta(e.target.value)}
                                 disabled={loading}
-                                min={new Date().toISOString().split("T")[0]}
+                                min={fechaLocalISO(new Date())}
                             />
                             {loadingTurnos && (
                                 <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
@@ -504,7 +505,7 @@ export const PermutaModal = ({
                                     value={fechaCambio}
                                     onChange={(e) => setFechaCambio(e.target.value)}
                                     disabled={loading}
-                                    min={new Date().toISOString().split("T")[0]}
+                                    min={fechaLocalISO(new Date())}
                                 />
                                 <p className="text-xs text-gray-500 mt-1">
                                     El día que el operador deja de laborar a cambio de presentarse

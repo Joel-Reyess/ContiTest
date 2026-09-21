@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fechaLocalISO } from '@/utils/fechaLocal';
 import { Navbar } from "../Navbar/Navbar";
 import type { Area } from "@/interfaces/Areas.interface";
 import type { AreaByIngenieroItem } from "@/interfaces/Areas.interface";
@@ -294,8 +295,8 @@ export const SolicitarSuplente = () => {
 
             const finalPayload = {
                 ...payload,
-                FechaInicio: new Date().toISOString().split('T')[0],
-                FechaFin: new Date().toISOString().split('T')[0],
+                FechaInicio: fechaLocalISO(new Date()),
+                FechaFin: fechaLocalISO(new Date()),
                 Comentarios: 'Remoción de suplente'
             };
 

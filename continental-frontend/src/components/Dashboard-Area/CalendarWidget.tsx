@@ -43,6 +43,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { fechaLocalISO } from '@/utils/fechaLocal';
 import { Calendar, Grid3X3 } from 'lucide-react';
 import type { CalendarData, CalendarFilters } from '../../interfaces/Calendar.interface';
 import type { AusenciasPorFecha, AusenciasFilters } from '../../interfaces/Ausencias.interface';
@@ -406,7 +407,7 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
 
         // Usar datos reales de ausencias si están disponibles
         if (ausenciasData && ausenciasData.length > 0) {
-            const todayStr = currentDate.toISOString().split('T')[0];
+            const todayStr = fechaLocalISO(currentDate);
             const todayData = ausenciasData.find(d => d.fecha === todayStr);
 
             if (todayData) {

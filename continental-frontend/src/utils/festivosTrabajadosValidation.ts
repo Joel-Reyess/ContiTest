@@ -16,6 +16,8 @@
  * =============================================================================
  */
 
+import { fechaLocalISO } from './fechaLocal';
+
 export interface FestivoValidationResult {
     isValid: boolean
     isExpired: boolean
@@ -133,7 +135,7 @@ export function validarFechaDeUso(
     limiteAbsoluto.setMonth(limiteAbsoluto.getMonth() + 1)
 
     const maxDate = limiteAbsoluto
-    const maxDateStr = maxDate.toISOString().split('T')[0]
+    const maxDateStr = fechaLocalISO(maxDate)
 
     if (fechaUsoDate > maxDate) {
         return {
@@ -163,5 +165,5 @@ export function calcularFechaMaximaUso(
     limiteAbsoluto.setFullYear(limiteAbsoluto.getFullYear() + 1)
     limiteAbsoluto.setMonth(limiteAbsoluto.getMonth() + 1)
 
-    return limiteAbsoluto.toISOString().split('T')[0]
+    return fechaLocalISO(limiteAbsoluto)
 }

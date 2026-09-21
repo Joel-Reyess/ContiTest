@@ -1,3 +1,4 @@
+import { fechaLocalISO } from '@/utils/fechaLocal';
 import { env } from '@/config/env';
 import { httpClient } from '@/services/httpClient';
 import type {
@@ -222,7 +223,7 @@ const url = `${env.API_BASE_URL}/api/reportes/reporte-sap?${qs.toString()}`;
         const response = await httpClient.get<ApiResponse<EmpleadosEnVacacionesResponse>>(
             '/api/reportes/empleados-en-vacaciones',
             {
-                fecha: params.fecha || new Date().toISOString().slice(0, 10),
+                fecha: params.fecha || fechaLocalISO(new Date()),
                 areaId: params.areaId,
                 grupoId: params.grupoId,
             }

@@ -1,4 +1,5 @@
 import { NavbarUser } from "../ui/navbar-user";
+import { fechaLocalISO } from '@/utils/fechaLocal';
 import Calendar from "../Calendar/Calendar";
 import { fallbackAssignedDays } from "./RequestVacations";
 import { Summary } from "./RequestVacations";
@@ -819,8 +820,8 @@ export const EditModal = ({
                             <Input
                                 type="date"
                                 //restringir solo de primero del anio vigente a ultimo dia del anio vigente
-                                min={new Date(anioVigente, 0, 1).toISOString().split('T')[0]}
-                                max={new Date(anioVigente, 11, 31).toISOString().split('T')[0]}
+                                min={fechaLocalISO(new Date(anioVigente, 0, 1))}
+                                max={fechaLocalISO(new Date(anioVigente, 11, 31))}
                                 value={nuevaFecha}
                                 onChange={(e) => setNuevaFecha(e.target.value)}
                                 disabled={loading || isAutomatica}
@@ -898,7 +899,7 @@ export const RequestModal = ({
         : null;
 
     const fechaMaxima = (() => {
-        if (!selectedFestivoData) return new Date(anioVigente + 2, 11, 31).toISOString().split('T')[0];
+        if (!selectedFestivoData) return fechaLocalISO(new Date(anioVigente + 2, 11, 31));
         return calcularFechaMaximaUso(selectedFestivoData.festivoTrabajado);
     })();
 
@@ -1107,7 +1108,7 @@ export const RequestModal = ({
                                         value={fechaNueva}
                                         onChange={(e) => handleFechaChange(e.target.value)}
                                         disabled={loading || festivoExpired}
-                                        min={new Date(anioVigente, 0, 1).toISOString().split('T')[0]}
+                                        min={fechaLocalISO(new Date(anioVigente, 0, 1))}
                                         max={fechaMaxima}
                                     />
                                     {fechaUsoError && (

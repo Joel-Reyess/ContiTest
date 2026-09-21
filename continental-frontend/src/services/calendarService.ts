@@ -1,4 +1,5 @@
 import type { CalendarData, Group, Manning } from '../interfaces/Calendar.interface';
+import { fechaLocalISO } from '@/utils/fechaLocal';
 import type { ApiResponse, CalcularAusenciasRequest, CalcularAusenciasResponse } from '../interfaces/Api.interface';
 
 /**
@@ -102,7 +103,7 @@ export class CalendarService {
     calendarData.days.forEach(day => {
       if (day.manning.length === 0) {
         rows.push([
-          day.date.toISOString().split('T')[0],
+          fechaLocalISO(day.date),
           day.day.toString(),
           'Sin datos',
           '0',
@@ -113,7 +114,7 @@ export class CalendarService {
       } else {
         day.manning.forEach(manning => {
           rows.push([
-            day.date.toISOString().split('T')[0],
+            fechaLocalISO(day.date),
             day.day.toString(),
             manning.group,
             manning.required.toString(),
@@ -322,8 +323,8 @@ export class CalendarService {
       const response = await httpClient.post<ApiResponse<GroupCalendarData>>(
         `/api/calendario/por-grupo/${groupId}`,
         {
-          inicio: startDateAt00.toISOString(),
-          fin: endDateAt00.toISOString()
+          inicio: `${fechaLocalISO(startDateAt00)}T00:00:00`,
+          fin: `${fechaLocalISO(endDateAt00)}T00:00:00`
         }
       );
 
@@ -359,8 +360,8 @@ export class CalendarService {
       const response = await httpClient.post<ApiResponse<CalendarEntry[]>>(
         `/api/calendario/usuario/${userId}`,
         {
-          inicio: startDateAt00.toISOString(),
-          fin: endDateAt00.toISOString()
+          inicio: `${fechaLocalISO(startDateAt00)}T00:00:00`,
+          fin: `${fechaLocalISO(endDateAt00)}T00:00:00`
         }
       );
 
