@@ -403,8 +403,15 @@ namespace tiempo_libre.Services
         {
             try
             {
-                _logger.LogInformation("Iniciando reserva anual para empleado {EmpleadoId}, año {Anio}",
-                    request.EmpleadoId, request.AnioVacaciones);
+                // Las fechas TAL COMO LLEGAN. Si el navegador las manda corridas
+                // (mandarlas en UTC desde una computadora que no está en UTC-6
+                // resta un día), aquí se ve de inmediato al compararlas con lo que
+                // el operador tenía en pantalla. Sin esto el log solo decía
+                // cuántas fechas eran y no había forma de notarlo.
+                _logger.LogInformation(
+                    "Iniciando reserva anual para empleado {EmpleadoId}, año {Anio}. Fechas recibidas: {Fechas}",
+                    request.EmpleadoId, request.AnioVacaciones,
+                    string.Join(", ", request.FechasSeleccionadas.Select(f => f.ToString("yyyy-MM-dd"))));
 
                 // 1. Validar empleado existe
                 var empleado = await _context.Users
@@ -489,6 +496,15 @@ namespace tiempo_libre.Services
                 // Si hay fechas no disponibles, retornar error
                 if (fechasNoDisponibles.Any())
                 {
+                    // Qué día se rechazó y por qué. El 400 salía al log sin motivo,
+                    // así que revisar el archivo no servía para diagnosticar.
+                    _logger.LogWarning(
+                        "Reserva anual rechazada para empleado {EmpleadoId}: {Detalle}",
+                        request.EmpleadoId,
+                        string.Join(" | ", fechasNoDisponibles.Select(f =>
+                            $"{f.Fecha:yyyy-MM-dd}: {f.Motivo}" +
+                            (string.IsNullOrWhiteSpace(f.Detalle) ? "" : $" ({f.Detalle})"))));
+
                     var response = new ReservaAnualResponse
                     {
                         EmpleadoId = request.EmpleadoId,
