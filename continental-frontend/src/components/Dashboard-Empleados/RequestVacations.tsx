@@ -293,6 +293,38 @@ const RequestVacations = () => {
             }
         } catch (error) {
             console.error('❌ Error en reserva:', error);
+
+            // El backend contesta 400 CON el detalle de cada día que rechazó y su
+            // motivo (día inhábil, día de descanso, el grupo ya excede el
+            // porcentaje, vacación duplicada). Al ser 400, httpClient lanza y la
+            // rama de arriba que pintaba ese detalle nunca se ejecuta: el
+            // operador sólo veía "Algunas fechas no están disponibles (HTTP 400)"
+            // y no tenía forma de saber QUÉ día quitar. httpClient deja el cuerpo
+            // completo de la respuesta en `details`.
+            const cuerpo = (error as { details?: { data?: ReservaAnualResponse } })?.details;
+            const noDisponibles = cuerpo?.data?.fechasNoDisponibles;
+            if (noDisponibles && noDisponibles.length > 0) {
+                const MAX_A_MOSTRAR = 6;
+                noDisponibles.slice(0, MAX_A_MOSTRAR).forEach(f => {
+                    const dia = format(
+                        new Date(f.fecha + 'T00:00:00'),
+                        "EEE d 'de' MMMM",
+                        { locale: es }
+                    );
+                    toast.error(
+                        `${dia}: ${f.motivo}${f.detalle ? ` — ${f.detalle}` : ''}`,
+                        { duration: 12000 }
+                    );
+                });
+                if (noDisponibles.length > MAX_A_MOSTRAR) {
+                    toast.error(
+                        `…y ${noDisponibles.length - MAX_A_MOSTRAR} día(s) más. Quita los marcados y vuelve a intentar.`,
+                        { duration: 12000 }
+                    );
+                }
+                return;
+            }
+
             // El backend explica POR QUE no se pudo ("Todavia no es tu turno:
             // tu bloque inicia el ... a las ..."); httpClient lo deja en
             // message. El texto fijo lo tiraba y el operador se quedaba sin
