@@ -475,7 +475,16 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                     )}
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4 border-t">
+                <div className="flex justify-end items-center gap-3 pt-4 border-t">
+                    {(canAssignAutomaticas || canAssignAnuales) &&
+                        !isSubmitting &&
+                        (selectedDates.length === 0 || !motivoAsignacion.trim()) && (
+                            <p className="mr-auto text-xs text-amber-700">
+                                {selectedDates.length === 0
+                                    ? 'Elige la fecha y pulsa «Agregar»: el botón se habilita cuando haya al menos un día en la lista.'
+                                    : 'Falta el motivo de asignación.'}
+                            </p>
+                        )}
                     <Button onClick={onClose} variant="outline" disabled={isSubmitting}>
                         Cancelar
                     </Button>
