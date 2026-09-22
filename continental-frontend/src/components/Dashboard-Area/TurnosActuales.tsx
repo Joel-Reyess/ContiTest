@@ -8,6 +8,7 @@ import { userService } from '@/services/userService'
 import { areasService } from '@/services/areasService'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import ReasignacionTurnoModal from './ReasignacionTurnoModal'
+import { ahoraEnMexicoISO, enHoraDelNavegador, fechaCortaMexico, fechaMexico, horaMexico, instanteDeHoraMexico, navegadorFueraDeMexico } from '@/utils/horaMexico'
 
 interface Empleado {
     id: string
@@ -233,7 +234,7 @@ function ListaBloquesDelAnio({
     abiertos: Record<number, boolean>
     onToggle: (grupoId: number) => void
 }) {
-    const ahora = new Date()
+    const ahora = new Date()  // instante real; los bloques se traducen desde hora de Mexico
 
     if (bloques.length === 0) {
         return (
@@ -250,9 +251,8 @@ function ListaBloquesDelAnio({
         porGrupo.set(bloque.grupoId, lista)
     }
 
-    const fmtFecha = (iso: string) => new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
-    const fmtHora = (iso: string) =>
-        new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+    const fmtFecha = (iso: string) => fechaCortaMexico(iso)
+    const fmtHora = (iso: string) => horaMexico(iso)
 
     return (
         <section className="rounded-lg border-2 border-gray-400 bg-white">
@@ -288,8 +288,8 @@ function ListaBloquesDelAnio({
                             {abierto && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-3 pt-0">
                                     {ordenados.map(bloque => {
-                                        const inicio = new Date(bloque.fechaHoraInicio)
-                                        const fin = new Date(bloque.fechaHoraFin)
+                                        const inicio = instanteDeHoraMexico(bloque.fechaHoraInicio)
+                                        const fin = instanteDeHoraMexico(bloque.fechaHoraFin)
                                         const enCurso = ahora >= inicio && ahora <= fin
                                         const terminado = ahora > fin
                                         const etiqueta = enCurso
@@ -446,15 +446,11 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
             setLoading(true)
             setError(null)
 
-            const now = new Date()
-            // Crear fecha con hora local (no UTC)
-            const year = now.getFullYear()
-            const month = String(now.getMonth() + 1).padStart(2, '0')
-            const day = String(now.getDate()).padStart(2, '0')
-            const hours = String(now.getHours()).padStart(2, '0')
-            const minutes = String(now.getMinutes()).padStart(2, '0')
-            const seconds = String(now.getSeconds()).padStart(2, '0')
-            const fechaActual = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+            // Los bloques corren en hora de Mexico y el backend compara contra
+            // DateTime.Now del servidor. Mandarle el reloj del navegador hacia
+            // que, desde otra zona horaria, contestara por el bloque de otra
+            // hora: siete de diferencia bastan para caer en el bloque anterior.
+            const fechaActual = ahoraEnMexicoISO()
 
             let bloqueData: BloquesPorFechaResponse | null = null
 
@@ -559,11 +555,7 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
             const extraerHora = (fechaISO: string) => {
                 if (!fechaISO) return '00:00';
                 try {
-                    return new Date(fechaISO).toLocaleTimeString('es-ES', { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        hour12: false 
-                    });
+                    return horaMexico(fechaISO);
                 } catch {
                     return '00:00';
                 }
@@ -573,7 +565,7 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
             const calcularEndAt = (fechaHoraFin: string) => {
                 if (!fechaHoraFin) return null;
                 try {
-                    return new Date(fechaHoraFin);
+                    return instanteDeHoraMexico(fechaHoraFin);
                 } catch {
                     return null;
                 }
@@ -585,15 +577,15 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
                 bloqueActual: {
                     id: grupo.bloqueActual?.id?.toString() || 'no-block',
                     fecha: grupo.bloqueActual?.fechaHoraInicio 
-                        ? new Date(grupo.bloqueActual.fechaHoraInicio).toLocaleDateString('es-ES')
-                        : new Date().toLocaleDateString('es-ES'),
+                        ? fechaMexico(grupo.bloqueActual.fechaHoraInicio)
+                        : fechaMexico(new Date()),
                     horaInicio: extraerHora(grupo.bloqueActual?.fechaHoraInicio || ''),
                     horaFin: extraerHora(grupo.bloqueActual?.fechaHoraFin || ''),
                     fechaFin: grupo.bloqueActual?.fechaHoraFin 
-                        ? new Date(grupo.bloqueActual.fechaHoraFin).toLocaleDateString('es-ES')
+                        ? fechaMexico(grupo.bloqueActual.fechaHoraFin)
                         : grupo.bloqueActual?.fechaHoraInicio 
-                            ? new Date(grupo.bloqueActual.fechaHoraInicio).toLocaleDateString('es-ES')
-                            : new Date().toLocaleDateString('es-ES'),
+                            ? fechaMexico(grupo.bloqueActual.fechaHoraInicio)
+                            : fechaMexico(new Date()),
                     endAt: calcularEndAt(grupo.bloqueActual?.fechaHoraFin || ''),
                     empleados: transformarEmpleados(grupo.bloqueActual?.empleadosAsignados || []),
                     numeroBloque: grupo.bloqueActual?.numeroBloque
@@ -601,8 +593,8 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
                 siguienteBloque: {
                     id: grupo.bloqueSiguiente?.id?.toString() || 'no-next-block',
                     fecha: grupo.bloqueSiguiente?.fechaHoraInicio 
-                        ? new Date(grupo.bloqueSiguiente.fechaHoraInicio).toLocaleDateString('es-ES')
-                        : new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('es-ES'),
+                        ? fechaMexico(grupo.bloqueSiguiente.fechaHoraInicio)
+                        : fechaMexico(new Date(Date.now() + 24 * 60 * 60 * 1000)),
                     horaInicio: extraerHora(grupo.bloqueSiguiente?.fechaHoraInicio || ''),
                     horaFin: extraerHora(grupo.bloqueSiguiente?.fechaHoraFin || ''),
                     empleados: transformarEmpleados(grupo.bloqueSiguiente?.empleadosAsignados || [])
@@ -916,6 +908,15 @@ export function TurnosActuales({ anioVigente }: { anioVigente: number }) {
                                     <span className="font-semibold">Fin:</span>
                                     <span>{activeGroup.bloqueActual.fechaFin || activeGroup.bloqueActual.fecha} - {activeGroup.bloqueActual.horaFin}</span>
                                 </div>
+                                <span className="text-gray-500">(hora del centro de Mexico)</span>
+                            </div>
+                        )}
+                        {/* Quien abre la app desde otra zona horaria necesita saber
+                            a que hora de SU reloj cae la ventana: el bloque no se
+                            mueve, se ve distinto. */}
+                        {activeGroup && navegadorFueraDeMexico() && (
+                            <div className="text-xs text-amber-700">
+                                En tu zona horaria: {enHoraDelNavegador(activeGroup.bloqueActual.endAt ?? undefined)} es el cierre de este bloque.
                             </div>
                         )}
                     </div>

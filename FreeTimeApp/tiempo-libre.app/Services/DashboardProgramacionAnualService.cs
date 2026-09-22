@@ -303,6 +303,7 @@ namespace tiempo_libre.Services
                         {
                             GrupoId = g.GrupoId,
                             Nombre = g.Rol,
+                            AreaId = g.AreaId,
                             Area = g.Area?.NombreGeneral ?? "",
                             Plantilla = plantilla,
                             DiasEmpresaAsignados = asignados,

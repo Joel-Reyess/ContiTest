@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarPlus2, Download, Key, UserCheck, Edit2, Check, X, Clock, FileText, Building2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Button } from "../ui/button";
 import CalendarComponent from "../Calendar/Calendar";
@@ -54,7 +54,13 @@ export const DetallesEmpleado = ({
   };
   const { config, currentPeriod } = useVacationConfig();
   const anioVigente = config?.anioVigente;
+  const anioProgramacion = config?.anioProgramacionAnual ?? null;
   
+  // Año que se está viendo. Por omisión el vigente, pero se puede parar en el
+  // que se está programando (hoy 2027) o en cualquier otro que tenga días. Las
+  // opciones salen de la configuración y de los datos, no de una lista fija, así
+  // que esto sigue sirviendo cuando el vigente sea 2027 y se prepare 2028.
+  const [anioSeleccionado, setAnioSeleccionado] = useState<number | null>(null);
   const [month, setMonth] = useState(new Date().getMonth());
   const [sindicalizado, setSindicalizado] = useState<Sindicalizado | null>(
     null
@@ -63,6 +69,7 @@ export const DetallesEmpleado = ({
   const [error, setError] = useState<string | null>(null);
   const [_, setAssignedDays] = useState<{ date: string }[]>([]);
   const [vacacionesData, setVacacionesData] = useState<VacacionesAsignadasResponse | null>(null);
+  const anioDatos = anioSeleccionado ?? anioVigente ?? null;
   const [realAssignedDays, setRealAssignedDays] = useState<
     { date: string; origen?: string; fechaAnterior?: string }[]
   >([]);
@@ -171,7 +178,7 @@ export const DetallesEmpleado = ({
   const empId = parseInt(id, 10);
   if (!isNaN(empId)) {
         try {
-          const resp = await getVacacionesAsignadasPorEmpleado(empId);
+          const resp = await getVacacionesAsignadasPorEmpleado(empId, anioDatos ?? undefined);
           // El servicio ahora retorna directamente VacacionesAsignadasResponse
           const vacs = resp?.vacaciones ?? [];
           
@@ -270,7 +277,9 @@ export const DetallesEmpleado = ({
     } finally {
       setLoading(false);
     }
-  }, []);
+    // anioDatos en las dependencias: cambiar el año del filtro tiene que volver
+    // a pedir las vacaciones, no solo repintar lo que ya estaba cargado.
+  }, [anioDatos]);
 
 
 const handleRemoveDay = async (fecha: string) => {
@@ -604,6 +613,20 @@ const handleRemoveDay = async (fecha: string) => {
         toast.info("Fecha removida de la selección");
     };
 
+    // Años que se pueden elegir: el vigente, el que se está programando y
+    // cualquiera que ya tenga días cargados del empleado.
+    const aniosDisponibles = useMemo(() => {
+        const anios = new Set<number>();
+        if (anioVigente) anios.add(anioVigente);
+        if (anioProgramacion) anios.add(anioProgramacion);
+        if (anioDatos) anios.add(anioDatos);
+        (vacacionesData?.vacaciones ?? []).forEach((v) => {
+            const a = Number(String(v.fechaVacacion).slice(0, 4));
+            if (a) anios.add(a);
+        });
+        return [...anios].sort((a, b) => a - b);
+    }, [anioVigente, anioProgramacion, anioDatos, vacacionesData]);
+
     // ✅ Función para abrir el modal con las fechas seleccionadas
     const handleOpenAsignacionModal = () => {
         if (tempSelectedDates.length === 0) {
@@ -854,6 +877,29 @@ const handleRemoveDay = async (fecha: string) => {
   return (
     <div className="p-6 bg-white min-h-screen">
       <div className="max-w-7xl mx-auto w-full space-y-6">
+        {/* Filtro de año: de qué año son las vacaciones que se están viendo, y
+            sobre cuál se captura al asignar días manualmente. */}
+        {aniosDisponibles.length > 1 && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="anio-vacaciones" className="text-sm font-medium text-continental-black">
+              Año de vacaciones:
+            </label>
+            <select
+              id="anio-vacaciones"
+              value={anioDatos ?? ""}
+              onChange={(e) => setAnioSeleccionado(e.target.value ? Number(e.target.value) : null)}
+              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-continental-blue-dark"
+            >
+              {aniosDisponibles.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                  {a === anioVigente ? " (vigente)" : ""}
+                  {a === anioProgramacion ? " (en programación)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {/* Header con información del empleado y botones */}
         <div className="flex justify-between items-start">
           {/* Lado izquierdo - Información del empleado */}
@@ -1216,6 +1262,7 @@ const handleRemoveDay = async (fecha: string) => {
           empleadoId={parseInt(id || "0")}
           nombreEmpleado={sindicalizado.nombre}
           vacacionesData={vacacionesData}
+          anio={anioDatos ?? undefined}
           preSelectedDates={tempSelectedDates.map(d => d.date)}
           onAsignacionExitosa={() => {
             // Recargar datos del empleado

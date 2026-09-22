@@ -10,6 +10,7 @@ import { authService } from "@/services/authService";
 import { UserRole } from "@/interfaces/User.interface";
 import { FirstTimePasswordReset } from "./FirstTimePasswordReset";
 import { TurnoValidacion } from "../Auth/TurnoValidacion";
+import { ahoraEnMexicoISO } from '@/utils/horaMexico';
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
 import { vacacionesService } from "@/services/vacacionesService";
 import type { BloqueReservacion, EmpleadoBloque } from "@/interfaces/Api.interface";
@@ -148,15 +149,12 @@ export const LoginEmployee = () => {
                     return;
                 }
 
-                const now = new Date()
-                // Crear fecha con hora local (no UTC)
-                const year = now.getFullYear()
-                const month = String(now.getMonth() + 1).padStart(2, '0')
-                const day = String(now.getDate()).padStart(2, '0')
-                const hours = String(now.getHours()).padStart(2, '0')
-                const minutes = String(now.getMinutes()).padStart(2, '0')
-                const seconds = String(now.getSeconds()).padStart(2, '0')
-                const fechaActual = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+                // Los bloques corren en hora de Mexico y el backend compara contra
+                // DateTime.Now del servidor. Mandarle el reloj del navegador hacia
+                // que, desde otra zona horaria, contestara por el bloque de otra
+                // hora, y el operador entrara a una validacion de turno que no
+                // era la suya.
+                const fechaActual = ahoraEnMexicoISO()
 
                 // Obtener bloques por fecha
                 const bloquesPorFecha = await BloquesReservacionService.obtenerBloquesPorFecha(

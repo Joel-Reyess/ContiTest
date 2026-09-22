@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { Clock, CalendarClock, CheckCircle2, AlertCircle } from "lucide-react";
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
+import { enHoraDelNavegador, formatoMexico, horaMexico, instanteDeHoraMexico, navegadorFueraDeMexico } from "@/utils/horaMexico";
 import type { BloqueReservacion, EmpleadoBloque } from "@/interfaces/Api.interface";
 
 /**
@@ -28,8 +27,9 @@ interface Props {
     anio: number | null;
 }
 
-const fechaLarga = (iso: string) => format(new Date(iso), "EEEE d 'de' MMMM 'de' yyyy", { locale: es });
-const hora = (iso: string) => format(new Date(iso), "HH:mm", { locale: es });
+const fechaLarga = (iso: string) =>
+    formatoMexico(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const hora = (iso: string) => horaMexico(iso);
 
 const faltanteLegible = (desde: Date, hasta: Date): string => {
     const minutos = Math.max(0, Math.round((hasta.getTime() - desde.getTime()) / 60000));
@@ -95,8 +95,8 @@ export const MiTurnoBanner = ({ empleadoId, anio }: Props) => {
     }
 
     const ahora = new Date();
-    const inicio = new Date(bloque.fechaHoraInicio);
-    const fin = new Date(bloque.fechaHoraFin);
+    const inicio = instanteDeHoraMexico(bloque.fechaHoraInicio);
+    const fin = instanteDeHoraMexico(bloque.fechaHoraFin);
     const pendientes = compañerosPendientes(bloque, empleadoId);
 
     let tono: string;
@@ -117,10 +117,8 @@ export const MiTurnoBanner = ({ empleadoId, anio }: Props) => {
     } else if (pendientes.length > 0) {
         tono = "border-amber-300 bg-amber-50 text-amber-900";
         icono = <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />;
-        titulo = "Tu bloque está abierto, pero aún no te toca";
-        detalle =
-            `Falta(n) por capturar ${pendientes.map((e) => e.nombreCompleto).join(", ")} ` +
-            "(tienen más antigüedad). En cuanto capturen —o tu jefe los salte— podrás continuar.";
+        titulo = "Tu bloque está abierto pero aún no es tu turno";
+        detalle = null;
     } else {
         tono = "border-green-300 bg-green-50 text-green-900";
         icono = <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />;
@@ -140,8 +138,14 @@ export const MiTurnoBanner = ({ empleadoId, anio }: Props) => {
                 </p>
                 {detalle && <p className="mt-1">{detalle}</p>}
                 <p className="mt-1 opacity-80">
-                    {bloque.nombreArea} · {bloque.nombreGrupo}
+                    {bloque.nombreArea} · {bloque.nombreGrupo} · hora del centro de México
                 </p>
+                {navegadorFueraDeMexico() && (
+                    <p className="mt-1 opacity-80">
+                        En tu zona horaria: de {enHoraDelNavegador(bloque.fechaHoraInicio)} a{" "}
+                        {enHoraDelNavegador(bloque.fechaHoraFin)}.
+                    </p>
+                )}
             </div>
         </div>
     );

@@ -47,7 +47,7 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
     const alcance = veTodaLaPlanta ? "toda la planta" : "tus áreas";
     const [datos, setDatos] = useState<Datos | null>(null);
     const [cargando, setCargando] = useState(true);
-    const [grupoId, setGrupoId] = useState<number | null>(null);
+    const [areaId, setAreaId] = useState<number | null>(null);
     const [mesAbierto, setMesAbierto] = useState<number | null>(null);
     // Los grupos del selector salen de la consulta SIN filtro: así el filtro no
     // se queda sin opciones cuando ya hay un grupo seleccionado.
@@ -56,11 +56,11 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
     useEffect(() => {
         let vigente = true;
         setCargando(true);
-        getDashboardProgramacionAnual(anio, { grupoId })
+        getDashboardProgramacionAnual(anio, { areaId })
             .then((d) => {
                 if (!vigente) return;
                 setDatos(d);
-                if (!grupoId) setCatalogoGrupos(d.grupos);
+                if (!areaId) setCatalogoGrupos(d.grupos);
             })
             .catch((e: unknown) => {
                 if (!vigente) return;
@@ -71,7 +71,7 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
         return () => {
             vigente = false;
         };
-    }, [anio, grupoId]);
+    }, [anio, areaId]);
 
     const diasPorMes = useMemo(() => {
         const mapa = new Map<number, DiaProgramacionAnual[]>();
@@ -81,6 +81,30 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
             mapa.get(mes)!.push(d);
         });
         return mapa;
+    }, [datos]);
+
+    // Las áreas salen del catálogo de grupos: un área aparece una sola vez
+    // aunque tenga cuatro grupos.
+    const catalogoAreas = useMemo(() => {
+        const mapa = new Map<number, string>();
+        catalogoGrupos.forEach((g) => {
+            if (g.areaId) mapa.set(g.areaId, g.area);
+        });
+        return [...mapa.entries()]
+            .map(([id, nombre]) => ({ id, nombre }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    }, [catalogoGrupos]);
+
+    // Cómo va repartido el porcentaje del año entre lo que puso la empresa y lo
+    // que llevan capturado los operadores. Misma base que el porcentaje diario
+    // (ausentes entre plantilla), pero promediada sobre todo el año: sirve para
+    // ver el reparto, no para juzgar un día suelto.
+    const porcentajesDelAnio = useMemo(() => {
+        if (!datos || datos.plantillaTotal === 0 || datos.dias.length === 0) return null;
+        const base = datos.plantillaTotal * datos.dias.length;
+        const empresa = (datos.diasEmpresaAsignados / base) * 100;
+        const operador = (datos.diasCapturadosPorOperador / base) * 100;
+        return { empresa, operador, total: empresa + operador };
     }, [datos]);
 
     // El mes más cargado: la respuesta directa a "¿se saturó febrero?".
@@ -136,17 +160,17 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
 
             <div className="min-w-[240px] max-w-xs">
                 <Label className="text-xs flex items-center gap-1">
-                    <Filter className="size-3" /> Filtrar por grupo
+                    <Filter className="size-3" /> Filtrar por área
                 </Label>
                 <select
-                    value={grupoId ?? ""}
-                    onChange={(e) => setGrupoId(e.target.value ? Number(e.target.value) : null)}
+                    value={areaId ?? ""}
+                    onChange={(e) => setAreaId(e.target.value ? Number(e.target.value) : null)}
                     className="w-full border rounded px-2 py-1.5 text-sm mt-1"
                 >
                     <option value="">{veTodaLaPlanta ? "Toda la planta" : "Todas mis áreas"}</option>
-                    {catalogoGrupos.map((g) => (
-                        <option key={g.grupoId} value={g.grupoId}>
-                            {g.nombre} — {g.area}
+                    {catalogoAreas.map((a) => (
+                        <option key={a.id} value={a.id}>
+                            {a.nombre}
                         </option>
                     ))}
                 </select>
@@ -160,14 +184,17 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                         valor: datos.diasCapturadosPorOperador.toLocaleString("es-MX"),
                     },
                     { etiqueta: "Empleados con días", valor: `${datos.empleadosConDiasEmpresa} de ${datos.plantillaTotal}` },
-                    { etiqueta: "Máximo permitido", valor: `${datos.porcentajeMaximoGlobal}%` },
+                    {
+                        etiqueta: "Porcentaje de tiempo extra máximo permitido",
+                        valor: `${datos.porcentajeMaximoGlobal}%`,
+                    },
                     {
                         etiqueta: "Días con rebase",
                         valor: String(datos.diasConRebase),
                         alerta: datos.diasConRebase > 0,
                     },
                     {
-                        etiqueta: "Mes más cargado",
+                        etiqueta: "Mes con mayor carga de vacaciones",
                         valor: mesPico ? `${mesPico.nombre} (${mesPico.diasEmpresaAsignados})` : "—",
                     },
                 ].map((t) => (
@@ -183,6 +210,83 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                 ))}
             </div>
 
+
+            {/* Cómo va repartido el porcentaje del año. Los recuadros de arriba
+                dan días sueltos; esto dice qué parte del cupo se la llevó la
+                empresa y qué parte va poniendo la gente al capturar. */}
+            {porcentajesDelAnio && (
+                <div className="rounded-lg border bg-white p-4">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <h3 className="text-sm font-semibold">Cómo va el porcentaje del año</h3>
+                        <span className="text-xs text-continental-gray-1">
+                            Máximo permitido: {datos.porcentajeMaximoGlobal}%
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 mt-3">
+                        <div>
+                            <p className="text-xs text-continental-gray-1">Días de empresa</p>
+                            <p className="text-lg font-semibold tabular-nums text-continental-blue-dark">
+                                {porcentajesDelAnio.empresa.toFixed(2)}%
+                            </p>
+                            <p className="text-xs text-continental-gray-1 tabular-nums">
+                                {datos.diasEmpresaAsignados.toLocaleString("es-MX")} días
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-continental-gray-1">Capturados por operadores</p>
+                            <p className="text-lg font-semibold tabular-nums text-amber-600">
+                                {porcentajesDelAnio.operador.toFixed(2)}%
+                            </p>
+                            <p className="text-xs text-continental-gray-1 tabular-nums">
+                                {datos.diasCapturadosPorOperador.toLocaleString("es-MX")} días
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-continental-gray-1">Los dos juntos</p>
+                            <p
+                                className={`text-lg font-semibold tabular-nums ${
+                                    porcentajesDelAnio.total > datos.porcentajeMaximoGlobal ? "text-red-700" : ""
+                                }`}
+                            >
+                                {porcentajesDelAnio.total.toFixed(2)}%
+                            </p>
+                            <p className="text-xs text-continental-gray-1 tabular-nums">
+                                de {datos.porcentajeMaximoGlobal}% permitido
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* La barra se escala contra el máximo permitido, no contra
+                        100%: así se ve de inmediato cuánto del cupo queda. */}
+                    <div className="relative h-4 mt-3 bg-slate-100 rounded overflow-hidden">
+                        <div
+                            className="absolute inset-y-0 left-0 bg-continental-blue-dark/70"
+                            style={{
+                                width: `${Math.min(100, (porcentajesDelAnio.empresa / datos.porcentajeMaximoGlobal) * 100)}%`,
+                            }}
+                            title={`Empresa: ${porcentajesDelAnio.empresa.toFixed(2)}%`}
+                        />
+                        <div
+                            className="absolute inset-y-0 bg-continental-yellow"
+                            style={{
+                                left: `${Math.min(100, (porcentajesDelAnio.empresa / datos.porcentajeMaximoGlobal) * 100)}%`,
+                                width: `${Math.min(
+                                    100,
+                                    (porcentajesDelAnio.operador / datos.porcentajeMaximoGlobal) * 100
+                                )}%`,
+                            }}
+                            title={`Operadores: ${porcentajesDelAnio.operador.toFixed(2)}%`}
+                        />
+                    </div>
+                    <p className="text-xs text-continental-gray-1 mt-2">
+                        Es el promedio del año: días-persona de ausencia entre plantilla por días del año.
+                        Sirve para ver el reparto entre empresa y operadores, no para juzgar un día suelto —
+                        para eso está el calendario de abajo, que sí marca en rojo el día que se pasa.
+                    </p>
+                </div>
+            )}
+
             {/* Los doce meses. La línea punteada es el reparto parejo: lo que
                 traería cada mes si la asignación no se hubiera apilado. */}
             <div>
@@ -196,6 +300,10 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                         <span className="flex items-center gap-1.5">
                             <span className="inline-block size-3 rounded-sm bg-continental-yellow" />
                             Capturados por el operador
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <span className="inline-block w-3 border-t border-dashed border-slate-500" />
+                            Reparto parejo
                         </span>
                     </div>
                 </div>
@@ -259,11 +367,24 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                         );
                     })}
                 </div>
-                <p className="text-xs text-continental-gray-1 mt-2">
-                    La línea punteada marca lo que traería el mes si el año se hubiera repartido parejo
-                    ({datos.meses[0]?.diasEsperadosSiFueraParejo ?? 0} días). Una barra muy por encima
-                    significa que la asignación se apiló ahí.
-                </p>
+                <div className="text-xs text-continental-gray-1 mt-2 space-y-1">
+                    <p>
+                        <span className="font-medium">Línea punteada:</span> los{" "}
+                        {datos.meses[0]?.diasEsperadosSiFueraParejo ?? 0} días que traería el mes si los
+                        días de empresa del año se hubieran repartido parejo entre los 12 meses. Una barra
+                        muy por encima significa que la asignación se apiló ahí.
+                    </p>
+                    <p>
+                        <span className="font-medium">Empresa % · operador %:</span> qué parte de la
+                        plantilla representa cada uno en ese mes.
+                    </p>
+                    <p>
+                        <span className="font-medium">Prom. %:</span> el porcentaje de ausencia de un día
+                        normal del mes. <span className="font-medium">Máx. %:</span> el del peor día del
+                        mes — ese es el que hay que comparar contra el {datos.porcentajeMaximoGlobal}%
+                        permitido, porque el promedio esconde los picos.
+                    </p>
+                </div>
             </div>
 
             {/* Calendario del mes elegido */}

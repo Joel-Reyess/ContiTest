@@ -98,6 +98,7 @@ namespace tiempo_libre.DTOs
     {
         public int GrupoId { get; set; }
         public string Nombre { get; set; } = string.Empty;
+        public int AreaId { get; set; }
         public string Area { get; set; } = string.Empty;
         public int Plantilla { get; set; }
         public int DiasEmpresaAsignados { get; set; }

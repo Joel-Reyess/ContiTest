@@ -1324,6 +1324,7 @@ export interface MesProgramacionAnual {
 export interface GrupoProgramacionAnual {
     grupoId: number;
     nombre: string;
+    areaId: number;
     area: string;
     plantilla: number;
     diasEmpresaAsignados: number;

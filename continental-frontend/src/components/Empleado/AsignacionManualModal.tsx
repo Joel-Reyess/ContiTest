@@ -13,6 +13,8 @@ import { asignarVacacionesManualmente } from '@/services/vacacionesService';
 import { useVacationConfig } from '@/hooks/useVacationConfig';
 
 interface AsignacionManualModalProps {
+    /** Año sobre el que se captura. Si no viene, el vigente de la configuración. */
+    anio?: number;
     show: boolean;
     onClose: () => void;
     empleadoId: number;
@@ -69,6 +71,7 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
     nombreEmpleado,
     vacacionesData,
     onAsignacionExitosa,
+    anio,
     preSelectedDates = [],
 }) => {
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
@@ -79,7 +82,12 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
     const [dateInput, setDateInput] = useState('');
 
     const { config } = useVacationConfig();
-    const anioVigente = config?.anioVigente;
+    // El año sobre el que se captura. Venía clavado al vigente, así que desde
+    // el super usuario no había forma de asignarle a alguien días del año que
+    // se está programando: el validador rechazaba toda fecha que no fuera de
+    // 2026 antes siquiera de mandarla. Ahora lo manda la vista (el filtro de
+    // año del detalle del empleado) y el vigente queda solo como respaldo.
+    const anioCaptura = anio ?? config?.anioVigente;
 
     const diasAutomaticasDisponibles = vacacionesData.resumen.diasAsignadosAutomaticamente - vacacionesData.resumen.asignadasAutomaticamente;
     const diasAnualesDisponibles = vacacionesData.resumen.diasProgramables - vacacionesData.resumen.anuales;
@@ -140,8 +148,8 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
             return;
         }
 
-        if (year !== anioVigente) {
-            toast.error(`La fecha debe estar en el año ${anioVigente}`);
+        if (year !== anioCaptura) {
+            toast.error(`La fecha debe estar en el año ${anioCaptura}`);
             return;
         }
 
@@ -372,7 +380,7 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                             <div className="space-y-2">
                                 <Label>Agregar Más Fechas</Label>
                                 <p className="text-xs text-gray-600">
-                                    Usa el selector de fecha o formato: YYYY-MM-DD (ej: {anioVigente}-10-05 para 5 de octubre)
+                                    Usa el selector de fecha o formato: YYYY-MM-DD (ej: {anioCaptura}-10-05 para 5 de octubre)
                                 </p>
                                 <div className="flex gap-2">
                                     <Input
@@ -380,9 +388,9 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                                         value={dateInput}
                                         onChange={(e) => setDateInput(e.target.value)}
                                         className="flex-1"
-                                        min={`${anioVigente}-01-01`}
-                                        max={`${anioVigente}-12-31`}
-                                        placeholder={`${anioVigente}-MM-DD`}
+                                        min={`${anioCaptura}-01-01`}
+                                        max={`${anioCaptura}-12-31`}
+                                        placeholder={`${anioCaptura}-MM-DD`}
                                     />
                                     <Button onClick={handleAddDate} variant="outline" size="sm">
                                         <Calendar className="h-4 w-4 mr-1" />
