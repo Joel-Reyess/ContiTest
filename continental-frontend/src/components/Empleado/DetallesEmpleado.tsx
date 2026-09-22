@@ -125,6 +125,12 @@ export const DetallesEmpleado = ({
   const puedeRegistrarPermiso =
       !hasRole(UserRole.AREA_ADMIN) && !hasRole(UserRole.INDUSTRIAL);
   const puedeSolicitarVacacionLaborada = isDelegado || isSuperUsuario;
+  // Quien puede capturarle dias a un empleado. El boton se le mostraba SOLO al
+  // super usuario, y por eso el jefe de area no encontraba donde hacerlo: el
+  // endpoint (VacacionesController.AsignarVacacionesManual) ya lo autoriza a el
+  // y al ingeniero industrial desde siempre, faltaba la puerta en la pantalla.
+  const puedeAsignarVacaciones =
+      isSuperUsuario || hasRole(UserRole.AREA_ADMIN) || hasRole(UserRole.INDUSTRIAL);
 
   const getEmployeeDetails = useCallback(async (id: string) => {
     if (!id) return;
@@ -1190,8 +1196,8 @@ const handleRemoveDay = async (fecha: string) => {
             )
           }
 
-          {/* Asignar vacaciones: solo superusuario */}
-          {vacacionesData && isSuperUsuario && (
+          {/* Asignar vacaciones: superusuario, jefe de area e ingeniero industrial */}
+          {vacacionesData && puedeAsignarVacaciones && (
             <Button 
               variant="outline" 
               className="w-full cursor-pointer border-blue-300 text-blue-700 hover:bg-blue-50" 
