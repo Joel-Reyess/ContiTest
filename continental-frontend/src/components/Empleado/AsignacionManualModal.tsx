@@ -463,8 +463,10 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                                     <div>
                                         <p className="text-blue-900 font-medium text-sm">Nota Importante</p>
                                         <p className="text-blue-800 text-sm mt-1">
-                                            Esta asignación manual <strong>no valida porcentajes de ausencia</strong> y se aplicará
-                                            inmediatamente sin restricciones adicionales.
+                                            Si alguna fecha deja al grupo por encima del porcentaje permitido, se te
+                                            va a avisar <strong>antes de guardar</strong> y tú decides si continúas.
+                                            Los días que captures con rebase quedan marcados en el reporte y se le
+                                            notifica al jefe del área.
                                         </p>
                                     </div>
                                 </div>
