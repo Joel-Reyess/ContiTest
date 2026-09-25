@@ -117,6 +117,27 @@ namespace tiempo_libre.Services
                 .ThenByDescending(p => p.Id)
                 .ToList();
 
+            // Qué días de vacación conoce LA APP, día por día. SAP maneja las
+            // vacaciones por periodo y deja filas que ya no corresponden:
+            //   - el día de descanso dentro del periodo, que SAP exporta con
+            //     Dias = 0 porque no consume vacación;
+            //   - el día que una reprogramación movió y del lado de SAP nadie
+            //     borró (la nueva llega como fila aparte y la vieja se queda).
+            // El rol pintaba "V" en los dos casos, y el calendario del empleado
+            // —que lee VacacionesProgramadas con EstadoVacacion = 'Activa'— no.
+            // De ahí el "el calendario está bien pero el rol le marca vacaciones
+            // en sus descansos".
+            var vacacionesDeLaApp = await _db.VacacionesProgramadas
+                .Where(v => empleadosIds.Contains(v.EmpleadoId) &&
+                            v.FechaVacacion >= inicio && v.FechaVacacion <= fin)
+                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.EstadoVacacion })
+                .ToListAsync();
+            var appConoceElDia = new HashSet<(int, DateOnly)>(
+                vacacionesDeLaApp.Select(v => (v.EmpleadoId, v.FechaVacacion)));
+            var appTieneVacacionActiva = new HashSet<(int, DateOnly)>(
+                vacacionesDeLaApp.Where(v => v.EstadoVacacion == "Activa")
+                                 .Select(v => (v.EmpleadoId, v.FechaVacacion)));
+
             var permisosPorEmpleadoYFecha = new Dictionary<string, Dictionary<int, string>>();
             foreach (var permiso in permisosIncapacidades)
             {
@@ -126,10 +147,26 @@ namespace tiempo_libre.Services
                     if (permiso.ClAbPre == 1100)
                     {
                         var empNom = empleados.FirstOrDefault(e => e.Nomina == permiso.Nomina);
-                        if (empNom != null && reprogramadasSet.Contains((empNom.Id, fechaActual)))
+                        if (empNom != null)
                         {
-                            fechaActual = fechaActual.AddDays(1);
-                            continue;
+                            var clave = (empNom.Id, fechaActual);
+
+                            // 1) Reprogramación registrada: la vacación ya se movió.
+                            // 2) Dias = 0: el propio SAP dice que ese día no consume
+                            //    vacación — es el descanso dentro del periodo.
+                            // 3) La app tiene el día y NO está activo (cancelado por
+                            //    una reprogramación que no pasó por SolicitudesReprogramacion):
+                            //    manda la app, que es la que sabe día por día.
+                            var laAppDiceQueNo =
+                                reprogramadasSet.Contains(clave) ||
+                                permiso.Dias == 0 ||
+                                (appConoceElDia.Contains(clave) && !appTieneVacacionActiva.Contains(clave));
+
+                            if (laAppDiceQueNo)
+                            {
+                                fechaActual = fechaActual.AddDays(1);
+                                continue;
+                            }
                         }
                     }
 
