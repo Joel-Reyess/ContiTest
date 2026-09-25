@@ -8,9 +8,13 @@ interface NomenclaturaLegendProps {
     // Los códigos de turno/descanso (1, 2, 3, D, CD) solo se pintan donde se
     // muestra la rotación (Plantilla); en el calendario del empleado sobran.
     incluirTurnos?: boolean;
+    // "LL" (día lleno) solo existe mientras alguien elige días. En un
+    // calendario de consulta no hay nada que elegir, así que tampoco va en la
+    // leyenda: si el código no se pinta, explicarlo sobra.
+    incluirDiaLleno?: boolean;
 }
 
-export const NomenclaturaLegend = ({ variant = 'grouped', className = '', incluirTurnos = true }: NomenclaturaLegendProps) => {
+export const NomenclaturaLegend = ({ variant = 'grouped', className = '', incluirTurnos = true, incluirDiaLleno = true }: NomenclaturaLegendProps) => {
     if (variant === 'compact') {
         return (
             <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${className}`}>
@@ -28,9 +32,14 @@ export const NomenclaturaLegend = ({ variant = 'grouped', className = '', inclui
         );
     }
 
-    const grupos = incluirTurnos
+    const grupos = (incluirTurnos
         ? NOMENCLATURA_LEGEND_GROUPS
-        : NOMENCLATURA_LEGEND_GROUPS.filter((g) => g.titulo !== 'Turnos');
+        : NOMENCLATURA_LEGEND_GROUPS.filter((g) => g.titulo !== 'Turnos')
+    )
+        .map((g) =>
+            incluirDiaLleno ? g : { ...g, codigos: g.codigos.filter((c) => c !== 'LL') }
+        )
+        .filter((g) => g.codigos.length > 0);
 
     return (
         <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 text-xs ${className}`}>

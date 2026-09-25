@@ -62,6 +62,7 @@ const CustomDateCellWrapper = ({
     excepciones, // ✅ AÑADIR
     groupId,
     mostrarTurnos = false,
+    soloConsulta = false,
 }: {
   children: React.ReactNode;
   value: Date;
@@ -74,6 +75,11 @@ const CustomDateCellWrapper = ({
   // sindicato pidió ver ambas. Queda apagado por defecto para las vistas que
   // solo reportan incidencias.
   mostrarTurnos?: boolean;
+  // Calendario de consulta: nadie está eligiendo días aquí. "LL" (día lleno)
+  // es una razón por la que NO se puede elegir un día, así que en consulta no
+  // significa nada y confunde — sobre todo al jefe y al superusuario, que ni
+  // siquiera están capturando. El día se pinta como cualquier otro.
+  soloConsulta?: boolean;
 }) => {
   const eventData = schedule.find(
     (event) => datesEqual(event.day, value)
@@ -125,8 +131,14 @@ const CustomDateCellWrapper = ({
         // de la captura 2026.
         title = eventData.razon || "Día no laborable";
         if ((eventData.razon || "").includes("lleno")) {
-          sapChip = SAP_NOMENCLATURA['LL'];
-          className += " full-day";
+          // El día inhábil (DI) sí se marca en consulta: es una propiedad del
+          // día, no de quien lo mira. El "lleno" no.
+          if (!soloConsulta) {
+            sapChip = SAP_NOMENCLATURA['LL'];
+            className += " full-day";
+          } else {
+            title = undefined;
+          }
         } else if (eventData.incidencia === 'DI') {
           sapChip = SAP_NOMENCLATURA['DI'];
         }
@@ -408,7 +420,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
           dateCellWrapper: (props) =>
                 CustomDateCellWrapper({
                     ...props, schedule, selectedDays, excepciones, // ✅ AÑADIR
-                    groupId, mostrarTurnos }),
+                    groupId, mostrarTurnos, soloConsulta: isViewMode }),
           //   month: {
           //     dateHeader: (props) => CustomDateHeader({...props, schedule}),
           //   },
@@ -461,18 +473,21 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
               : format(date, "HH:mm"),
         }}
       />
-      <CalendarLegend incluirTurnos={mostrarTurnos} />
+      <CalendarLegend incluirTurnos={mostrarTurnos} incluirDiaLleno={!isViewMode} />
     </div>
   );
 };
 
 export default CalendarComponent;
 
-export const CalendarLegend = ({ incluirTurnos = true }: { incluirTurnos?: boolean }) => {
+export const CalendarLegend = ({
+  incluirTurnos = true,
+  incluirDiaLleno = true,
+}: { incluirTurnos?: boolean; incluirDiaLleno?: boolean }) => {
   return (
     <div className="mt-6 p-4 bg-gray-50 rounded-lg">
       <h3 className="text-lg font-semibold mb-4 text-gray-800">Nomenclatura SAP</h3>
-      <NomenclaturaLegend variant="grouped" incluirTurnos={incluirTurnos} />
+      <NomenclaturaLegend variant="grouped" incluirTurnos={incluirTurnos} incluirDiaLleno={incluirDiaLleno} />
     </div>
   )
 }
