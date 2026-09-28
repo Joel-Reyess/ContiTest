@@ -105,6 +105,30 @@ namespace tiempo_libre.Services
                 _logger.LogInformation("Semana Santa para año {Anio}: {Fecha}", request.Anio,
                     semanaSantaFechaFinal?.ToString() ?? "No encontrada");
 
+                // Sin Semana Santa cargada, TODO el rol del año queda corrido
+                // siete días: ObtenerTurnoParaFecha resta una semana a cada fecha
+                // posterior a ella, y si no la encuentra no resta nada. Con el rol
+                // corrido, "no asignar en día de descanso" revisa los días
+                // equivocados y la programación entera cae en los descansos de la
+                // gente. Es lo que le pasó al 32006327 en 2026: se le asignaron el
+                // 29/09 y el 02/10, que son sus dos descansos, y hubo que
+                // reprogramarlos uno por uno.
+                //
+                // Se corta la corrida en vez de avisar: un año mal asignado no se
+                // deshace con un botón, se deshace reprogramando empleado por
+                // empleado.
+                if (semanaSantaFechaFinal == null)
+                {
+                    var mensaje =
+                        $"No hay Semana Santa cargada para {request.Anio} en Días Inhábiles. " +
+                        $"El rol de turnos se calcula restando una semana a las fechas posteriores a " +
+                        $"Semana Santa; sin esos días, todo el rol de {request.Anio} queda corrido siete " +
+                        $"días y la asignación caería en los descansos de los operadores. " +
+                        $"Carga la Semana Santa de {request.Anio} antes de generar la programación anual.";
+                    _logger.LogError("Asignación automática {Anio} cancelada: {Motivo}", request.Anio, mensaje);
+                    return new ApiResponse<AsignacionAutomaticaResponse>(false, response, mensaje);
+                }
+
                 var reloj = System.Diagnostics.Stopwatch.StartNew();
                 var procesados = 0;
 
