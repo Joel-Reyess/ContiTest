@@ -1132,6 +1132,10 @@ const handleRemoveDay = async (fecha: string) => {
             month={month}
             onMonthChange={setMonth}
             isViewMode={false}
+            // El jefe, el ingeniero y el superusuario sí pueden capturar por
+            // encima del porcentaje: el día lleno se les deja elegir y el
+            // rebase lo resuelve el modal de asignación.
+            puedeRebasarPorcentaje={puedeAsignarVacaciones}
             // Plantilla es la única vista que muestra la rotación de turnos
             // (números 1/2/3, D y grises); el empleado ve solo nomenclatura SAP.
             mostrarTurnos

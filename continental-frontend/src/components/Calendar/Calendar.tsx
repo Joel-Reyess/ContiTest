@@ -222,7 +222,18 @@ const CustomDateCellWrapper = ({
 };
  
 
-const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false, year }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean; year?: number }) => {
+const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false, year, puedeRebasarPorcentaje = false }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean; year?: number;
+  /**
+   * Quien está capturando puede pasarse del porcentaje del grupo (jefe de área,
+   * ingeniero industrial, superusuario). Para ellos un día "lleno" no es un
+   * muro: lo eligen y el rebase se resuelve donde ya está resuelto —en el modal
+   * de asignación, con la confirmación y el aviso al jefe del área—. Por eso ni
+   * se les pinta "LL" ni se les rechaza el clic.
+   *
+   * Para el operador queda en false: ahí "LL" sí significa que ese día no se
+   * puede elegir.
+   */
+  puedeRebasarPorcentaje?: boolean; }) => {
   // Obtener configuración de vacaciones para determinar el año
   const { currentPeriod } = useVacationConfig();
   
@@ -280,12 +291,24 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
     }
     //validar que sea un dia laboral
     const eventData = schedule.find((event) => datesEqual(event.day, slotInfo.start));
-    if (eventData?.eventType === "work") {
+
+    const alternarDia = () => {
       if (selectedDays?.some((d) => d.date === slotInfo.start.toDateString())) {
         onRemoveDay?.(slotInfo.start.toDateString());
       } else {
         onSelectDay?.(slotInfo.start.toDateString());
       }
+    };
+
+    // Día lleno por el porcentaje del grupo: para quien puede rebasar es un día
+    // elegible como cualquier otro. El candado no desaparece —lo aplica el
+    // backend al guardar y pide confirmación—, sólo deja de estar aquí, donde
+    // no había forma de pasarlo más que tecleando la fecha a mano en el modal.
+    const esDiaLleno =
+      eventData?.eventType === "not-work" && (eventData.razon || "").includes("lleno");
+
+    if (eventData?.eventType === "work" || (esDiaLleno && puedeRebasarPorcentaje)) {
+      alternarDia();
     } else {
       switch (eventData?.eventType) {
         case "rest":
@@ -420,7 +443,8 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
           dateCellWrapper: (props) =>
                 CustomDateCellWrapper({
                     ...props, schedule, selectedDays, excepciones, // ✅ AÑADIR
-                    groupId, mostrarTurnos, soloConsulta: isViewMode }),
+                    groupId, mostrarTurnos,
+                    soloConsulta: isViewMode || puedeRebasarPorcentaje }),
           //   month: {
           //     dateHeader: (props) => CustomDateHeader({...props, schedule}),
           //   },
@@ -473,7 +497,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
               : format(date, "HH:mm"),
         }}
       />
-      <CalendarLegend incluirTurnos={mostrarTurnos} incluirDiaLleno={!isViewMode} />
+      <CalendarLegend incluirTurnos={mostrarTurnos} incluirDiaLleno={!isViewMode && !puedeRebasarPorcentaje} />
     </div>
   );
 };
