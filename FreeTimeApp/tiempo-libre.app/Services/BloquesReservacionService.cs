@@ -368,9 +368,13 @@ namespace tiempo_libre.Services
             var fechaActual = new DateTime(fechaInicio.Year, fechaInicio.Month, fechaInicio.Day, 9, 0, 0);
             var numeroBloque = 1;
 
-            // Obtener días inhábiles del año
+            // Días inhábiles de las fechas en que CORREN los bloques, no del año
+            // que se programa. Los bloques de 2027 se corren en septiembre de
+            // 2026; filtrar por "anio" cargaba los inhábiles de 2027 y ningún
+            // festivo de 2026 detenía la captura.
+            var desdeInhabiles = DateOnly.FromDateTime(fechaInicio.Date);
             var diasInhabiles = await _db.DiasInhabiles
-                .Where(d => d.Fecha.Year == anio)
+                .Where(d => d.Fecha >= desdeInhabiles && d.Fecha.Year <= anio + 1)
                 .Select(d => d.Fecha)
                 .ToListAsync();
             var diasInhabilesSet = diasInhabiles.ToHashSet();
@@ -408,8 +412,13 @@ namespace tiempo_libre.Services
                 }
                 else
                 {
-                    // Avanzar al siguiente día si la fecha actual no es válida
-                    fechaActual = fechaActual.Date.AddDays(1).AddHours(fechaActual.Hour);
+                    // Avanzar al siguiente día si la fecha actual no es válida.
+                    // La pausa de fin de semana también aplica aquí: sin ella, un
+                    // grupo que descansa el viernes brincaba al SÁBADO y le
+                    // quedaba el bloque en fin de semana, cuando a todos los demás
+                    // grupos el fin de semana los manda al lunes.
+                    fechaActual = AplicarPausaFinDeSemana(
+                        fechaActual.Date.AddDays(1).Add(fechaActual.TimeOfDay));
                 }
 
                 // Protección contra bucle infinito
@@ -484,7 +493,7 @@ namespace tiempo_libre.Services
 
             var diaCalendario = calendarioResponse.Data.Calendario
                 .FirstOrDefault(d => d.Fecha.Date == fecha.Date);
-            return diaCalendario == null || diaCalendario.Turno != "D";
+            return diaCalendario == null || !TurnosHelper.EsDescanso(diaCalendario.Turno);
         }
 
         /// <summary>
