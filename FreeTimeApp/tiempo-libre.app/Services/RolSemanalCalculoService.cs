@@ -149,7 +149,7 @@ namespace tiempo_libre.Services
                         var empNom = empleados.FirstOrDefault(e => e.Nomina == permiso.Nomina);
                         if (empNom != null)
                         {
-                            var clave = (empNom.Id, fechaActual);
+                            var diaEmpleado = (empNom.Id, fechaActual);
 
                             // 1) Reprogramación registrada: la vacación ya se movió.
                             // 2) Dias = 0: el propio SAP dice que ese día no consume
@@ -158,9 +158,9 @@ namespace tiempo_libre.Services
                             //    una reprogramación que no pasó por SolicitudesReprogramacion):
                             //    manda la app, que es la que sabe día por día.
                             var laAppDiceQueNo =
-                                reprogramadasSet.Contains(clave) ||
+                                reprogramadasSet.Contains(diaEmpleado) ||
                                 permiso.Dias == 0 ||
-                                (appConoceElDia.Contains(clave) && !appTieneVacacionActiva.Contains(clave));
+                                (appConoceElDia.Contains(diaEmpleado) && !appTieneVacacionActiva.Contains(diaEmpleado));
 
                             if (laAppDiceQueNo)
                             {

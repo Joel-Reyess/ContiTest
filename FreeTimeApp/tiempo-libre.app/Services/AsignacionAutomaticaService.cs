@@ -119,14 +119,14 @@ namespace tiempo_libre.Services
                 // empleado.
                 if (semanaSantaFechaFinal == null)
                 {
-                    var mensaje =
+                    var motivoSinSemanaSanta =
                         $"No hay Semana Santa cargada para {request.Anio} en Días Inhábiles. " +
                         $"El rol de turnos se calcula restando una semana a las fechas posteriores a " +
                         $"Semana Santa; sin esos días, todo el rol de {request.Anio} queda corrido siete " +
                         $"días y la asignación caería en los descansos de los operadores. " +
                         $"Carga la Semana Santa de {request.Anio} antes de generar la programación anual.";
-                    _logger.LogError("Asignación automática {Anio} cancelada: {Motivo}", request.Anio, mensaje);
-                    return new ApiResponse<AsignacionAutomaticaResponse>(false, response, mensaje);
+                    _logger.LogError("Asignación automática {Anio} cancelada: {Motivo}", request.Anio, motivoSinSemanaSanta);
+                    return new ApiResponse<AsignacionAutomaticaResponse>(false, response, motivoSinSemanaSanta);
                 }
 
                 var reloj = System.Diagnostics.Stopwatch.StartNew();
