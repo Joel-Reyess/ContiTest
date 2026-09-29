@@ -62,7 +62,7 @@ const CustomDateCellWrapper = ({
     excepciones, // ✅ AÑADIR
     groupId,
     mostrarTurnos = false,
-    soloConsulta = false,
+    mostrarDiaLleno = false,
 }: {
   children: React.ReactNode;
   value: Date;
@@ -75,11 +75,12 @@ const CustomDateCellWrapper = ({
   // sindicato pidió ver ambas. Queda apagado por defecto para las vistas que
   // solo reportan incidencias.
   mostrarTurnos?: boolean;
-  // Calendario de consulta: nadie está eligiendo días aquí. "LL" (día lleno)
-  // es una razón por la que NO se puede elegir un día, así que en consulta no
-  // significa nada y confunde — sobre todo al jefe y al superusuario, que ni
-  // siquiera están capturando. El día se pinta como cualquier otro.
-  soloConsulta?: boolean;
+  // "LL" (día lleno) es la razón por la que el operador NO puede elegir un
+  // día. Solo se pinta cuando un sindicalizado está capturando vacaciones con
+  // su bloque abierto; en cualquier otro calendario (consulta, jefe,
+  // ingeniero, superusuario, operador fuera de su bloque) no significa nada y
+  // confunde. Ahí el día se pinta como cualquier otro.
+  mostrarDiaLleno?: boolean;
 }) => {
   const eventData = schedule.find(
     (event) => datesEqual(event.day, value)
@@ -133,7 +134,7 @@ const CustomDateCellWrapper = ({
         if ((eventData.razon || "").includes("lleno")) {
           // El día inhábil (DI) sí se marca en consulta: es una propiedad del
           // día, no de quien lo mira. El "lleno" no.
-          if (!soloConsulta) {
+          if (mostrarDiaLleno) {
             sapChip = SAP_NOMENCLATURA['LL'];
             className += " full-day";
           } else {
@@ -222,7 +223,7 @@ const CustomDateCellWrapper = ({
 };
  
 
-const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false, year, puedeRebasarPorcentaje = false }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean; year?: number;
+const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false, year, puedeRebasarPorcentaje = false, mostrarDiaLleno = false }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean; year?: number;
   /**
    * Quien está capturando puede pasarse del porcentaje del grupo (jefe de área,
    * ingeniero industrial, superusuario). Para ellos un día "lleno" no es un
@@ -233,7 +234,13 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
    * Para el operador queda en false: ahí "LL" sí significa que ese día no se
    * puede elegir.
    */
-  puedeRebasarPorcentaje?: boolean; }) => {
+  puedeRebasarPorcentaje?: boolean;
+  /**
+   * Pintar "LL" en los días llenos. Solo lo enciende la captura del
+   * sindicalizado mientras su bloque está abierto; apagado por omisión para
+   * todos los demás calendarios.
+   */
+  mostrarDiaLleno?: boolean; }) => {
   // Obtener configuración de vacaciones para determinar el año
   const { currentPeriod } = useVacationConfig();
   
@@ -345,6 +352,10 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
     }
   };
 
+  // Aunque alguien lo pida, en consulta o para quien puede rebasar el
+  // porcentaje "LL" nunca aplica.
+  const pintarDiaLleno = mostrarDiaLleno && !isViewMode && !puedeRebasarPorcentaje;
+
   // Estado para forzar re-render
   const [renderKey, setRenderKey] = useState(0);
 
@@ -444,7 +455,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
                 CustomDateCellWrapper({
                     ...props, schedule, selectedDays, excepciones, // ✅ AÑADIR
                     groupId, mostrarTurnos,
-                    soloConsulta: isViewMode || puedeRebasarPorcentaje }),
+                    mostrarDiaLleno: pintarDiaLleno }),
           //   month: {
           //     dateHeader: (props) => CustomDateHeader({...props, schedule}),
           //   },
@@ -497,7 +508,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
               : format(date, "HH:mm"),
         }}
       />
-      <CalendarLegend incluirTurnos={mostrarTurnos} incluirDiaLleno={!isViewMode && !puedeRebasarPorcentaje} />
+      <CalendarLegend incluirTurnos={mostrarTurnos} incluirDiaLleno={pintarDiaLleno} />
     </div>
   );
 };
@@ -506,7 +517,7 @@ export default CalendarComponent;
 
 export const CalendarLegend = ({
   incluirTurnos = true,
-  incluirDiaLleno = true,
+  incluirDiaLleno = false,
 }: { incluirTurnos?: boolean; incluirDiaLleno?: boolean }) => {
   return (
     <div className="mt-6 p-4 bg-gray-50 rounded-lg">

@@ -8,17 +8,20 @@ interface NomenclaturaLegendProps {
     // Los códigos de turno/descanso (1, 2, 3, D, CD) solo se pintan donde se
     // muestra la rotación (Plantilla); en el calendario del empleado sobran.
     incluirTurnos?: boolean;
-    // "LL" (día lleno) solo existe mientras alguien elige días. En un
-    // calendario de consulta no hay nada que elegir, así que tampoco va en la
-    // leyenda: si el código no se pinta, explicarlo sobra.
+    // "LL" (día lleno) solo existe mientras un sindicalizado captura
+    // vacaciones con su bloque abierto. En cualquier otra vista no se pinta,
+    // así que tampoco va en la leyenda: si el código no se pinta, explicarlo
+    // sobra. Por eso va apagado por omisión.
     incluirDiaLleno?: boolean;
 }
 
-export const NomenclaturaLegend = ({ variant = 'grouped', className = '', incluirTurnos = true, incluirDiaLleno = true }: NomenclaturaLegendProps) => {
+export const NomenclaturaLegend = ({ variant = 'grouped', className = '', incluirTurnos = true, incluirDiaLleno = false }: NomenclaturaLegendProps) => {
     if (variant === 'compact') {
         return (
             <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${className}`}>
-                {Object.values(SAP_NOMENCLATURA).map((e) => (
+                {Object.values(SAP_NOMENCLATURA)
+                    .filter((e) => incluirDiaLleno || e.codigo !== 'LL')
+                    .map((e) => (
                     <span key={e.codigo} className="inline-flex items-center gap-1">
                         <span
                             className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${e.chipBg} ${e.chipFg}`}

@@ -25,6 +25,14 @@ import type { BloqueReservacion, EmpleadoBloque } from "@/interfaces/Api.interfa
 interface Props {
     empleadoId: number;
     anio: number | null;
+    /**
+     * Avisa si el bloque del operador está abierto AHORA (ya inició y no ha
+     * cerrado). La captura lo usa para pintar "LL": el día lleno solo tiene
+     * sentido mientras el operador puede elegir días, y eso es solo con su
+     * bloque abierto. Se vuelve a evaluar cada minuto para que el calendario
+     * se entere cuando el bloque abre o cierra con la pantalla abierta.
+     */
+    onBloqueAbierto?: (abierto: boolean) => void;
 }
 
 const fechaLarga = (iso: string) =>
@@ -55,7 +63,7 @@ const compañerosPendientes = (bloque: BloqueReservacion, empleadoId: number): E
         .filter((e) => !estadosQueNoDetienenLaFila.includes(e.estado));
 };
 
-export const MiTurnoBanner = ({ empleadoId, anio }: Props) => {
+export const MiTurnoBanner = ({ empleadoId, anio, onBloqueAbierto }: Props) => {
     const [bloque, setBloque] = useState<BloqueReservacion | null>(null);
     const [cargando, setCargando] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -79,6 +87,24 @@ export const MiTurnoBanner = ({ empleadoId, anio }: Props) => {
             vigente = false;
         };
     }, [empleadoId, anio]);
+
+    useEffect(() => {
+        if (!onBloqueAbierto) return;
+        if (!anio || cargando || error || !bloque) {
+            onBloqueAbierto(false);
+            return;
+        }
+        const evaluar = () => {
+            const ahora = new Date();
+            onBloqueAbierto(
+                ahora >= instanteDeHoraMexico(bloque.fechaHoraInicio) &&
+                ahora <= instanteDeHoraMexico(bloque.fechaHoraFin)
+            );
+        };
+        evaluar();
+        const id = window.setInterval(evaluar, 60_000);
+        return () => window.clearInterval(id);
+    }, [anio, cargando, error, bloque, onBloqueAbierto]);
 
     if (!anio || cargando) return null;
 

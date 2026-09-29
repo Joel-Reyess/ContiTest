@@ -55,6 +55,10 @@ const RequestVacations = () => {
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [reservaResponse, setReservaResponse] = useState<ReservaAnualResponse | null>(null);
     const [anioCaptura, setAnioCaptura] = useState<number | null>(null);
+    // "LL" solo se pinta con el bloque del operador abierto: fuera de su
+    // bloque no puede capturar, así que no hay día que elegir ni que marcar
+    // como lleno. Lo decide MiTurnoBanner con las mismas reglas del backend.
+    const [bloqueAbierto, setBloqueAbierto] = useState(false);
 
     // Obtener availableDays desde los datos de la API
     const availableDays = (vacacionesData?.resumen?.diasProgramables || 0) - (vacacionesData?.resumen?.anuales || 0);
@@ -421,7 +425,7 @@ const RequestVacations = () => {
                 operador no tenia donde consultar cuando le toca. */}
             {user?.id && (
                 <div className="pb-4">
-                    <MiTurnoBanner empleadoId={user.id} anio={anioCaptura} />
+                    <MiTurnoBanner empleadoId={user.id} anio={anioCaptura} onBloqueAbierto={setBloqueAbierto} />
                 </div>
             )}
             {aniosDisponibles.length > 1 && (
@@ -476,6 +480,7 @@ const RequestVacations = () => {
                             // Al capturar vacaciones hay que ver el turno (1/2/3/D)
                             // para no pedir dias que caen en descanso.
                             mostrarTurnos
+                            mostrarDiaLleno={bloqueAbierto}
                         />
                     ) : (
                         <AnualView
