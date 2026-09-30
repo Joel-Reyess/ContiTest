@@ -308,6 +308,7 @@ const MyVacations = ({
                         // El sindicalizado necesita ver en qué turno va (1/2/3/D)
                         // además de la nomenclatura SAP de lo que pasó ese día.
                         mostrarTurnos
+                        cuadricula
                         key={currentPeriod}
                     />
 

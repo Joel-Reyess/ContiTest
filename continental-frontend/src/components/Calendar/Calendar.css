@@ -108,3 +108,33 @@
   color: var(--color-continental-gray-1) !important; /* Gris oscuro */
   font-weight: bold !important;
 }
+
+/* Cuadrícula visible entre días (prop cuadricula, solo calendarios del
+   sindicalizado). react-big-calendar dibuja la línea vertical entre días en
+   .rbc-day-bg, pero dateCellWrapper (CustomDateCellWrapper) reemplaza ese div
+   por el nuestro, así que la línea se perdía: días contiguos del mismo color
+   (dos descansos, un bloque de vacaciones) se veían como un solo cuadro. */
+.calendario-cuadricula .rbc-month-view {
+  --calendar-grid: #9ca3af;
+  border-color: var(--calendar-grid);
+}
+
+.calendario-cuadricula .rbc-month-view .custom-date-cell-wrapper {
+  flex: 1 0 0%;
+}
+
+.calendario-cuadricula .rbc-month-view .custom-date-cell-wrapper + .custom-date-cell-wrapper {
+  border-left: 1px solid var(--calendar-grid);
+}
+
+.calendario-cuadricula .rbc-month-view .rbc-month-row + .rbc-month-row {
+  border-top: 1px solid var(--calendar-grid);
+}
+
+.calendario-cuadricula .rbc-month-view .rbc-month-header {
+  border-bottom: 1px solid var(--calendar-grid);
+}
+
+.calendario-cuadricula .rbc-month-view .rbc-header + .rbc-header {
+  border-left: 1px solid var(--calendar-grid);
+}

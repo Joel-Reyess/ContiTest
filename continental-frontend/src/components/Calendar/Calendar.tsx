@@ -223,7 +223,7 @@ const CustomDateCellWrapper = ({
 };
  
 
-const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false, year, puedeRebasarPorcentaje = false, mostrarDiaLleno = false }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean; year?: number;
+const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, selectedDays, isViewMode, groupId, userId, excepciones = [], refreshKey, mostrarTurnos = false, year, puedeRebasarPorcentaje = false, mostrarDiaLleno = false, cuadricula = false }: { month?: number, onMonthChange?: (month: number) => void, onSelectDay?: (day: string) => void, onRemoveDay?: (day: string) => void, selectedDays?: { date: string }[], isViewMode?: boolean, groupId?: number, userId?: number, excepciones?: ExcepcionPorcentaje[]; refreshKey?: number; mostrarTurnos?: boolean; year?: number;
   /**
    * Quien está capturando puede pasarse del porcentaje del grupo (jefe de área,
    * ingeniero industrial, superusuario). Para ellos un día "lleno" no es un
@@ -240,7 +240,10 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
    * sindicalizado mientras su bloque está abierto; apagado por omisión para
    * todos los demás calendarios.
    */
-  mostrarDiaLleno?: boolean; }) => {
+  mostrarDiaLleno?: boolean;
+  // Líneas marcadas entre días. Solo la piden los calendarios del sindicalizado,
+  // donde días contiguos del mismo color se confundían.
+  cuadricula?: boolean; }) => {
   // Obtener configuración de vacaciones para determinar el año
   const { currentPeriod } = useVacationConfig();
   
@@ -410,7 +413,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
   }, [schedule]);
 
   return (
-    <div className="relative" style={{ height: "500px", width: "100%" }}>
+    <div className={cuadricula ? "relative calendario-cuadricula" : "relative"} style={{ height: "500px", width: "100%" }}>
       {calendarLoading && (
         <>
         <div className="absolute inset-0 z-50 bg-white/50 backdrop-blur-sm flex flex-col justify-center items-center rounded-lg">

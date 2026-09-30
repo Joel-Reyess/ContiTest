@@ -481,6 +481,7 @@ const RequestVacations = () => {
                             // para no pedir dias que caen en descanso.
                             mostrarTurnos
                             mostrarDiaLleno={bloqueAbierto}
+                            cuadricula
                         />
                     ) : (
                         <AnualView
