@@ -109,8 +109,8 @@
   font-weight: bold !important;
 }
 
-/* Cuadrícula visible entre días (prop cuadricula, solo calendarios del
-   sindicalizado). react-big-calendar dibuja la línea vertical entre días en
+/* Cuadrícula visible entre días (prop cuadricula: calendarios del
+   sindicalizado y el del empleado en Plantilla). react-big-calendar dibuja la línea vertical entre días en
    .rbc-day-bg, pero dateCellWrapper (CustomDateCellWrapper) reemplaza ese div
    por el nuestro, así que la línea se perdía: días contiguos del mismo color
    (dos descansos, un bloque de vacaciones) se veían como un solo cuadro. */

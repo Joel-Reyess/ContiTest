@@ -241,8 +241,9 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
    * todos los demás calendarios.
    */
   mostrarDiaLleno?: boolean;
-  // Líneas marcadas entre días. Solo la piden los calendarios del sindicalizado,
-  // donde días contiguos del mismo color se confundían.
+  // Líneas marcadas entre días, donde días contiguos del mismo color se
+  // confundían: calendarios del sindicalizado y el calendario del empleado en
+  // Plantilla (jefe de área, ingeniero industrial y superusuario).
   cuadricula?: boolean; }) => {
   // Obtener configuración de vacaciones para determinar el año
   const { currentPeriod } = useVacationConfig();

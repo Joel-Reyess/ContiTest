@@ -1139,6 +1139,7 @@ const handleRemoveDay = async (fecha: string) => {
             // Plantilla es la única vista que muestra la rotación de turnos
             // (números 1/2/3, D y grises); el empleado ve solo nomenclatura SAP.
             mostrarTurnos
+            cuadricula
             onSelectDay={handleSelectDay}
             onRemoveDay={handleRemoveTempDay}
             groupId={groupId}
