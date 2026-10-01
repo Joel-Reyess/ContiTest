@@ -483,11 +483,14 @@ namespace tiempo_libre.Services
         ///   de la app dentro del rango (es como llega una reprogramación capturada
         ///   directo en SAP: el día viejo se reporta en 0 y el nuevo con 1).
         /// - Dias &gt; 0 → por cada día del rango que la app no tenga como vacación:
-        ///     · si hay EXACTAMENTE una vacación activa a ±7 días que SAP no
-        ///       confirme, se mueve a la fecha del Excel (cancelar + crear);
-        ///     · si no hay ninguna candidata, se da de alta (SAP la capturó);
-        ///     · si hay varias, no se adivina: se deja log y el calendario la
-        ///       pinta de todos modos por el registro SAP.
+        ///     · si hay una vacación activa a ±31 días que SAP no confirme, se
+        ///       mueve la más cercana a la fecha del Excel (cancelar + crear);
+        ///     · si no hay ninguna candidata, se da de alta (SAP la capturó).
+        ///
+        /// Todo se lee con <see cref="VacacionesActivasAsync"/> y
+        /// <see cref="VacacionesSapVigentesAsync"/>, que ven también lo que esta
+        /// misma pasada movió o dio de alta y todavía no se guarda (se guarda
+        /// cada 100 filas).
         /// </summary>
         private async Task ReconciliarVacacionSapAsync(
             FreeTimeDbContext context, int nomina, DateOnly desde, DateOnly hasta, double? dias)
@@ -502,11 +505,7 @@ namespace tiempo_libre.Services
 
             if (dias.HasValue && dias.Value <= 0)
             {
-                var sinEfecto = await context.VacacionesProgramadas
-                    .Where(v => v.EmpleadoId == empleadoId &&
-                                v.FechaVacacion >= desde && v.FechaVacacion <= hasta &&
-                                v.EstadoVacacion == "Activa")
-                    .ToListAsync();
+                var sinEfecto = await VacacionesActivasAsync(context, empleadoId.Value, desde, hasta);
 
                 foreach (var v in sinEfecto)
                 {
@@ -520,16 +519,9 @@ namespace tiempo_libre.Services
                 return;
             }
 
-            // Días de la app que ya se reasignaron en esta misma pasada: las
-            // consultas de abajo van a la base y no ven los cambios todavía sin
-            // guardar, así que sin esto una misma vacación podría "moverse" a dos
-            // fechas distintas del mismo rango.
-            var yaReasignadas = new HashSet<int>();
-
             for (var f = desde; f <= hasta; f = f.AddDays(1))
             {
-                var yaExiste = await context.VacacionesProgramadas.AnyAsync(v =>
-                    v.EmpleadoId == empleadoId && v.FechaVacacion == f && v.EstadoVacacion == "Activa");
+                var yaExiste = (await VacacionesActivasAsync(context, empleadoId.Value, f, f)).Count > 0;
                 if (yaExiste) continue;
 
                 // Ventana amplia: el encargado del Excel puede recorrer el día
@@ -537,20 +529,11 @@ namespace tiempo_libre.Services
                 var ventanaIni = f.AddDays(-31);
                 var ventanaFin = f.AddDays(31);
 
-                var candidatas = await context.VacacionesProgramadas
-                    .Where(v => v.EmpleadoId == empleadoId &&
-                                v.EstadoVacacion == "Activa" &&
-                                v.FechaVacacion >= ventanaIni && v.FechaVacacion <= ventanaFin)
-                    .ToListAsync();
+                var candidatas = await VacacionesActivasAsync(context, empleadoId.Value, ventanaIni, ventanaFin);
 
                 // Un día que SAP también reporta como vacación vigente no es
                 // candidato a moverse: SAP y la app ya están de acuerdo en él.
-                var confirmadasSap = await context.PermisosEIncapacidadesSAP
-                    .Where(p => p.Nomina == nomina && p.ClAbPre == 1100 &&
-                                (p.Dias == null || p.Dias > 0) &&
-                                p.Desde <= ventanaFin && p.Hasta >= ventanaIni)
-                    .Select(p => new { p.Desde, p.Hasta })
-                    .ToListAsync();
+                var confirmadasSap = await VacacionesSapVigentesAsync(context, nomina, ventanaIni, ventanaFin);
 
                 // Se ordenan por cercanía a la fecha que manda el Excel: cuando
                 // hay varias candidatas la más cercana es la que el encargado
@@ -558,7 +541,6 @@ namespace tiempo_libre.Services
                 // viejo se quedaba activo junto al nuevo (dos vacaciones por un
                 // solo día). El Excel manda, así que se resuelve siempre.
                 var sinConfirmar = candidatas
-                    .Where(v => !yaReasignadas.Contains(v.Id))
                     .Where(v => !confirmadasSap.Any(p => v.FechaVacacion >= p.Desde && v.FechaVacacion <= p.Hasta))
                     .OrderBy(v => Math.Abs(v.FechaVacacion.DayNumber - f.DayNumber))
                     .ThenBy(v => v.FechaVacacion)
@@ -567,7 +549,6 @@ namespace tiempo_libre.Services
                 if (sinConfirmar.Count > 0)
                 {
                     var original = sinConfirmar[0];
-                    yaReasignadas.Add(original.Id);
                     original.EstadoVacacion = "Cancelada";
                     original.UpdatedAt = DateTime.Now;
                     original.Observaciones =
@@ -615,6 +596,47 @@ namespace tiempo_libre.Services
                         nomina, f);
                 }
             }
+        }
+
+        // La sincronización guarda cada 100 filas, y una consulta normal a la base
+        // no ve lo que esta misma pasada ya movió, canceló o dio de alta. Con
+        // eso, dos filas del mismo empleado en un lote podían mover la MISMA
+        // vacación a dos fechas (un día de más), dar de alta el mismo día dos
+        // veces, o mover un día que otra fila del lote acababa de confirmar.
+        // Por eso se carga lo de la base al rastreador de EF y se lee de ahí
+        // (Local), que tiene la versión en memoria: lo cancelado ya cancelado y
+        // lo nuevo incluido.
+        private static async Task<List<VacacionesProgramadas>> VacacionesActivasAsync(
+            FreeTimeDbContext context, int empleadoId, DateOnly ini, DateOnly fin)
+        {
+            await context.VacacionesProgramadas
+                .Where(v => v.EmpleadoId == empleadoId &&
+                            v.FechaVacacion >= ini && v.FechaVacacion <= fin &&
+                            v.EstadoVacacion == "Activa")
+                .LoadAsync();
+
+            return context.VacacionesProgramadas.Local
+                .Where(v => v.EmpleadoId == empleadoId &&
+                            v.FechaVacacion >= ini && v.FechaVacacion <= fin &&
+                            v.EstadoVacacion == "Activa")
+                .ToList();
+        }
+
+        private static async Task<List<(DateOnly Desde, DateOnly Hasta)>> VacacionesSapVigentesAsync(
+            FreeTimeDbContext context, int nomina, DateOnly ini, DateOnly fin)
+        {
+            // Sin filtrar Dias en la base: una fila del lote pudo cambiarlo en memoria.
+            await context.PermisosEIncapacidadesSAP
+                .Where(p => p.Nomina == nomina && p.ClAbPre == 1100 &&
+                            p.Desde <= fin && p.Hasta >= ini)
+                .LoadAsync();
+
+            return context.PermisosEIncapacidadesSAP.Local
+                .Where(p => p.Nomina == nomina && p.ClAbPre == 1100 &&
+                            (p.Dias == null || p.Dias > 0) &&
+                            p.Desde <= fin && p.Hasta >= ini)
+                .Select(p => (p.Desde, p.Hasta))
+                .ToList();
         }
     }
 }
