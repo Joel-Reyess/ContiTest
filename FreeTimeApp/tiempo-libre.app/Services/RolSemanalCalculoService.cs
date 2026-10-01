@@ -41,11 +41,36 @@ namespace tiempo_libre.Services
         /// <summary>
         /// Devuelve un diccionario (empleadoId, fecha) → CodigoTurno final para
         /// todos los empleados activos del grupo en el rango [inicio, fin].
+        ///
+        /// soloLoQueTraeElExcel (lo pide la pantalla del rol semanal; acuerdo con
+        /// el cliente, oct-2026): hasta la fecha de la última carga del Excel de
+        /// SAP, las vacaciones y los permisos/incapacidades salen SOLO de lo que
+        /// trae el Excel. Lo que tenga la app y el Excel no diga —vacaciones
+        /// programadas, días de empresa reprogramados, permisos capturados por
+        /// jefes o delegados— no se pinta, para que el rol no muestre a nadie con
+        /// vacaciones o permisos de más. No se borra nada: solo no se muestra.
+        /// Después de la última carga el Excel todavía no dice nada y se pinta lo
+        /// programado en la app, como siempre. Turnos, permutas y festivos
+        /// trabajados no cambian.
         /// </summary>
         public async Task<Dictionary<(int empleadoId, DateOnly fecha), string>> CalcularCodigosTurnoGrupoAsync(
-            int grupoId, DateOnly inicio, DateOnly fin)
+            int grupoId, DateOnly inicio, DateOnly fin, bool soloLoQueTraeElExcel = false)
         {
             var resultado = new Dictionary<(int, DateOnly), string>();
+
+            // Hasta qué día manda el Excel: el de la última carga. Filas de SAP
+            // son las que no capturó nadie en la app (EsRegistroManual) ni vienen
+            // de una solicitud (FechaSolicitud).
+            DateOnly? corteExcel = null;
+            if (soloLoQueTraeElExcel)
+            {
+                var ultimaCarga = await _db.PermisosEIncapacidadesSAP
+                    .Where(p => !p.EsRegistroManual && p.FechaSolicitud == null)
+                    .MaxAsync(p => (DateTime?)p.FechaRegistro);
+                if (ultimaCarga.HasValue)
+                    corteExcel = DateOnly.FromDateTime(ultimaCarga.Value);
+            }
+            bool MandaElExcel(DateOnly f) => corteExcel.HasValue && f <= corteExcel.Value;
 
             var inicioDt = inicio.ToDateTime(TimeOnly.MinValue);
             var finDt = fin.ToDateTime(TimeOnly.MinValue);
@@ -74,8 +99,12 @@ namespace tiempo_libre.Services
                         var fechaStr = dia.Fecha.ToString("yyyy-MM-dd");
                         if (!turnosReales.ContainsKey(fechaStr))
                             turnosReales[fechaStr] = new Dictionary<int, string>();
-                        turnosReales[fechaStr][empCalendario.IdUsuarioEmpleadoSindicalizado] =
-                            ResolverTurno(dia.TipoActividadDelDia, rolGrupo, DateOnly.FromDateTime(dia.Fecha));
+                        var fechaDia = DateOnly.FromDateTime(dia.Fecha);
+                        var turno = ResolverTurno(dia.TipoActividadDelDia, rolGrupo, fechaDia);
+                        // La "V" de este calendario es de la app, no del Excel.
+                        if (turno == "V" && MandaElExcel(fechaDia))
+                            turno = TurnosHelper.ObtenerTurnoParaFecha(rolGrupo, fechaDia);
+                        turnosReales[fechaStr][empCalendario.IdUsuarioEmpleadoSindicalizado] = turno;
                     }
                 }
             }
@@ -141,10 +170,21 @@ namespace tiempo_libre.Services
             var permisosPorEmpleadoYFecha = new Dictionary<string, Dictionary<int, string>>();
             foreach (var permiso in permisosIncapacidades)
             {
+                var esDelExcel = !permiso.EsRegistroManual && permiso.FechaSolicitud == null;
                 var fechaActual = permiso.Desde;
                 while (fechaActual <= permiso.Hasta)
                 {
-                    if (permiso.ClAbPre == 1100)
+                    if (MandaElExcel(fechaActual))
+                    {
+                        // Solo lo que trae el Excel. Un 1100 en 0 días es el propio
+                        // SAP diciendo que ese día no es vacación.
+                        if (!esDelExcel || (permiso.ClAbPre == 1100 && permiso.Dias == 0))
+                        {
+                            fechaActual = fechaActual.AddDays(1);
+                            continue;
+                        }
+                    }
+                    else if (permiso.ClAbPre == 1100)
                     {
                         var empNom = empleados.FirstOrDefault(e => e.Nomina == permiso.Nomina);
                         if (empNom != null)
@@ -265,7 +305,9 @@ namespace tiempo_libre.Services
                     var fechaStr = dia.Fecha.ToString("yyyy-MM-dd");
                     string codigoTurno;
 
-                    if (diasEmpresaReprogSet.Contains((emp.Id, fechaStr)))
+                    var fechaDia = DateOnly.FromDateTime(dia.Fecha);
+
+                    if (diasEmpresaReprogSet.Contains((emp.Id, fechaStr)) && !MandaElExcel(fechaDia))
                     {
                         codigoTurno = "C";
                     }
@@ -289,11 +331,12 @@ namespace tiempo_libre.Services
                     {
                         codigoTurno = dia.Turno ?? string.Empty;
                         if (!string.IsNullOrEmpty(dia.Incidencia) &&
-                            dia.Incidencia.StartsWith("V", StringComparison.OrdinalIgnoreCase))
+                            dia.Incidencia.StartsWith("V", StringComparison.OrdinalIgnoreCase) &&
+                            !MandaElExcel(fechaDia))
                             codigoTurno = "V";
                     }
 
-                    resultado[(emp.Id, DateOnly.FromDateTime(dia.Fecha))] = codigoTurno;
+                    resultado[(emp.Id, fechaDia)] = codigoTurno;
                 }
             }
 
@@ -325,11 +368,15 @@ namespace tiempo_libre.Services
                 .Select(v => new { EmpleadoId = v.IdUsuarioEmpleadoSindicalizado, FechaVacacion = v.Fecha })
                 .ToListAsync();
 
+            // Vacaciones de la app: donde manda el Excel, la "V" sale solo de sus
+            // filas 1100 (arriba, en los permisos SAP).
             var vacacionesSet = new HashSet<(int, DateOnly)>();
             foreach (var vac in vacacionesProgramadas)
-                vacacionesSet.Add((vac.EmpleadoId, vac.FechaVacacion));
+                if (!MandaElExcel(vac.FechaVacacion))
+                    vacacionesSet.Add((vac.EmpleadoId, vac.FechaVacacion));
             foreach (var vac in vacacionesLegacy)
-                vacacionesSet.Add((vac.EmpleadoId, vac.FechaVacacion));
+                if (!MandaElExcel(vac.FechaVacacion))
+                    vacacionesSet.Add((vac.EmpleadoId, vac.FechaVacacion));
 
             var turnosNormales = new HashSet<string> { "1", "2", "3", "D", "" };
             foreach (var key in resultado.Keys.ToList())

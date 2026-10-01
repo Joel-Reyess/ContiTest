@@ -127,8 +127,11 @@ namespace tiempo_libre.Controllers
                     .Select(u => new { u.Id, u.Nomina, u.FullName })
                     .ToListAsync();
 
-                // Códigos de turno finales por (empleado, fecha) — misma fuente que el dashboard.
-                var codigos = await _rolSemanal.CalcularCodigosTurnoGrupoAsync(grupoId, inicio, fin);
+                // Códigos de turno finales por (empleado, fecha) — misma fuente que el
+                // dashboard. El rol semanal pinta vacaciones y permisos SOLO del Excel
+                // hasta su última carga (el dashboard sigue contando lo de la app).
+                var codigos = await _rolSemanal.CalcularCodigosTurnoGrupoAsync(
+                    grupoId, inicio, fin, soloLoQueTraeElExcel: true);
 
                 var semana = new System.Collections.Generic.List<WeeklyRoleEntryDto>();
                 foreach (var emp in empleados)
