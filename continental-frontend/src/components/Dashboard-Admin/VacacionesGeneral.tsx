@@ -428,8 +428,10 @@ export const VacacionesGeneral = ({
         `Se eliminaron ${response.totalBloquesEliminados} bloques de ${response.gruposAfectados} grupos del año ${anio}.`
       );
 
-      // Actualizar estadísticas (debería quedar en 0)
-      setEstadisticasBloques(null);
+      // Las estadísticas de la pantalla son del año vigente: solo se limpian si
+      // ese es el año que se borró. Borrar los de preparación las dejaba en
+      // blanco aunque los bloques del vigente siguieran ahí.
+      if (anio === anioVigente) setEstadisticasBloques(null);
       setWizardVersion((v) => v + 1);
     } catch (error) {
       console.error("Error al eliminar bloques:", error);
@@ -905,7 +907,7 @@ export const VacacionesGeneral = ({
               activa. El panel de programación anual —donde vivían las
               gráficas— no se pinta en este periodo, así que el superusuario
               se quedaba sin ver quién ya capturó. */}
-          <ResumenCapturaBloques anio={anioPreparacion ?? anioVigente} />
+          <ResumenCapturaBloques anio={anioPreparacion ?? anioVigente} version={wizardVersion} />
         </>
       ) : !mostrarContenidoProgramacionAnual ? (
         <>

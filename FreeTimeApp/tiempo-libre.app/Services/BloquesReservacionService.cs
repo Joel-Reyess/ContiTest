@@ -1146,6 +1146,25 @@ namespace tiempo_libre.Services
                     _db.AsignacionesBloque.RemoveRange(asignacionesAEliminar);
                 }
 
+                // Los cambios de bloque ("Saltar turno", "Cambiar de bloque") apuntan
+                // a estos bloques por BloqueOrigenId/BloqueDestinoId. SQL Server no
+                // deja las dos llaves en cascada, así que mientras existan el DELETE
+                // de los bloques truena por la llave foránea y no se borra nada. Es lo
+                // que hacía parecer que "Borrar bloques" no funcionaba en cuanto un
+                // jefe saltaba un turno. La limpieza anual (ProgramacionAnualController)
+                // ya los borraba primero; aquí faltaba.
+                var idsBloques = bloquesAEliminar.Select(b => b.Id).ToList();
+                var cambiosAEliminar = await _db.CambiosBloque
+                    .Where(c => idsBloques.Contains(c.BloqueOrigenId) || idsBloques.Contains(c.BloqueDestinoId))
+                    .ToListAsync();
+
+                if (cambiosAEliminar.Any())
+                {
+                    _db.CambiosBloque.RemoveRange(cambiosAEliminar);
+                    _logger.LogInformation("Eliminando {Count} cambios de bloque del año {Anio}",
+                        cambiosAEliminar.Count, anioObjetivo);
+                }
+
                 // Eliminar los bloques
                 _db.BloquesReservacion.RemoveRange(bloquesAEliminar);
                 await _db.SaveChangesAsync();
@@ -1160,21 +1179,32 @@ namespace tiempo_libre.Services
                     .Select(b => b.Grupo.AreaId)
                     .Distinct();
 
+                // Los bloques ya están borrados: si una notificación falla no se
+                // reporta como error, o al reintentar saldría "No se encontraron
+                // bloques" y parecería que el botón no hace nada.
                 foreach (var areaId in areaIds)
                 {
-                    await _notificacionesService.CrearNotificacionAsync(
-                        Models.Enums.TiposDeNotificacionEnum.SistemaBloques,
-                        "Bloques de Reservación Eliminados",
-                        $"Los bloques de reservación del año {anioObjetivo} han sido eliminados por {response.UsuarioEjecuto}",
-                        "Sistema",
-                        null,
-                        usuarioId,
-                        areaId,
-                        null,
-                        "EliminacionBloques",
-                        null,
-                        new { AnioEliminado = anioObjetivo, TotalEliminados = response.TotalBloquesEliminados }
-                    );
+                    try
+                    {
+                        await _notificacionesService.CrearNotificacionAsync(
+                            Models.Enums.TiposDeNotificacionEnum.SistemaBloques,
+                            "Bloques de Reservación Eliminados",
+                            $"Los bloques de reservación del año {anioObjetivo} han sido eliminados por {response.UsuarioEjecuto}",
+                            "Sistema",
+                            null,
+                            usuarioId,
+                            areaId,
+                            null,
+                            "EliminacionBloques",
+                            null,
+                            new { AnioEliminado = anioObjetivo, TotalEliminados = response.TotalBloquesEliminados }
+                        );
+                    }
+                    catch (Exception exNotif)
+                    {
+                        _logger.LogError(exNotif,
+                            "Bloques {Anio} eliminados, pero falló la notificación al área {AreaId}", anioObjetivo, areaId);
+                    }
                 }
 
                 return new ApiResponse<EliminacionBloquesResponse>(true, response,
@@ -1183,7 +1213,11 @@ namespace tiempo_libre.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al eliminar bloques de reservación");
-                return new ApiResponse<EliminacionBloquesResponse>(false, null, $"Error inesperado: {ex.Message}");
+                // ex.Message de EF es "An error occurred while saving the entity
+                // changes. See the inner exception" y no dice nada: el motivo real
+                // viene en la excepción interna.
+                return new ApiResponse<EliminacionBloquesResponse>(false, null,
+                    $"No se pudieron borrar los bloques de {anioObjetivo}; no se borró nada. Motivo: {ex.GetBaseException().Message}");
             }
         }
 

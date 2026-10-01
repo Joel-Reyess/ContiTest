@@ -14,7 +14,9 @@ import { EstadisticasEmpleados } from "./EstadisticasEmpleados";
  * siguieran capturándose. Por eso ahora es un componente aparte que se pide su
  * propio año.
  */
-export const ResumenCapturaBloques = ({ anio }: { anio: number }) => {
+// version: súbelo para volver a pedir el avance (p. ej. después de borrar o
+// generar bloques); si no, se queda mostrando los bloques que ya no existen.
+export const ResumenCapturaBloques = ({ anio, version = 0 }: { anio: number; version?: number }) => {
   const [datos, setDatos] = useState<EstadisticasBloquesResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +30,7 @@ export const ResumenCapturaBloques = ({ anio }: { anio: number }) => {
       .catch((e) => { if (!cancelado) setError(e instanceof Error ? e.message : "Error al cargar el avance"); })
       .finally(() => { if (!cancelado) setCargando(false); });
     return () => { cancelado = true; };
-  }, [anio]);
+  }, [anio, version]);
 
   if (cargando) {
     return (
