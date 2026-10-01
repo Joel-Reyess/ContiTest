@@ -401,6 +401,30 @@ namespace tiempo_libre.Services
 
                 if (request.Aprobada)
                 {
+                    // El día original tiene que seguir activo. Entre la solicitud y
+                    // la aprobación la sincronización del Excel de SAP pudo haberlo
+                    // movido o cancelado; aprobar así "cancelaba" un día que ya no
+                    // contaba y daba de alta el nuevo: un día de vacación de más
+                    // (+1). Los flujos de post-incapacidad y día de empresa ya lo
+                    // revisaban; este no.
+                    var original = solicitud.VacacionOriginal
+                        ?? await _db.VacacionesProgramadas.FindAsync(solicitud.VacacionOriginalId);
+
+                    if (original != null && original.EstadoVacacion != "Activa")
+                    {
+                        _logger.LogWarning(
+                            "Reprogramación {SolicitudId} no aprobada: la vacación original {VacacionId} ({Fecha:yyyy-MM-dd}) ya está {Estado}. {Obs}",
+                            solicitud.Id, original.Id, original.FechaVacacion, original.EstadoVacacion, original.Observaciones);
+
+                        var motivo = string.IsNullOrWhiteSpace(original.Observaciones)
+                            ? ""
+                            : $" ({original.Observaciones})";
+                        return new ApiResponse<AprobarReprogramacionResponse>(false, null,
+                            $"No se puede aprobar: la vacación del {original.FechaVacacion:dd/MM/yyyy} ya no está activa{motivo}. " +
+                            "Aprobarla le daría un día de más al empleado. Rechaza esta solicitud y, si hace falta, " +
+                            "que se pida de nuevo sobre la fecha que tiene vigente.");
+                    }
+
                     var conflicto = await _db.VacacionesProgramadas
                         .AnyAsync(v => v.EmpleadoId == solicitud.EmpleadoId &&
                                        v.FechaVacacion == solicitud.FechaNuevaSolicitada &&
@@ -410,7 +434,7 @@ namespace tiempo_libre.Services
                     if (conflicto)
                     {
                         return new ApiResponse<AprobarReprogramacionResponse>(false, null,
-                            "Ya existe una vacaciA3n activa para la fecha solicitada");
+                            "Ya existe una vacación activa para la fecha solicitada");
                     }
                 }
 
