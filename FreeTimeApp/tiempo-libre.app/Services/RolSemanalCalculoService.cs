@@ -46,12 +46,12 @@ namespace tiempo_libre.Services
         /// el cliente, oct-2026): hasta la fecha de la última carga del Excel de
         /// SAP, las vacaciones y los permisos/incapacidades salen SOLO de lo que
         /// trae el Excel. Lo que tenga la app y el Excel no diga —vacaciones
-        /// programadas, días de empresa reprogramados, permisos capturados por
-        /// jefes o delegados— no se pinta, para que el rol no muestre a nadie con
-        /// vacaciones o permisos de más. No se borra nada: solo no se muestra.
-        /// Después de la última carga el Excel todavía no dice nada y se pinta lo
-        /// programado en la app, como siempre. Turnos, permutas y festivos
-        /// trabajados no cambian.
+        /// programadas, días de empresa reprogramados, festivos trabajados ("F"),
+        /// permisos capturados por jefes o delegados— no se pinta, para que el rol
+        /// no muestre a nadie con vacaciones o permisos de más. No se borra nada:
+        /// solo no se muestra. Después de la última carga el Excel todavía no dice
+        /// nada y se pinta lo programado en la app, como siempre. Turnos y
+        /// permutas no cambian.
         /// </summary>
         public async Task<Dictionary<(int empleadoId, DateOnly fecha), string>> CalcularCodigosTurnoGrupoAsync(
             int grupoId, DateOnly inicio, DateOnly fin, bool soloLoQueTraeElExcel = false)
@@ -284,8 +284,12 @@ namespace tiempo_libre.Services
                             f.EstadoSolicitud == "Aprobada" && empleadosIds.Contains(f.EmpleadoId))
                 .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada })
                 .ToListAsync();
+            // El día que se da por trabajar un festivo es de la app: donde manda el
+            // Excel solo cuenta si SAP lo trae (y entonces sale con su propio código).
             var festivosSet = new HashSet<(int, string)>(
-                festivosAprobados.Select(f => (f.EmpleadoId, f.FechaNuevaSolicitada.ToString("yyyy-MM-dd"))));
+                festivosAprobados
+                    .Where(f => !MandaElExcel(f.FechaNuevaSolicitada))
+                    .Select(f => (f.EmpleadoId, f.FechaNuevaSolicitada.ToString("yyyy-MM-dd"))));
 
             // Días empresa reprogramados → "C"
             var diasEmpresaReprogList = await _db.VacacionesProgramadas
