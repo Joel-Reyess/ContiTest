@@ -19,18 +19,37 @@ interface Notification {
   duration?: number;
 }
 
+const NOMBRE_PERIODO: Record<string, string> = {
+  ProgramacionAnual: 'Programación Anual',
+  Reprogramacion: 'Reprogramación',
+  Cerrado: 'Cerrado',
+};
+
+const editableDesde = (cfg: VacacionesConfig) => ({
+  porcentajeAusenciaMaximo: cfg.porcentajeAusenciaMaximo.toString(),
+  porcentajeAusenciaPreparacion: cfg.porcentajeAusenciaPreparacion?.toString() ?? '',
+  periodoActual: cfg.periodoActual,
+  anioVigente: cfg.anioVigente.toString(),
+  anioProgramacionAnual: cfg.anioProgramacionAnual?.toString() ?? '',
+});
+
 export const Vacaciones = () => {
   const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias'>('general');
   const [config, setConfig] = useState<VacacionesConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [editableConfig, setEditableConfig] = useState<{ porcentajeAusenciaMaximo: string; periodoActual: string; anioVigente: string; porcentajeAusenciaPreparacion: string }>({
+  const [editableConfig, setEditableConfig] = useState<{ porcentajeAusenciaMaximo: string; periodoActual: string; anioVigente: string; porcentajeAusenciaPreparacion: string; anioProgramacionAnual: string }>({
     porcentajeAusenciaMaximo: '',
     porcentajeAusenciaPreparacion: '',
     periodoActual: 'Cerrado',
-    anioVigente: new Date().getFullYear().toString()
+    anioVigente: new Date().getFullYear().toString(),
+    anioProgramacionAnual: ''
   });
+  // El panel de abajo (VacacionesGeneral) carga su propia copia de la
+  // configuración al montarse. Si se guarda aquí y no se remonta, se queda con
+  // la vieja y cualquier botón suyo la vuelve a escribir encima.
+  const [versionPanel, setVersionPanel] = useState(0);
   
   // Estados para el sistema de notificaciones
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -113,12 +132,7 @@ export const Vacaciones = () => {
       try {
         const cfg = await vacacionesService.getConfig();
         setConfig(cfg);
-        setEditableConfig({
-          porcentajeAusenciaMaximo: cfg.porcentajeAusenciaMaximo.toString(),
-          porcentajeAusenciaPreparacion: cfg.porcentajeAusenciaPreparacion?.toString() ?? '',
-          periodoActual: cfg.periodoActual,
-          anioVigente: cfg.anioVigente.toString()
-        });
+        setEditableConfig(editableDesde(cfg));
       } catch (e: any) {
         setConfigError(e?.message || 'Error cargando configuración');
       } finally {
@@ -133,28 +147,61 @@ export const Vacaciones = () => {
       showNotification('warning', 'Campos incompletos', 'Llena todos los campos antes de guardar.');
       return;
     }
+    const anioVigenteNuevo = parseInt(editableConfig.anioVigente);
+    // Vacío = no hay año en preparación.
+    const anioPreparacionNuevo = editableConfig.anioProgramacionAnual.trim() === ''
+      ? null
+      : parseInt(editableConfig.anioProgramacionAnual);
+    if (anioPreparacionNuevo != null && (isNaN(anioPreparacionNuevo) || anioPreparacionNuevo <= anioVigenteNuevo)) {
+      showNotification('warning', 'Año en preparación inválido',
+        `El año en preparación tiene que ser posterior al vigente (${anioVigenteNuevo}), o dejarse vacío.`);
+      return;
+    }
+
+    // Periodo, año vigente y año en preparación deciden qué puede hacer TODA la
+    // planta. Antes solo se cambiaban con los botones del panel o con una query
+    // directa a la base; aquí se pueden corregir, pero con confirmación.
+    if (config && (
+      editableConfig.periodoActual !== config.periodoActual ||
+      anioVigenteNuevo !== config.anioVigente ||
+      anioPreparacionNuevo !== (config.anioProgramacionAnual ?? null)
+    )) {
+      const texto = (periodo: string, vigente: number, prep: number | null) =>
+        `${NOMBRE_PERIODO[periodo] ?? periodo}, año vigente ${vigente}, ` +
+        (prep != null ? `año en preparación ${prep}` : 'sin año en preparación');
+      const efecto =
+        editableConfig.periodoActual === 'Cerrado'
+          ? 'Con el periodo Cerrado nadie puede capturar ni reprogramar.'
+          : 'Reprogramación abierta' +
+            (editableConfig.periodoActual === 'ProgramacionAnual' || anioPreparacionNuevo != null
+              ? `; captura anual abierta (${anioPreparacionNuevo ?? anioVigenteNuevo}).`
+              : '; captura anual cerrada.');
+      const confirmado = window.confirm(
+        `Vas a cambiar el estado de vacaciones de toda la planta.\n\n` +
+        `Antes: ${texto(config.periodoActual, config.anioVigente, config.anioProgramacionAnual ?? null)}\n` +
+        `Después: ${texto(editableConfig.periodoActual, anioVigenteNuevo, anioPreparacionNuevo)}\n\n` +
+        `${efecto}\nNo se borra ninguna vacación, bloque ni solicitud.\n\n¿Guardar?`
+      );
+      if (!confirmado) return;
+    }
+
     setSavingConfig(true);
     try {
       const payload = {
         porcentajeAusenciaMaximo: parseFloat(editableConfig.porcentajeAusenciaMaximo),
         periodoActual: editableConfig.periodoActual as VacacionesConfig['periodoActual'],
-        anioVigente: parseInt(editableConfig.anioVigente),
-        // Preservar el año en preparación: el backend persiste lo que reciba
-        // y omitirlo lo borraría.
-        anioProgramacionAnual: config?.anioProgramacionAnual ?? null,
-        // Vacío = ese año usa el porcentaje general.
-        porcentajeAusenciaPreparacion: editableConfig.porcentajeAusenciaPreparacion.trim() === ''
-          ? null
-          : parseFloat(editableConfig.porcentajeAusenciaPreparacion)
+        anioVigente: anioVigenteNuevo,
+        anioProgramacionAnual: anioPreparacionNuevo,
+        // Vacío (o sin año en preparación) = ese año usa el porcentaje general.
+        porcentajeAusenciaPreparacion:
+          anioPreparacionNuevo == null || editableConfig.porcentajeAusenciaPreparacion.trim() === ''
+            ? null
+            : parseFloat(editableConfig.porcentajeAusenciaPreparacion)
       };
       const updated = await vacacionesService.updateConfig(payload);
       setConfig(updated);
-      setEditableConfig({
-        porcentajeAusenciaMaximo: updated.porcentajeAusenciaMaximo.toString(),
-        porcentajeAusenciaPreparacion: updated.porcentajeAusenciaPreparacion?.toString() ?? '',
-        periodoActual: updated.periodoActual,
-        anioVigente: updated.anioVigente.toString()
-      });
+      setEditableConfig(editableDesde(updated));
+      setVersionPanel((v) => v + 1);
       showNotification('success', 'Configuración actualizada', 'La configuración de vacaciones se guardó correctamente.');
     } catch (e: any) {
       showNotification('error', 'Error al guardar', e?.message || 'No se pudo actualizar la configuración');
@@ -172,7 +219,16 @@ export const Vacaciones = () => {
           <div className="flex flex-wrap gap-6 items-end">
             <div className="flex flex-col">
               <label className="text-xs font-medium text-continental-gray-1">Periodo actual</label>
-              <p>{config?.periodoActual}</p>
+              <select
+                className="w-48 mt-1 h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                value={editableConfig.periodoActual}
+                disabled={loadingConfig || savingConfig}
+                onChange={(e) => setEditableConfig(prev => ({ ...prev, periodoActual: e.target.value }))}
+              >
+                <option value="ProgramacionAnual">Programación Anual</option>
+                <option value="Reprogramacion">Reprogramación</option>
+                <option value="Cerrado">Cerrado</option>
+              </select>
             </div>
             <div className="flex flex-col">
               <label className="text-xs font-medium text-continental-gray-1">% Ausencia Máximo</label>
@@ -199,13 +255,27 @@ export const Vacaciones = () => {
                 siguiente usa «Preparar programación anual» más abajo.
               </span>
             </div>
+            <div className="flex flex-col">
+              <label className="text-xs font-medium text-continental-gray-1">Año en preparación</label>
+              <Input
+                type="number"
+                className="w-32 mt-1"
+                placeholder="Ninguno"
+                value={editableConfig.anioProgramacionAnual}
+                disabled={loadingConfig || savingConfig}
+                onChange={(e) => setEditableConfig(prev => ({ ...prev, anioProgramacionAnual: e.target.value }))}
+              />
+              <span className="text-[11px] text-continental-gray-1 mt-1 max-w-[16rem]">
+                El año cuya captura anual corre junto con la reprogramación del vigente. Vacío = ninguno.
+              </span>
+            </div>
             {/* El año que se prepara puede necesitar otro porcentaje para poder
                 repartir sus días; sin este campo, cambiarlo movía también el del
                 año en curso. */}
-            {config?.anioProgramacionAnual != null && (
+            {editableConfig.anioProgramacionAnual.trim() !== '' && (
               <div className="flex flex-col">
                 <label className="text-xs font-medium text-continental-gray-1">
-                  % Ausencia Máximo {config.anioProgramacionAnual} (en preparación)
+                  % Ausencia Máximo {editableConfig.anioProgramacionAnual} (en preparación)
                 </label>
                 <Input
                   type="number"
@@ -217,7 +287,7 @@ export const Vacaciones = () => {
                   onChange={(e) => setEditableConfig(prev => ({ ...prev, porcentajeAusenciaPreparacion: e.target.value }))}
                 />
                 <span className="text-[11px] text-continental-gray-1 mt-1 max-w-[16rem]">
-                  Vacío = {config.anioProgramacionAnual} usa el porcentaje general.
+                  Vacío = {editableConfig.anioProgramacionAnual} usa el porcentaje general.
                 </span>
               </div>
             )}
@@ -225,18 +295,14 @@ export const Vacaciones = () => {
               (editableConfig.porcentajeAusenciaMaximo !== config.porcentajeAusenciaMaximo.toString() ||
                 editableConfig.porcentajeAusenciaPreparacion !== (config.porcentajeAusenciaPreparacion?.toString() ?? '') ||
                 editableConfig.periodoActual !== config.periodoActual ||
-                editableConfig.anioVigente !== config.anioVigente.toString()) && (
+                editableConfig.anioVigente !== config.anioVigente.toString() ||
+                editableConfig.anioProgramacionAnual !== (config.anioProgramacionAnual?.toString() ?? '')) && (
                 <div className="flex gap-2 ml-auto">
                   <Button
                     variant="outline"
                     disabled={loadingConfig || savingConfig}
                     onClick={() => {
-                      setEditableConfig({
-                        porcentajeAusenciaMaximo: config.porcentajeAusenciaMaximo.toString(),
-                        porcentajeAusenciaPreparacion: config.porcentajeAusenciaPreparacion?.toString() ?? '',
-                        periodoActual: config.periodoActual,
-                        anioVigente: config.anioVigente.toString()
-                      });
+                      setEditableConfig(editableDesde(config));
                     }}
                   >
                     Cancelar cambios
@@ -302,17 +368,13 @@ export const Vacaciones = () => {
         )}
         {activeTab === 'general' && (
           <VacacionesGeneral
+            key={versionPanel}
             onNotification={showNotification}
             anioVigente={config?.anioVigente || new Date().getFullYear() + 1}
             onIrACalendario={() => setActiveTab('calendario')}
             onConfigUpdate={(updatedConfig) => {
               setConfig(updatedConfig);
-              setEditableConfig({
-                porcentajeAusenciaMaximo: updatedConfig.porcentajeAusenciaMaximo.toString(),
-                porcentajeAusenciaPreparacion: updatedConfig.porcentajeAusenciaPreparacion?.toString() ?? '',
-                periodoActual: updatedConfig.periodoActual,
-                anioVigente: updatedConfig.anioVigente.toString(),
-              });
+              setEditableConfig(editableDesde(updatedConfig));
             }}
           />
         )}
