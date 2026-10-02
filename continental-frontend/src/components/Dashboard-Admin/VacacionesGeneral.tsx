@@ -302,6 +302,60 @@ export const VacacionesGeneral = ({
     }
   };
 
+  // Salida del callejón: con el periodo "Cerrado" (o en ProgramacionAnual sin
+  // bloques del año vigente) esta pantalla solo ofrecía el asistente, cuyo
+  // "Cancelar" lleva a Cerrado y "Guardar" a ProgramacionAnual. "Concluir
+  // Programación Anual" —lo único que regresaba a Reprogramación— vive en la
+  // vista de resultados, que solo aparece si el año vigente tiene bloques; en
+  // cuanto se borraban, no había forma de reabrir la reprogramación ni de ver la
+  // preparación del año siguiente (esa sección solo se pinta en Reprogramación),
+  // y los operadores veían las dos etapas "Inactivo". No toca nada más: conserva
+  // el año vigente, el año en preparación y los porcentajes.
+  const handleReabrirReprogramacion = async () => {
+    if (!configVacaciones) return;
+    const confirmado = window.confirm(
+      `Se va a reabrir la reprogramación de ${anioVigente}.
+
+` +
+      (anioPreparacion
+        ? `La captura anual de ${anioPreparacion} vuelve a quedar abierta junto con ella. `
+        : "") +
+      `No se borra ni se cambia ninguna vacación, bloque ni solicitud.
+
+¿Reabrir?`
+    );
+    if (!confirmado) return;
+    try {
+      setCambiandoPreparacion(true);
+      const updatedConfig = await vacacionesService.updateConfig({
+        porcentajeAusenciaMaximo: configVacaciones.porcentajeAusenciaMaximo,
+        periodoActual: "Reprogramacion",
+        anioVigente: configVacaciones.anioVigente,
+        anioProgramacionAnual: configVacaciones.anioProgramacionAnual ?? null,
+        porcentajeAusenciaPreparacion: configVacaciones.porcentajeAusenciaPreparacion ?? null,
+      });
+      setConfigVacaciones(updatedConfig);
+      onConfigUpdate?.(updatedConfig);
+      setWizardVersion((v) => v + 1);
+      onNotification(
+        "success",
+        "Reprogramación reabierta",
+        anioPreparacion
+          ? `La reprogramación de ${anioVigente} y la captura anual de ${anioPreparacion} están abiertas.`
+          : `La reprogramación de ${anioVigente} está abierta. Para preparar ${anioVigente + 1}, usa la sección amarilla.`
+      );
+    } catch (error) {
+      console.error("Error al reabrir la reprogramación:", error);
+      onNotification(
+        "error",
+        "Error",
+        error instanceof Error ? error.message : "No se pudo reabrir la reprogramación"
+      );
+    } finally {
+      setCambiandoPreparacion(false);
+    }
+  };
+
   const handleProgramacionCompleta = async () => {
     // El modal pudo operar sobre el año en preparación; el resumen del panel
     // principal es siempre el del año vigente, así que solo se refresca en ese caso.
@@ -911,6 +965,35 @@ export const VacacionesGeneral = ({
         </>
       ) : !mostrarContenidoProgramacionAnual ? (
         <>
+          {/* Sin esto, desde aquí no había forma de volver a Reprogramación
+              (ver handleReabrirReprogramacion). */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start justify-between gap-4 flex-wrap">
+            <div className="max-w-2xl">
+              <p className="text-sm font-medium text-continental-blue-light">
+                {configVacaciones?.periodoActual === "Cerrado"
+                  ? "El periodo de vacaciones está cerrado"
+                  : `Periodo de Programación Anual ${anioVigente} (sin bloques generados)`}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                {configVacaciones?.periodoActual === "Cerrado"
+                  ? "Nadie puede capturar ni reprogramar: los operadores ven «Solicitudes Anuales» y «Reprogramación» como Inactivo. "
+                  : ""}
+                Si la reprogramación de {anioVigente} debe seguir abierta
+                {anioPreparacion ? ` junto con la captura anual de ${anioPreparacion}` : ""}, reábrela aquí.
+                No se borra ni se cambia ninguna vacación, bloque ni solicitud.
+              </p>
+            </div>
+            <Button
+              variant="continental"
+              disabled={cambiandoPreparacion}
+              onClick={handleReabrirReprogramacion}
+              className="flex items-center gap-2"
+            >
+              <CalendarSync className="w-4 h-4" />
+              Reabrir reprogramación {anioVigente}
+            </Button>
+          </div>
+
           {/* Estado de la secuencia (rol → festivos → días empresa → bloques) */}
           <ProgramacionAnualWizard
             anio={anioVigente}
