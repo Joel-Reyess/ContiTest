@@ -88,10 +88,25 @@ namespace tiempo_libre.Controllers
                     PorcentajeAusenciaPreparacion = request.PorcentajeAusenciaPreparacion
                 };
 
+                // La configuración decide qué puede hacer toda la planta y no
+                // guarda quién la cambió. Cuando en TEST apareció "Cerrado, vigente
+                // 2027" no había forma de saber quién ni con qué botón. Se deja en
+                // el log antes y después, con el usuario.
+                var antes = (await _configuracionService.ObtenerConfiguracionActualAsync()).Data;
+                var textoAntes = antes == null ? "(sin configuración)" : DescribirConfig(antes);
+                var textoDespues = DescribirConfig(nuevaConfig);
+
                 var response = await _configuracionService.ActualizarConfiguracionAsync(nuevaConfig);
                 
                 if (!response.Success)
                     return BadRequest(response);
+
+                if (textoAntes != textoDespues)
+                {
+                    _logger.LogWarning(
+                        "Configuración de vacaciones cambiada por usuario {UsuarioId} ({Usuario}): {Antes} -> {Despues}",
+                        User.FindFirst(ClaimTypes.NameIdentifier)?.Value, User.Identity?.Name, textoAntes, textoDespues);
+                }
 
                 return Ok(response);
             }
@@ -101,6 +116,11 @@ namespace tiempo_libre.Controllers
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }
+
+        private static string DescribirConfig(ConfiguracionVacaciones c) =>
+            $"periodo {c.PeriodoActual}, vigente {c.AnioVigente}, " +
+            $"preparación {(c.AnioProgramacionAnual?.ToString() ?? "ninguno")}, " +
+            $"% {c.PorcentajeAusenciaMaximo} / % preparación {(c.PorcentajeAusenciaPreparacion?.ToString() ?? "general")}";
 
         /// <summary>
         /// Cambiar el período actual del sistema (ProgramacionAnual, Reprogramacion, Cerrado)
