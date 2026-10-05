@@ -9,7 +9,7 @@ import { NavbarUser } from "../ui/navbar-user";
 import useAuth from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { ApiPeriodMapping, PeriodOptions, type ApiPeriod, type Period } from "@/interfaces/Calendar.interface";
-import { getVacacionesAsignadasPorEmpleado, getDisponibilidadVacaciones, reservarVacacionesAnuales } from '@/services/vacacionesService';
+import { getVacacionesAsignadasPorEmpleado, getDisponibilidadVacaciones, reservarVacacionesAnuales, consultarMiTurnoDeCaptura } from '@/services/vacacionesService';
 import type { VacacionesAsignadasResponse, VacacionAsignada, ResumenVacaciones, DisponibilidadVacacionesResponse, ReservaAnualRequest, ReservaAnualResponse } from '@/interfaces/Api.interface';
 import { UserRole } from "@/interfaces/User.interface";
 import { fechaLocalISO } from '@/utils/fechaLocal';
@@ -59,6 +59,11 @@ const RequestVacations = () => {
     // bloque no puede capturar, así que no hay día que elegir ni que marcar
     // como lleno. Lo decide MiTurnoBanner con las mismas reglas del backend.
     const [bloqueAbierto, setBloqueAbierto] = useState(false);
+    // ¿Ya le toca capturar? Lo dice el backend con la misma regla con la que
+    // después rechaza la captura. Antes el operador podía elegir todos sus días
+    // fuera de turno y se enteraba hasta mandarlos. null = no se sabe (cargando
+    // o la consulta falló): no se bloquea, el backend sigue validando al guardar.
+    const [turnoCaptura, setTurnoCaptura] = useState<{ permitido: boolean; motivo: string } | null>(null);
 
     // Obtener availableDays desde los datos de la API
     const availableDays = (vacacionesData?.resumen?.diasProgramables || 0) - (vacacionesData?.resumen?.anuales || 0);
@@ -215,7 +220,30 @@ const RequestVacations = () => {
         fetchDisponibilidad();
     }, [user?.grupo?.grupoId, anioCaptura]);
 
+    // Se vuelve a preguntar cada minuto: cuando abre su bloque, o capturan los
+    // compañeros con más antigüedad, la pantalla se desbloquea sola.
+    useEffect(() => {
+        if (anioCaptura == null) return;
+        let vigente = true;
+        setTurnoCaptura(null);
+        const consultar = () => {
+            consultarMiTurnoDeCaptura(anioCaptura)
+                .then((t) => { if (vigente) setTurnoCaptura(t); })
+                .catch((e) => {
+                    console.error('No se pudo consultar el turno de captura:', e);
+                    if (vigente) setTurnoCaptura(null);
+                });
+        };
+        consultar();
+        const id = window.setInterval(consultar, 60_000);
+        return () => { vigente = false; window.clearInterval(id); };
+    }, [anioCaptura]);
+
     const handleSelectDay = (day: string) => {
+        if (turnoCaptura && !turnoCaptura.permitido) {
+            toast.error(turnoCaptura.motivo || "Aún no es tu turno para elegir días.");
+            return;
+        }
         //validar que el dia no exista en selectedDays
         if (selectedDays.some((d) => d.date === day)) {
             return;
@@ -426,6 +454,11 @@ const RequestVacations = () => {
             {user?.id && (
                 <div className="pb-4">
                     <MiTurnoBanner empleadoId={user.id} anio={anioCaptura} onBloqueAbierto={setBloqueAbierto} />
+                </div>
+            )}
+            {turnoCaptura && !turnoCaptura.permitido && (
+                <div className="mx-2 mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                    Todavía no puedes elegir días de {anioCaptura}: {turnoCaptura.motivo}
                 </div>
             )}
             {aniosDisponibles.length > 1 && (

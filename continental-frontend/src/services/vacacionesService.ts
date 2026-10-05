@@ -100,6 +100,19 @@ Object.assign(vacacionesService, {
   getDisponibilidadVacaciones, eliminarVacacionPorFecha
 });
 
+// ¿Le toca capturar al operador que está en sesión? Es la misma regla con la
+// que reservar-anual rechaza la captura fuera de turno (bloque abierto y orden
+// por antigüedad dentro del bloque), para no dejarle elegir días antes.
+export const consultarMiTurnoDeCaptura = async (anio: number): Promise<{ permitido: boolean; motivo: string }> => {
+  const resp = await httpClient.get<ApiResponse<{ permitido: boolean; motivo: string }>>(
+    `/api/vacaciones/mi-turno-captura?anio=${anio}`
+  );
+  if (resp?.data) {
+    return resp.data as unknown as { permitido: boolean; motivo: string };
+  }
+  throw new Error('No se pudo consultar el turno de captura');
+};
+
 // Nuevo: reservar vacaciones anuales
 export const reservarVacacionesAnuales = async (request: ReservaAnualRequest): Promise<ReservaAnualResponse> => {
   // OJO con el timeout. El default son 10 s y este endpoint valida CADA fecha

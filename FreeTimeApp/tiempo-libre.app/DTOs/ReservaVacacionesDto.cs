@@ -85,6 +85,17 @@ namespace tiempo_libre.DTOs
         public DateTime FechaActualizacion { get; set; }
     }
 
+    /// <summary>
+    /// ¿Puede el operador capturar ahora? Es la misma validación que aplica
+    /// reservar-anual, para que la pantalla no deje empezar a elegir días que
+    /// después se rechazan.
+    /// </summary>
+    public class TurnoCapturaDto
+    {
+        public bool Permitido { get; set; }
+        public string Motivo { get; set; } = string.Empty;
+    }
+
     public class EstadoPeriodoVacacionesDto
     {
         public string PeriodoActual { get; set; } = string.Empty;

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using tiempo_libre.Services;
 using tiempo_libre.Models;
@@ -131,6 +132,34 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener estado del periodo de vacaciones");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// ¿Le toca capturar al usuario que llama, para ese año? Misma regla que
+        /// reservar-anual (bloque abierto y orden por antigüedad dentro del
+        /// bloque). La pantalla de captura la consulta para no dejar empezar a
+        /// elegir días fuera de turno.
+        /// </summary>
+        [HttpGet("mi-turno-captura")]
+        public async Task<IActionResult> ConsultarMiTurnoDeCaptura([FromQuery] int anio)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!int.TryParse(userIdClaim, out var empleadoId))
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+
+                var response = await _reservaService.ConsultarTurnoDeCapturaAsync(empleadoId, anio);
+                if (!response.Success)
+                    return BadRequest(response);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al consultar el turno de captura para {Anio}", anio);
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }

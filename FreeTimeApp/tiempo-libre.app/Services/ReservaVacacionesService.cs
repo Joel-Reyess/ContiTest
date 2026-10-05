@@ -758,6 +758,23 @@ namespace tiempo_libre.Services
         ///     alguien con más antigüedad que sigue pendiente. "Saltado" no
         ///     bloquea, que es justo para lo que el jefe lo salta.
         /// </summary>
+        /// <summary>
+        /// La regla de turno de la captura, expuesta para que la pantalla del
+        /// operador la consulte ANTES de dejarle elegir días (antes se enteraba
+        /// hasta mandar la captura). Es la misma función que usa
+        /// ProcesarReservaAnualAsync; no hay una copia de la regla en el front.
+        /// </summary>
+        public async Task<ApiResponse<TurnoCapturaDto>> ConsultarTurnoDeCapturaAsync(int empleadoId, int anio)
+        {
+            var empleado = await _context.Users.FirstOrDefaultAsync(u => u.Id == empleadoId);
+            if (empleado == null)
+                return new ApiResponse<TurnoCapturaDto>(false, null, "Empleado no encontrado");
+
+            var turno = await ValidarTurnoDeCapturaAsync(empleado, anio);
+            return new ApiResponse<TurnoCapturaDto>(true,
+                new TurnoCapturaDto { Permitido = turno.Permitido, Motivo = turno.Motivo }, null);
+        }
+
         private async Task<(bool Permitido, string Motivo)> ValidarTurnoDeCapturaAsync(User empleado, int anio)
         {
             if (empleado.GrupoId == null)
