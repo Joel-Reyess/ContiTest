@@ -41,22 +41,30 @@ import { SolicitudesVacacionLaborada } from './SolicitudesVacacionLaborada';
 import { SolicitudesReprogramacionDiaEmpresa } from './SolicitudesReprogramacionDiaEmpresa';
 import { ChevronDown } from 'lucide-react'
 import { useLocation } from 'react-router-dom';
-function HeaderPeriodos({ periodoActual }: { periodoActual: string | null }) {
-    const getPeriodoStatus = (periodo: 'ProgramacionAnual' | 'Reprogramacion') => {
-        if (periodoActual === periodo) {
-            return { color: 'bg-green-500', text: 'Abierto' }
-        }
-        return { color: 'bg-red-500', text: 'Cerrado' }
-    }
+// Las dos etapas no son excluyentes: con 2027 en preparación, su captura anual
+// está abierta junto con la reprogramación de 2026. Antes se comparaba solo
+// contra PeriodoActual, así que con "Reprogramacion" el jefe veía la captura
+// anual "Cerrado" aunque los operadores estuvieran capturando. Es la misma regla
+// de useVacationConfig (permiteAnual / permiteReprogramacion) y del semáforo
+// del operador.
+function HeaderPeriodos({ anualAbierta, reprogramacionAbierta, anioAnual }: {
+    anualAbierta: boolean;
+    reprogramacionAbierta: boolean;
+    anioAnual: number | null;
+}) {
+    const getPeriodoStatus = (abierto: boolean) =>
+        abierto
+            ? { color: 'bg-green-500', text: 'Abierto' }
+            : { color: 'bg-red-500', text: 'Cerrado' }
 
-    const anualStatus = getPeriodoStatus('ProgramacionAnual')
-    const reprogramacionStatus = getPeriodoStatus('Reprogramacion')
+    const anualStatus = getPeriodoStatus(anualAbierta)
+    const reprogramacionStatus = getPeriodoStatus(reprogramacionAbierta)
 
     return (
         <div className="bg-white border border-gray-200 rounded-lg px-4 py-3">
             <div className="flex items-center justify-center gap-6 text-center">
                 <div className="flex items-center gap-2 text-gray-900 font-medium">
-                    <span>Periodo de solicitudes anual</span>
+                    <span>Periodo de solicitudes anual{anioAnual ? ` ${anioAnual}` : ''}</span>
                     <span className="flex items-center gap-2 text-gray-700 font-normal">
                         <span className={`w-2.5 h-2.5 rounded-full ${anualStatus.color}`} />
                         {anualStatus.text}
@@ -79,7 +87,7 @@ type TabOption = 'solicitudes' | 'festivos' | 'permutas' | 'permisos' | 'vacacio
 
 const SolicitudesComponent: React.FC = () => {
     const location = useLocation()
-    const { config, loading, error } = useVacationConfig()
+    const { config, loading, error, permiteAnual, permiteReprogramacion } = useVacationConfig()
     const [selectedTab, setSelectedTab] = useState<TabOption>(() => {
         const stateTab = (location.state as any)?.activeTab
         return (stateTab as TabOption) || 'vacaciones'
@@ -123,7 +131,13 @@ const SolicitudesComponent: React.FC = () => {
     return (
         <div className="p-6 bg-gray-50 min-h-screen">
             <div className="max-w-[1400px] mx-auto space-y-4">
-                <HeaderPeriodos periodoActual={config?.periodoActual || null} />
+                {config && (
+                    <HeaderPeriodos
+                        anualAbierta={permiteAnual}
+                        reprogramacionAbierta={permiteReprogramacion}
+                        anioAnual={config.anioProgramacionAnual ?? (permiteAnual ? config.anioVigente : null)}
+                    />
+                )}
 
                 {config?.periodoActual === 'Cerrado' && (
                     <div className="bg-white border border-gray-200 rounded-lg p-8">
