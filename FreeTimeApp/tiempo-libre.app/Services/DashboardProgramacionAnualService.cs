@@ -24,6 +24,9 @@ namespace tiempo_libre.Services
     /// </summary>
     public class DashboardProgramacionAnualService
     {
+        private static readonly string[] TiposLadoEmpresa = { "Automatica", "AsignadaAutomaticamente", "DiaEmpresaReprogramado" };
+        private static readonly string[] TiposLadoOperador = { "Anual", "Reprogramacion" };
+
         private readonly FreeTimeDbContext _db;
         private readonly ValidadorPorcentajeService _validador;
         private readonly ILogger<DashboardProgramacionAnualService> _logger;
@@ -175,13 +178,20 @@ namespace tiempo_libre.Services
                     if (!grupoDeUsuario.TryGetValue(v.EmpleadoId, out var g))
                         continue;
 
+                    // Mismos lados que el tope por antigüedad (VacacionesService):
+                    // el día de empresa que se reprogramó sigue siendo de la
+                    // empresa. Antes solo "Automatica" contaba como empresa y todo
+                    // lo demás —incluido el festivo trabajado, que no es parte del
+                    // 4+4— inflaba el % del operador. El festivo trabajado y la
+                    // vacación laborada sí cuentan como ausencia del día (arriba,
+                    // Marcar), pero no en ninguna de las dos barras.
                     var claveDia = (g, v.FechaVacacion);
-                    if (v.TipoVacacion == "Automatica")
+                    if (TiposLadoEmpresa.Contains(v.TipoVacacion))
                     {
                         diasEmpresa[claveDia] = diasEmpresa.GetValueOrDefault(claveDia) + 1;
                         empleadosConDiasEmpresa.Add(v.EmpleadoId);
                     }
-                    else
+                    else if (TiposLadoOperador.Contains(v.TipoVacacion))
                     {
                         // "Anual" (captura en su bloque) y "Reprogramacion".
                         diasCapturados[claveDia] = diasCapturados.GetValueOrDefault(claveDia) + 1;
