@@ -140,6 +140,42 @@ namespace tiempo_libre.Services
                     }
                 }
 
+                // Un día que ya tiene vacación activa no se vuelve a dar. Con
+                // IgnorarRestricciones (lo que siempre manda el modal) esto se
+                // saltaba y quedaban dos vacaciones el mismo día.
+                var fechasRepetidas = await _db.VacacionesProgramadas
+                    .Where(v => v.EmpleadoId == request.EmpleadoId
+                        && request.FechasVacaciones.Contains(v.FechaVacacion)
+                        && v.EstadoVacacion == "Activa")
+                    .Select(v => v.FechaVacacion)
+                    .Distinct()
+                    .ToListAsync();
+                if (fechasRepetidas.Count > 0)
+                {
+                    await transaction.RollbackAsync();
+                    return new ApiResponse<AsignacionManualResponse>(false, null,
+                        "El empleado ya tiene vacación activa el " +
+                        string.Join(", ", fechasRepetidas.OrderBy(f => f).Select(f => f.ToString("dd/MM/yyyy"))) +
+                        ". Quita esas fechas de la selección.");
+                }
+
+                // Tope por antigüedad (tabla del Art. 68). Esta ruta —jefe,
+                // ingeniero y superusuario— no lo revisaba: el único límite estaba
+                // en el modal y se lo saltaban las fechas que llegaban marcadas
+                // desde el calendario. Se cuenta por año de las fechas y por lado:
+                // empresa (Automatica, y el día de empresa que se reprogramó) y
+                // común acuerdo (Anual, y lo que quedó como Reprogramacion: altas
+                // del Excel de SAP y reprogramaciones post-incapacidad). El
+                // festivo trabajado no entra en ninguno.
+                var limite = await ValidarTopePorAntiguedadAsync(request);
+                if (limite != null)
+                {
+                    await transaction.RollbackAsync();
+                    _logger.LogWarning("Asignación manual rechazada por tope de antigüedad: empleado {EmpleadoId}, {Motivo}",
+                        request.EmpleadoId, limite);
+                    return new ApiResponse<AsignacionManualResponse>(false, null, limite);
+                }
+
                 // Porcentaje por día. Esta ruta —la del jefe y el superusuario—
                 // NUNCA lo validaba: insertaba directo. Es el "en vulcanización
                 // no respetó el bloqueo de los %, el 17 de septiembre dejó
@@ -280,6 +316,67 @@ namespace tiempo_libre.Services
                 _logger.LogError(ex, "Error al asignar vacaciones manualmente");
                 return new ApiResponse<AsignacionManualResponse>(false, null, $"Error: {ex.Message}");
             }
+        }
+
+        private static readonly string[] TiposLadoEmpresa = { "Automatica", "AsignadaAutomaticamente", "DiaEmpresaReprogramado" };
+        private static readonly string[] TiposLadoComunAcuerdo = { "Anual", "Reprogramacion" };
+
+        /// <summary>
+        /// null si la asignación cabe en lo que le toca al empleado por
+        /// antigüedad; si no, el motivo para quien captura. Solo aplica a los
+        /// tipos que cuentan contra la tabla (Automatica y Anual).
+        /// </summary>
+        private async Task<string?> ValidarTopePorAntiguedadAsync(AsignacionManualRequest request)
+        {
+            string[] tiposDelLado;
+            string lado;
+            if (request.TipoVacacion == "Automatica")
+            {
+                tiposDelLado = TiposLadoEmpresa;
+                lado = "asignados por la empresa";
+            }
+            else if (request.TipoVacacion == "Anual")
+            {
+                tiposDelLado = TiposLadoComunAcuerdo;
+                lado = "de común acuerdo";
+            }
+            else
+            {
+                return null;
+            }
+
+            foreach (var porAnio in request.FechasVacaciones.Distinct().GroupBy(f => f.Year))
+            {
+                var anio = porAnio.Key;
+                var derecho = await CalcularVacacionesPorEmpleadoAsync(request.EmpleadoId, anio);
+                if (!derecho.Success || derecho.Data == null)
+                    return $"No se le pueden asignar días de {anio}: {derecho.ErrorMsg}";
+
+                var tope = request.TipoVacacion == "Automatica"
+                    ? derecho.Data.DiasAsignadosAutomaticamente
+                    : derecho.Data.DiasProgramables;
+
+                var inicio = new DateOnly(anio, 1, 1);
+                var fin = new DateOnly(anio, 12, 31);
+                var yaTiene = await _db.VacacionesProgramadas.CountAsync(v =>
+                    v.EmpleadoId == request.EmpleadoId &&
+                    v.EstadoVacacion == "Activa" &&
+                    v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
+                    tiposDelLado.Contains(v.TipoVacacion));
+
+                var nuevas = porAnio.Count();
+                if (yaTiene + nuevas > tope)
+                {
+                    var cabe = Math.Max(0, tope - yaTiene);
+                    return $"Con {derecho.Data.AntiguedadEnAnios} años de antigüedad le corresponden {tope} días {lado} en {anio}; " +
+                           $"ya tiene {yaTiene} y se intentan agregar {nuevas}. " +
+                           (cabe == 0
+                               ? "Ya no se le pueden asignar más de ese tipo."
+                               : $"Como máximo se le pueden agregar {cabe}.");
+                }
+            }
+
+            return null;
         }
 
         public async Task<ApiResponse<object>> EliminarVacacionesAsync(List<int> vacacionesIds)

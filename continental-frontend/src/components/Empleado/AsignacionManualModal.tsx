@@ -89,8 +89,20 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
     // año del detalle del empleado) y el vigente queda solo como respaldo.
     const anioCaptura = anio ?? config?.anioVigente;
 
-    const diasAutomaticasDisponibles = vacacionesData.resumen.diasAsignadosAutomaticamente - vacacionesData.resumen.asignadasAutomaticamente;
-    const diasAnualesDisponibles = vacacionesData.resumen.diasProgramables - vacacionesData.resumen.anuales;
+    // Mismo conteo que el tope del backend (VacacionesService, tope por
+    // antigüedad): del lado de la empresa cuenta también el día de empresa que
+    // se reprogramó, y del lado de común acuerdo lo que quedó como
+    // Reprogramacion (altas del Excel de SAP, post-incapacidad). Antes solo se
+    // restaban "Automatica" y "Anual" y el modal ofrecía días que no había.
+    const activasDelAnio = vacacionesData.vacaciones.filter(v =>
+        v.estadoVacacion === 'Activa' &&
+        (!anioCaptura || String(v.fechaVacacion).startsWith(`${anioCaptura}-`)));
+    const yaTieneEmpresa = activasDelAnio.filter(v =>
+        ['Automatica', 'AsignadaAutomaticamente', 'DiaEmpresaReprogramado'].includes(v.tipoVacacion)).length;
+    const yaTieneComunAcuerdo = activasDelAnio.filter(v =>
+        ['Anual', 'Reprogramacion'].includes(v.tipoVacacion)).length;
+    const diasAutomaticasDisponibles = Math.max(0, vacacionesData.resumen.diasAsignadosAutomaticamente - yaTieneEmpresa);
+    const diasAnualesDisponibles = Math.max(0, vacacionesData.resumen.diasProgramables - yaTieneComunAcuerdo);
 
     const canAssignAutomaticas = diasAutomaticasDisponibles > 0;
     const canAssignAnuales = diasAnualesDisponibles > 0;
@@ -182,6 +194,17 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
 
         if (!motivoAsignacion.trim()) {
             toast.error('El motivo de asignación es obligatorio');
+            return;
+        }
+
+        // Las fechas marcadas en el calendario llegan ya seleccionadas y no
+        // pasaban por el límite de "Agregar"; se revisa aquí también.
+        const maxDias = tipoVacacion === 'Automatica' ? diasAutomaticasDisponibles : diasAnualesDisponibles;
+        if (selectedDates.length > maxDias) {
+            toast.error(
+                `Por antigüedad solo le quedan ${maxDias} día(s) de tipo ${tipoVacacion} en ${anioCaptura}; ` +
+                `tienes ${selectedDates.length} seleccionados. Quita ${selectedDates.length - maxDias}.`
+            );
             return;
         }
 
@@ -327,7 +350,7 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                                 Disponibles: <span className="font-bold">{diasAutomaticasDisponibles}</span> días
                             </p>
                             <p className="text-xs text-gray-500">
-                                ({vacacionesData.resumen.asignadasAutomaticamente} de {vacacionesData.resumen.diasAsignadosAutomaticamente} asignadas)
+                                ({yaTieneEmpresa} de {vacacionesData.resumen.diasAsignadosAutomaticamente} asignadas)
                             </p>
                         </div>
 
@@ -337,7 +360,7 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                                 Disponibles: <span className="font-bold">{diasAnualesDisponibles}</span> días
                             </p>
                             <p className="text-xs text-gray-500">
-                                ({vacacionesData.resumen.anuales} de {vacacionesData.resumen.diasProgramables} asignadas)
+                                ({yaTieneComunAcuerdo} de {vacacionesData.resumen.diasProgramables} asignadas)
                             </p>
                         </div>
                     </div>
