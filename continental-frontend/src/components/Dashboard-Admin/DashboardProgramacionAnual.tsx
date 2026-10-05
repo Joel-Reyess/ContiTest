@@ -211,6 +211,41 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
             </div>
 
 
+            {/* Avance de captura. El % del año (abajo) es un promedio de días por
+                persona y casi no cambia entre la planta y un área; este sí: de
+                los operadores que tienen días que elegir, cuántos ya lo hicieron. */}
+            {(() => {
+                const deben = datos.operadoresDebenCapturar ?? 0;
+                const ya = datos.operadoresYaCapturaron ?? 0;
+                const pct = deben > 0 ? (ya / deben) * 100 : 0;
+                const areaElegida = areaId ? catalogoAreas.find((a) => a.id === areaId)?.nombre : null;
+                const de = areaElegida ? `el área ${areaElegida}` : alcance;
+                return (
+                    <div className="rounded-lg border bg-white p-4 space-y-2">
+                        <div className="flex items-baseline justify-between gap-4 flex-wrap">
+                            <h3 className="text-sm font-semibold">Avance de captura {datos.anio}</h3>
+                            <p className="text-sm tabular-nums">
+                                <span className="text-lg font-semibold">{pct.toFixed(1)}%</span>{" "}
+                                <span className="text-continental-gray-1">
+                                    — {ya.toLocaleString("es-MX")} de {deben.toLocaleString("es-MX")} operadores ya capturaron
+                                </span>
+                            </p>
+                        </div>
+                        <div className="h-3 w-full rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                                className="h-full rounded-full bg-continental-blue-light"
+                                style={{ width: `${Math.min(100, pct)}%` }}
+                            />
+                        </div>
+                        <p className="text-xs text-continental-gray-1">
+                            De {de}. Cuentan los operadores con días de común acuerdo en {datos.anio}
+                            {" "}(2 años o más de antigüedad); «ya capturó» = tiene sus días anuales
+                            registrados, los haya capturado él o su jefe. Cambia al filtrar por área.
+                        </p>
+                    </div>
+                );
+            })()}
+
             {/* Cómo va repartido el porcentaje del año. Los recuadros de arriba
                 dan días sueltos; esto dice qué parte del cupo se la llevó la
                 empresa y qué parte va poniendo la gente al capturar. */}
@@ -466,6 +501,7 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                 <th className="px-3 py-2 font-medium text-right">Días asignados</th>
                                 <th className="px-3 py-2 font-medium text-right">Días por empleado</th>
                                 <th className="px-3 py-2 font-medium text-right">Días con rebase</th>
+                                <th className="px-3 py-2 font-medium text-right">Ya capturaron</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -482,6 +518,11 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                         }`}
                                     >
                                         {g.diasConRebase}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right tabular-nums">
+                                        {(g.operadoresDebenCapturar ?? 0) > 0
+                                            ? `${g.operadoresYaCapturaron ?? 0} de ${g.operadoresDebenCapturar} (${Math.round(((g.operadoresYaCapturaron ?? 0) / g.operadoresDebenCapturar) * 100)}%)`
+                                            : "—"}
                                     </td>
                                 </tr>
                             ))}

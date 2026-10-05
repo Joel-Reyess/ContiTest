@@ -1331,6 +1331,8 @@ export interface GrupoProgramacionAnual {
     diasCapturadosPorOperador: number;
     diasPorEmpleado: number;
     diasConRebase: number;
+    operadoresDebenCapturar: number;
+    operadoresYaCapturaron: number;
 }
 
 export interface DashboardProgramacionAnual {
@@ -1341,6 +1343,10 @@ export interface DashboardProgramacionAnual {
     diasCapturadosPorOperador: number;
     empleadosConDiasEmpresa: number;
     diasConRebase: number;
+    /** Operadores que tienen días de común acuerdo que elegir en el año. */
+    operadoresDebenCapturar: number;
+    /** De esos, cuántos ya capturaron (tienen días "Anual" en el año). */
+    operadoresYaCapturaron: number;
     meses: MesProgramacionAnual[];
     dias: DiaProgramacionAnual[];
     grupos: GrupoProgramacionAnual[];

@@ -35,6 +35,16 @@ namespace tiempo_libre.DTOs
         /// <summary>Días del año en los que algún grupo quedó por encima de su porcentaje.</summary>
         public int DiasConRebase { get; set; }
 
+        /// <summary>
+        /// Avance de captura: operadores del filtro que tienen días de común
+        /// acuerdo que elegir en el año (2 años o más de antigüedad al 31 de
+        /// diciembre, según la tabla del Art. 68).
+        /// </summary>
+        public int OperadoresDebenCapturar { get; set; }
+
+        /// <summary>De esos, cuántos ya tienen sus días "Anual" capturados en el año.</summary>
+        public int OperadoresYaCapturaron { get; set; }
+
         public List<MesProgramacionAnualDto> Meses { get; set; } = new();
         public List<DiaProgramacionAnualDto> Dias { get; set; } = new();
         public List<GrupoProgramacionAnualDto> Grupos { get; set; } = new();
@@ -108,5 +118,8 @@ namespace tiempo_libre.DTOs
         public decimal DiasPorEmpleado { get; set; }
 
         public int DiasConRebase { get; set; }
+
+        public int OperadoresDebenCapturar { get; set; }
+        public int OperadoresYaCapturaron { get; set; }
     }
 }

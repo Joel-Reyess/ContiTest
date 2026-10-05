@@ -88,7 +88,7 @@ namespace tiempo_libre.Services
                 var usuarios = await _db.Users
                     .Where(u => u.GrupoId.HasValue && grupoIds.Contains(u.GrupoId.Value)
                                 && u.Status == UserStatus.Activo)
-                    .Select(u => new { u.Id, GrupoId = u.GrupoId!.Value, u.Nomina })
+                    .Select(u => new { u.Id, GrupoId = u.GrupoId!.Value, u.Nomina, u.FechaIngreso })
                     .ToListAsync();
 
                 var grupoDeUsuario = usuarios.ToDictionary(u => u.Id, u => u.GrupoId);
@@ -304,6 +304,29 @@ namespace tiempo_libre.Services
                     .GroupBy(kv => kv.Key.Grupo)
                     .ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value));
 
+                // ── Avance de captura ───────────────────────────────────────
+                // El % de arriba es un promedio de días por persona y casi no
+                // cambia entre la planta y un área. Esto sí: cuántos de los que
+                // tienen que elegir días ya lo hicieron. Tienen que elegir los que
+                // tienen días de común acuerdo en el año: 2 años o más al 31 de
+                // diciembre (tabla del Art. 68; con 1 año son 0). "Ya capturó" =
+                // tiene al menos un día "Anual" activo en el año, lo haya
+                // capturado él en su bloque o el jefe a su nombre.
+                var debenCapturar = usuarios
+                    .Where(u => u.FechaIngreso.HasValue && anio - u.FechaIngreso.Value.Year >= 2)
+                    .Select(u => u.Id)
+                    .ToHashSet();
+                var yaCapturaron = vacaciones
+                    .Where(v => v.TipoVacacion == "Anual" && debenCapturar.Contains(v.EmpleadoId))
+                    .Select(v => v.EmpleadoId)
+                    .ToHashSet();
+                var debenPorGrupo = debenCapturar
+                    .GroupBy(id => grupoDeUsuario[id])
+                    .ToDictionary(g => g.Key, g => g.Count());
+                var yaPorGrupo = yaCapturaron
+                    .GroupBy(id => grupoDeUsuario[id])
+                    .ToDictionary(g => g.Key, g => g.Count());
+
                 var gruposDto = grupos
                     .Select(g =>
                     {
@@ -321,7 +344,9 @@ namespace tiempo_libre.Services
                             DiasPorEmpleado = plantilla > 0
                                 ? Math.Round((decimal)asignados / plantilla, 2)
                                 : 0m,
-                            DiasConRebase = rebasesPorGrupo.GetValueOrDefault(g.GrupoId)
+                            DiasConRebase = rebasesPorGrupo.GetValueOrDefault(g.GrupoId),
+                            OperadoresDebenCapturar = debenPorGrupo.GetValueOrDefault(g.GrupoId),
+                            OperadoresYaCapturaron = yaPorGrupo.GetValueOrDefault(g.GrupoId)
                         };
                     })
                     .OrderByDescending(g => g.DiasEmpresaAsignados)
@@ -336,6 +361,8 @@ namespace tiempo_libre.Services
                     DiasCapturadosPorOperador = totalCapturados,
                     EmpleadosConDiasEmpresa = empleadosConDiasEmpresa.Count,
                     DiasConRebase = dias.Count(d => d.GruposEnRebase.Count > 0),
+                    OperadoresDebenCapturar = debenCapturar.Count,
+                    OperadoresYaCapturaron = yaCapturaron.Count,
                     Meses = meses,
                     Dias = dias,
                     Grupos = gruposDto
