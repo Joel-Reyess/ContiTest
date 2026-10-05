@@ -358,80 +358,54 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Genera las fechas y horarios de los bloques evitando días inhábiles y
-        /// fines de semana. El descanso del grupo NO mueve el bloque (ver
-        /// EsFechaValidaParaBloqueAsync).
+        /// Genera las fechas y horarios de los bloques: corren de corrido, uno
+        /// tras otro, y solo se congelan en fin de semana (sábado 1:00 → lunes
+        /// 9:00).
+        ///
+        /// Ni el descanso del grupo ni los días inhábiles recorren el bloque
+        /// (acuerdo con el cliente, oct-2026). El bloque es el turno del grupo
+        /// para CAPTURAR sus vacaciones en la app, no un día que tengan que venir
+        /// a la planta. Desde ago-2026 el generador saltaba los días de descanso
+        /// del grupo y los inhábiles: los grupos que descansan de lunes a viernes
+        /// (p. ej. R0144_03 y R0144_04) se "brincaban" en la vista de turnos y el
+        /// consecutivo se rompía.
         /// </summary>
-        private async Task<List<BloquesReservacion>> GenerarFechasYHorariosBloquesAsync(
+        private Task<List<BloquesReservacion>> GenerarFechasYHorariosBloquesAsync(
             Grupo grupo, DateTime fechaInicio, int anio, int totalBloques, int usuarioId)
         {
             var bloques = new List<BloquesReservacion>();
-            // Normalize start time to 9:00 AM
-            var fechaActual = new DateTime(fechaInicio.Year, fechaInicio.Month, fechaInicio.Day, 9, 0, 0);
-            var numeroBloque = 1;
+            // Arranca a las 9:00 del día de inicio. Si ese día cae en fin de
+            // semana, el primer bloque también espera al lunes.
+            var fechaActual = AplicarPausaFinDeSemana(
+                new DateTime(fechaInicio.Year, fechaInicio.Month, fechaInicio.Day, 9, 0, 0));
 
-            // Días inhábiles de las fechas en que CORREN los bloques, no del año
-            // que se programa. Los bloques de 2027 se corren en septiembre de
-            // 2026; filtrar por "anio" cargaba los inhábiles de 2027 y ningún
-            // festivo de 2026 detenía la captura.
-            var desdeInhabiles = DateOnly.FromDateTime(fechaInicio.Date);
-            var diasInhabiles = await _db.DiasInhabiles
-                .Where(d => d.Fecha >= desdeInhabiles && d.Fecha.Year <= anio + 1)
-                .Select(d => d.Fecha)
-                .ToListAsync();
-            var diasInhabilesSet = diasInhabiles.ToHashSet();
-
-            while (bloques.Count < totalBloques)
+            for (var numeroBloque = 1; numeroBloque <= totalBloques; numeroBloque++)
             {
-                // Verificar si la fecha es válida para programar un bloque
-                var esFechaValida = await EsFechaValidaParaBloqueAsync(grupo, fechaActual, diasInhabilesSet);
+                var esBloqueCola = numeroBloque == totalBloques;
+                var fechaHoraFin = fechaActual.AddHours(grupo.DuracionDeturno);
 
-                if (esFechaValida)
+                var bloque = new BloquesReservacion
                 {
-                    var esBloqueCola = numeroBloque == totalBloques;
-                    var fechaHoraFin = fechaActual.AddHours(grupo.DuracionDeturno);
+                    GrupoId = grupo.GrupoId,
+                    AnioGeneracion = anio,
+                    NumeroBloque = numeroBloque,
+                    FechaHoraInicio = fechaActual,
+                    FechaHoraFin = fechaHoraFin,
+                    PersonasPorBloque = grupo.PersonasPorTurno,
+                    DuracionHoras = grupo.DuracionDeturno,
+                    EsBloqueCola = esBloqueCola,
+                    GeneradoPor = usuarioId,
+                    Estado = "Activo"
+                };
 
-                    var bloque = new BloquesReservacion
-                    {
-                        GrupoId = grupo.GrupoId,
-                        AnioGeneracion = anio,
-                        NumeroBloque = numeroBloque,
-                        FechaHoraInicio = fechaActual,
-                        FechaHoraFin = fechaHoraFin,
-                        PersonasPorBloque = grupo.PersonasPorTurno,
-                        DuracionHoras = grupo.DuracionDeturno,
-                        EsBloqueCola = esBloqueCola,
-                        GeneradoPor = usuarioId,
-                        Estado = "Activo"
-                    };
+                bloques.Add(bloque);
+                _db.BloquesReservacion.Add(bloque);
 
-                    bloques.Add(bloque);
-                    _db.BloquesReservacion.Add(bloque);
-                    numeroBloque++;
-
-                    // Avanzar la fecha según la duración del bloque, aplicando pausa de fin de semana
-                    fechaActual = AplicarPausaFinDeSemana(fechaHoraFin);
-                }
-                else
-                {
-                    // Avanzar al siguiente día si la fecha actual no es válida
-                    // (día inhábil). La pausa de fin de semana también aplica
-                    // aquí: sin ella, un inhábil en viernes mandaba el bloque al
-                    // SÁBADO, cuando a todos los demás grupos el fin de semana los
-                    // manda al lunes.
-                    fechaActual = AplicarPausaFinDeSemana(
-                        fechaActual.Date.AddDays(1).Add(fechaActual.TimeOfDay));
-                }
-
-                // Protección contra bucle infinito
-                if (fechaActual.Year > anio + 1)
-                {
-                    _logger.LogError("No se pudieron generar todos los bloques para el grupo {GrupoId}", grupo.GrupoId);
-                    break;
-                }
+                // El siguiente empieza donde termina este, salvo el fin de semana.
+                fechaActual = AplicarPausaFinDeSemana(fechaHoraFin);
             }
 
-            return bloques;
+            return Task.FromResult(bloques);
         }
 
         /// <summary>
@@ -470,27 +444,6 @@ namespace tiempo_libre.Services
 
             // Si no es fin de semana, devolver la fecha tal cual
             return fechaHora;
-        }
-
-        /// <summary>
-        /// Verifica si una fecha es válida para programar un bloque: solo los días
-        /// inhábiles la invalidan.
-        ///
-        /// El descanso del grupo NO la invalida (acuerdo con el cliente, oct-2026).
-        /// El bloque es el turno del grupo para CAPTURAR sus vacaciones en la app,
-        /// no un día que tengan que venir a la planta: un grupo que descansa de
-        /// lunes a viernes (p. ej. R0144_03 o R0144_04) conserva el día que le
-        /// toca. Desde ago-2026 se revisaba el calendario del grupo y, si
-        /// descansaba, el bloque se recorría al día siguiente; esos grupos se
-        /// "brincaban" en la vista de turnos y se desacomodaba el orden. Antes de
-        /// ago-2026 esa revisión no funcionaba (pedía el calendario con
-        /// fechaInicio == fechaFin) y los bloques caían en el descanso, que es lo
-        /// que se quiere.
-        /// </summary>
-        private Task<bool> EsFechaValidaParaBloqueAsync(Grupo grupo, DateTime fecha, HashSet<DateOnly> diasInhabiles)
-        {
-            var fechaSoloDate = DateOnly.FromDateTime(fecha);
-            return Task.FromResult(!diasInhabiles.Contains(fechaSoloDate));
         }
 
         /// <summary>
