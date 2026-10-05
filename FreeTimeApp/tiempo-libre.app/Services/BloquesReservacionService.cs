@@ -358,7 +358,9 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Genera las fechas y horarios de los bloques evitando días de descanso e incapacidades
+        /// Genera las fechas y horarios de los bloques evitando días inhábiles y
+        /// fines de semana. El descanso del grupo NO mueve el bloque (ver
+        /// EsFechaValidaParaBloqueAsync).
         /// </summary>
         private async Task<List<BloquesReservacion>> GenerarFechasYHorariosBloquesAsync(
             Grupo grupo, DateTime fechaInicio, int anio, int totalBloques, int usuarioId)
@@ -412,11 +414,11 @@ namespace tiempo_libre.Services
                 }
                 else
                 {
-                    // Avanzar al siguiente día si la fecha actual no es válida.
-                    // La pausa de fin de semana también aplica aquí: sin ella, un
-                    // grupo que descansa el viernes brincaba al SÁBADO y le
-                    // quedaba el bloque en fin de semana, cuando a todos los demás
-                    // grupos el fin de semana los manda al lunes.
+                    // Avanzar al siguiente día si la fecha actual no es válida
+                    // (día inhábil). La pausa de fin de semana también aplica
+                    // aquí: sin ella, un inhábil en viernes mandaba el bloque al
+                    // SÁBADO, cuando a todos los demás grupos el fin de semana los
+                    // manda al lunes.
                     fechaActual = AplicarPausaFinDeSemana(
                         fechaActual.Date.AddDays(1).Add(fechaActual.TimeOfDay));
                 }
@@ -471,29 +473,24 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Verifica si una fecha es válida para programar un bloque
+        /// Verifica si una fecha es válida para programar un bloque: solo los días
+        /// inhábiles la invalidan.
+        ///
+        /// El descanso del grupo NO la invalida (acuerdo con el cliente, oct-2026).
+        /// El bloque es el turno del grupo para CAPTURAR sus vacaciones en la app,
+        /// no un día que tengan que venir a la planta: un grupo que descansa de
+        /// lunes a viernes (p. ej. R0144_03 o R0144_04) conserva el día que le
+        /// toca. Desde ago-2026 se revisaba el calendario del grupo y, si
+        /// descansaba, el bloque se recorría al día siguiente; esos grupos se
+        /// "brincaban" en la vista de turnos y se desacomodaba el orden. Antes de
+        /// ago-2026 esa revisión no funcionaba (pedía el calendario con
+        /// fechaInicio == fechaFin) y los bloques caían en el descanso, que es lo
+        /// que se quiere.
         /// </summary>
-        private async Task<bool> EsFechaValidaParaBloqueAsync(Grupo grupo, DateTime fecha, HashSet<DateOnly> diasInhabiles)
+        private Task<bool> EsFechaValidaParaBloqueAsync(Grupo grupo, DateTime fecha, HashSet<DateOnly> diasInhabiles)
         {
             var fechaSoloDate = DateOnly.FromDateTime(fecha);
-
-            // Verificar días inhábiles
-            if (diasInhabiles.Contains(fechaSoloDate))
-                return false;
-
-            // Verificar calendario del grupo (días de descanso 'D').
-            // OJO: el servicio de calendario exige fechaInicio < fechaFin (estricto);
-            // pedir (fecha, fecha) devolvía Success=false y esta validación aprobaba
-            // TODAS las fechas — los bloques caían en días de descanso del grupo.
-            var calendarioResponse = await _calendarioService.ObtenerCalendarioGrupoAsync(
-                grupo.GrupoId, fecha.Date, fecha.Date.AddDays(1));
-
-            if (!calendarioResponse.Success || !calendarioResponse.Data.Calendario.Any())
-                return true; // Si no hay calendario, asumir que es válido
-
-            var diaCalendario = calendarioResponse.Data.Calendario
-                .FirstOrDefault(d => d.Fecha.Date == fecha.Date);
-            return diaCalendario == null || !TurnosHelper.EsDescanso(diaCalendario.Turno);
+            return Task.FromResult(!diasInhabiles.Contains(fechaSoloDate));
         }
 
         /// <summary>
