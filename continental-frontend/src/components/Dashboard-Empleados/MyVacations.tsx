@@ -51,8 +51,27 @@ const MyVacations = ({
     const employeeId = searchParams.get('empleadoId');
     const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth() + 1);
     const { user } = useAuth();
-    const { config } = useVacationConfig();
+    const { config, error: errorConfig } = useVacationConfig();
     const anioVigente = config?.anioVigente;
+    // Año que se está consultando. Con la captura de 2027 conviviendo con la
+    // reprogramación de 2026 el operador tiene días de los dos años, y esta
+    // pantalla los pedía sin año: el calendario y las listas mezclaban 2026 y
+    // 2027 sin decir de cuál era cada uno. Empieza en el vigente.
+    const [anioConsulta, setAnioConsulta] = useState<number | null>(null);
+    const aniosDisponibles = [config?.anioVigente, config?.anioProgramacionAnual]
+        .filter((a): a is number => typeof a === 'number')
+        .filter((a, i, arr) => arr.indexOf(a) === i)
+        .sort((a, b) => a - b);
+    useEffect(() => {
+        if (anioConsulta != null) return;
+        if (config) setAnioConsulta(config.anioVigente);
+        // Sin configuración no se sabe el año: el actual, para no quedar cargando.
+        else if (errorConfig) setAnioConsulta(new Date().getFullYear());
+    }, [config, errorConfig, anioConsulta]);
+    const cambiarAnio = (anio: number) => {
+        setAnioConsulta(anio);
+        setCurrentMonth(new Date().getFullYear() === anio ? new Date().getMonth() + 1 : 1);
+    };
     const [showEditModal, setShowEditModal] = useState(false)
     const [showRequestModal, setShowRequestModal] = useState(false)
     const [selectedDay, setSelectedDay] = useState<string | null>(null)
@@ -178,7 +197,8 @@ const MyVacations = ({
                     diasAsignados: realAssignedDays,
                     vacaciones: vacacionesData.vacaciones
                 },
-                anioVigente || new Date().getFullYear()
+                // Los datos de arriba son los del año que se está consultando.
+                anioConsulta || anioVigente || new Date().getFullYear()
             );
             toast.success('PDF generado exitosamente');
         } catch (error) {
@@ -193,7 +213,7 @@ const MyVacations = ({
     // Cargar vacaciones reales del empleado al montar el componente
     useEffect(() => {
         const fetchVacaciones = async () => {
-            if (!user?.id) return;
+            if (!user?.id || anioConsulta == null) return;
 
             console.log({ employeeId })
             const id = employeeId !== 'undefined' && employeeId !== null ? parseInt(employeeId) : user.id;
@@ -204,7 +224,7 @@ const MyVacations = ({
 
             setLoadingVacations(true);
             try {
-                const resp = await getVacacionesAsignadasPorEmpleado(id);
+                const resp = await getVacacionesAsignadasPorEmpleado(id, anioConsulta);
                 setVacacionesData(resp);
 
                 // Días asignados que ya cambiaron de fecha, para marcarlos abajo.
@@ -248,7 +268,7 @@ const MyVacations = ({
         };
 
         fetchVacaciones();
-    }, [user?.id]);
+    }, [user?.id, anioConsulta]);
 
     // Mostrar loading mientras se cargan las vacaciones
     if (loadingVacations) {
@@ -293,9 +313,32 @@ const MyVacations = ({
                 <NavbarUser />
 
             </header>
+            {aniosDisponibles.length > 0 && (
+                <div className="flex items-center gap-2 pb-3 text-sm">
+                    <span className="text-slate-600">Año:</span>
+                    {aniosDisponibles.map((anio) => (
+                        <button
+                            key={anio}
+                            type="button"
+                            onClick={() => cambiarAnio(anio)}
+                            className={`px-3 py-1 rounded-full border text-sm cursor-pointer ${
+                                anioConsulta === anio
+                                    ? 'bg-continental-blue-dark text-white border-continental-blue-dark'
+                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            }`}
+                        >
+                            {anio}
+                        </button>
+                    ))}
+                    <span className="text-xs text-slate-500">
+                        El calendario y las listas muestran solo los días de {anioConsulta ?? ''}.
+                    </span>
+                </div>
+            )}
             <div className="flex gap-8 justify-between">
                 <div className="flex-2">
                     <Calendar
+                        year={anioConsulta ?? undefined}
                         selectedDays={selectedDays}
                         month={currentMonth}
                         onMonthChange={setCurrentMonth}
@@ -309,7 +352,7 @@ const MyVacations = ({
                         // además de la nomenclatura SAP de lo que pasó ese día.
                         mostrarTurnos
                         cuadricula
-                        key={currentPeriod}
+                        key={`${currentPeriod}-${anioConsulta}`}
                     />
 
                 </div>
