@@ -153,8 +153,13 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                     Días asignados por la empresa — {datos.anio}
                 </h2>
                 <p className="text-sm text-continental-gray-1 mt-1">
-                    Distribución de {alcance}. El porcentaje de cada día es el mismo que usa el
-                    candado de captura: ausentes entre plantilla activa del grupo.
+                    Datos de {alcance}. Cada día, cada grupo puede tener fuera como máximo el{" "}
+                    <span className="font-medium">{datos.porcentajeMaximoGlobal}%</span> de su gente: es
+                    el porcentaje de tiempo extra que se configura en Vacaciones (el «cupo» del día).
+                    Aquí se ve cuánto de ese cupo se va llenando: en azul lo que puso la empresa y en
+                    amarillo lo que van capturando los operadores. Los días en{" "}
+                    <span className="text-red-600 font-medium">rojo</span> son los que de verdad pasan
+                    el cupo en algún grupo.
                 </p>
             </div>
 
@@ -185,7 +190,9 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                     },
                     { etiqueta: "Empleados con días", valor: `${datos.empleadosConDiasEmpresa} de ${datos.plantillaTotal}` },
                     {
-                        etiqueta: "Porcentaje de tiempo extra máximo permitido",
+                        // La etiqueta la pidió el cliente; es el % de ausencia
+                        // por día y por grupo que se configura en Vacaciones.
+                        etiqueta: "Porcentaje de tiempo extra máximo permitido (cupo por día y grupo)",
                         valor: `${datos.porcentajeMaximoGlobal}%`,
                     },
                     {
@@ -252,9 +259,9 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
             {porcentajesDelAnio && (
                 <div className="rounded-lg border bg-white p-4">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <h3 className="text-sm font-semibold">Cómo va el porcentaje del año</h3>
+                        <h3 className="text-sm font-semibold">Llenado del cupo en un día promedio del año</h3>
                         <span className="text-xs text-continental-gray-1">
-                            Máximo permitido: {datos.porcentajeMaximoGlobal}%
+                            Cupo: {datos.porcentajeMaximoGlobal}%
                         </span>
                     </div>
 
@@ -315,9 +322,13 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                         />
                     </div>
                     <p className="text-xs text-continental-gray-1 mt-2">
-                        Es el promedio del año: días-persona de ausencia entre plantilla por días del año.
-                        Sirve para ver el reparto entre empresa y operadores, no para juzgar un día suelto —
-                        para eso está el calendario de abajo, que sí marca en rojo el día que se pasa.
+                        En un día cualquiera del año, en promedio, el{" "}
+                        {porcentajesDelAnio.total.toFixed(2)}% de la plantilla está de vacaciones
+                        ({porcentajesDelAnio.empresa.toFixed(2)}% por días de la empresa y{" "}
+                        {porcentajesDelAnio.operador.toFixed(2)}% por lo que capturaron los operadores), de
+                        un cupo de {datos.porcentajeMaximoGlobal}%. La barra está a escala del cupo: llena
+                        = cupo completo. Es un promedio de todo el año y solo de vacaciones; no dice si
+                        algún día se pasó — eso lo marcan en rojo el calendario y los meses de abajo.
                     </p>
                 </div>
             )}
@@ -388,10 +399,13 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                     />
                                 </div>
                                 <p className="text-xs mt-2 tabular-nums">
-                                    Empresa {m.porcentajeEmpresa}% · operador {m.porcentajeCapturado}%
+                                    Día promedio: {(Number(m.porcentajeEmpresa) + Number(m.porcentajeCapturado)).toFixed(2)}%
+                                    <span className="text-continental-gray-1">
+                                        {" "}(empresa {m.porcentajeEmpresa}% + operador {m.porcentajeCapturado}%)
+                                    </span>
                                 </p>
                                 <p className="text-xs tabular-nums text-continental-gray-1">
-                                    Prom. {m.porcentajePromedio}% · máx. {m.porcentajeMaximo}%
+                                    Día más lleno: {m.porcentajeMaximo}% de {datos.porcentajeMaximoGlobal}%
                                 </p>
                                 {m.diasConRebase > 0 && (
                                     <p className="text-xs text-red-600 font-medium">
@@ -404,20 +418,26 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                 </div>
                 <div className="text-xs text-continental-gray-1 mt-2 space-y-1">
                     <p>
-                        <span className="font-medium">Línea punteada:</span> los{" "}
-                        {datos.meses[0]?.diasEsperadosSiFueraParejo ?? 0} días que traería el mes si los
-                        días de empresa del año se hubieran repartido parejo entre los 12 meses. Una barra
-                        muy por encima significa que la asignación se apiló ahí.
+                        <span className="font-medium">Línea punteada (reparto parejo):</span> si la empresa
+                        hubiera repartido sus días del año igual en los 12 meses, a cada mes le tocarían{" "}
+                        {Math.round(datos.meses[0]?.diasEsperadosSiFueraParejo ?? 0).toLocaleString("es-MX")} días.
+                        No es un límite. Compárala solo con lo <span className="font-medium">azul</span>: si
+                        lo azul queda muy arriba de la línea, la empresa amontonó días en ese mes. Lo amarillo
+                        (lo que capturan los operadores) no cuenta para esta línea.
                     </p>
                     <p>
-                        <span className="font-medium">Empresa % · operador %:</span> qué parte de la
-                        plantilla representa cada uno en ese mes.
+                        <span className="font-medium">Día promedio:</span> qué porcentaje de la plantilla
+                        está de vacaciones un día cualquiera del mes, y cuánto de eso puso la empresa y cuánto
+                        capturaron los operadores. Mientras más se acerque al {datos.porcentajeMaximoGlobal}%,
+                        más lleno viene el mes.
                     </p>
                     <p>
-                        <span className="font-medium">Prom. %:</span> el porcentaje de ausencia de un día
-                        normal del mes. <span className="font-medium">Máx. %:</span> el del peor día del
-                        mes — ese es el que hay que comparar contra el {datos.porcentajeMaximoGlobal}%
-                        permitido, porque el promedio esconde los picos.
+                        <span className="font-medium">Día más lleno:</span> el día del mes con más gente fuera
+                        (vacaciones, permisos e incapacidades), juntando{" "}
+                        {areaId ? "toda el área elegida" : alcance}. Es una referencia: el cupo de{" "}
+                        {datos.porcentajeMaximoGlobal}% se revisa grupo por grupo, así que un grupo puede
+                        pasarse aunque este número salga abajo (o al revés). Lo que de verdad cuenta son los
+                        días en <span className="text-red-600 font-medium">rojo</span>.
                     </p>
                 </div>
             </div>
@@ -475,13 +495,21 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                             <span className="inline-block size-3 rounded bg-slate-50 border" /> sin días de empresa
                         </span>
                         <span className="flex items-center gap-1">
-                            <span className="inline-block size-3 rounded bg-emerald-200" /> holgado
+                            <span className="inline-block size-3 rounded bg-emerald-200" /> menos del 60% del cupo
                         </span>
                         <span className="flex items-center gap-1">
-                            <span className="inline-block size-3 rounded bg-amber-400" /> cerca del máximo
+                            <span className="inline-block size-3 rounded bg-amber-200" /> 60% del cupo o más
                         </span>
                         <span className="flex items-center gap-1">
-                            <span className="inline-block size-3 rounded bg-red-500" /> algún grupo rebasa
+                            <span className="inline-block size-3 rounded bg-amber-400" /> cupo lleno (sumando todo)
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <span className="inline-block size-3 rounded bg-red-500" /> algún grupo pasó su cupo
+                        </span>
+                        <span className="w-full">
+                            El número de cada día es el % de gente fuera sumando {areaId ? "el área" : alcance}; el
+                            cupo de {datos.porcentajeMaximoGlobal}% se revisa por grupo, por eso solo el rojo dice
+                            que alguien se pasó.
                         </span>
                     </div>
                 </div>
