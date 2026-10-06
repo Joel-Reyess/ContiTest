@@ -59,14 +59,18 @@ function CalendarioRestringido({
             <div className="text-center font-semibold text-gray-800 mb-3">
                 {MESES[month]} {year}
             </div>
-            <div className="grid grid-cols-7 gap-1 mb-1">
+            {/* Cuadrícula con líneas entre días, igual que los calendarios grandes
+                del sindicato (Calendar, prop cuadricula): los días sueltos con
+                espacio entre ellos se confundían. Las líneas salen del fondo gris
+                que se asoma por el gap-px. */}
+            <div className="grid grid-cols-7 gap-px bg-gray-400 border border-gray-400 rounded-t-md overflow-hidden">
                 {DIAS_SEMANA.map(d => (
-                    <div key={d} className="text-center text-xs font-medium text-gray-500 py-1">{d}</div>
+                    <div key={d} className="bg-gray-50 text-center text-xs font-medium text-gray-500 py-1">{d}</div>
                 ))}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-px bg-gray-400 border border-t-0 border-gray-400 rounded-b-md overflow-hidden">
                 {celdas.map((dia, idx) => {
-                    if (!dia) return <div key={idx} />;
+                    if (!dia) return <div key={idx} className="bg-white" />;
                     const fStr = formatearFechaCelda(dia);
                     const habilitado = estaHabilitado(dia);
                     const seleccionado = fechaSeleccionada === fStr;
@@ -77,12 +81,12 @@ function CalendarioRestringido({
                             disabled={!habilitado}
                             onClick={() => habilitado && onSeleccionar(fStr)}
                             className={[
-                                'h-9 w-full rounded-md text-sm font-medium transition-colors',
+                                'h-9 w-full text-sm font-medium transition-colors',
                                 seleccionado
-                                    ? 'bg-continental-yellow text-black ring-2 ring-continental-yellow'
+                                    ? 'bg-continental-yellow text-black ring-2 ring-inset ring-continental-yellow'
                                     : habilitado
-                                        ? 'bg-green-50 text-green-800 hover:bg-green-100 border border-green-200'
-                                        : 'text-gray-300 cursor-not-allowed',
+                                        ? 'bg-green-50 text-green-800 hover:bg-green-100'
+                                        : 'bg-white text-gray-300 cursor-not-allowed',
                             ].join(' ')}
                         >
                             {dia}
