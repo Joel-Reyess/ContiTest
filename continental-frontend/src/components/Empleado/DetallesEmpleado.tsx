@@ -61,7 +61,8 @@ export const DetallesEmpleado = ({
   // opciones salen de la configuración y de los datos, no de una lista fija, así
   // que esto sigue sirviendo cuando el vigente sea 2027 y se prepare 2028.
   const [anioSeleccionado, setAnioSeleccionado] = useState<number | null>(null);
-  const [month, setMonth] = useState(new Date().getMonth());
+  // 1-12, como lo maneja el calendario (antes 0-11: abría en el mes anterior).
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [sindicalizado, setSindicalizado] = useState<Sindicalizado | null>(
     null
   );
@@ -161,11 +162,14 @@ export const DetallesEmpleado = ({
       // Set groupId for calendar
       setGroupId(userData.grupo?.grupoId);
 
-        if (isLeader && userData.grupo?.grupoId && anioVigente) {
+        // Del año que se está viendo: con 2027 elegido, las excepciones de
+        // tiempo extra que se pintan en el calendario tienen que ser de 2027.
+        const anioExcepciones = anioDatos ?? anioVigente;
+        if (isLeader && userData.grupo?.grupoId && anioExcepciones) {
             try {
                 setLoadingExcepciones(true);
-                const startDate = `${anioVigente}-01-01`;
-                const endDate = `${anioVigente}-12-31`;
+                const startDate = `${anioExcepciones}-01-01`;
+                const endDate = `${anioExcepciones}-12-31`;
                 const excepciones = await excepcionesService.getExcepciones(
                     userData.grupo.grupoId,
                     startDate,
@@ -893,8 +897,15 @@ const handleRemoveDay = async (fecha: string) => {
             <select
               id="anio-vacaciones"
               value={anioDatos ?? ""}
-              onChange={(e) => setAnioSeleccionado(e.target.value ? Number(e.target.value) : null)}
-              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-continental-blue-dark"
+              onChange={(e) => {
+                const nuevo = e.target.value ? Number(e.target.value) : null;
+                setAnioSeleccionado(nuevo);
+                // Las fechas marcadas eran del otro año: se descartan, y el
+                // calendario se va a enero de ese año (o al mes actual si es este).
+                setTempSelectedDates([]);
+                setMonth(nuevo === new Date().getFullYear() ? new Date().getMonth() + 1 : 1);
+              }}
+              className="border-2 border-continental-blue-dark rounded px-2 py-1 text-sm font-semibold focus:outline-none"
             >
               {aniosDisponibles.map((a) => (
                 <option key={a} value={a}>
@@ -904,6 +915,12 @@ const handleRemoveDay = async (fecha: string) => {
                 </option>
               ))}
             </select>
+            <span className="text-xs text-continental-gray-1">
+              El calendario, las listas y «Asignar vacaciones manualmente» son de este año.
+              {anioProgramacion && anioDatos !== anioProgramacion
+                ? ` Para programar ${anioProgramacion}, elige ${anioProgramacion}.`
+                : ""}
+            </span>
           </div>
         )}
         {/* Header con información del empleado y botones */}
@@ -1128,6 +1145,10 @@ const handleRemoveDay = async (fecha: string) => {
           {/* 9. Calendario */}
           <div className="flex-2">
           <CalendarComponent
+            // Sin el año, el calendario se quedaba en el año en curso aunque se
+            // eligiera 2027 arriba: los días marcados salían de 2026 y la
+            // asignación de la programación anual no se podía hacer.
+            year={anioDatos ?? undefined}
             selectedDays={tempSelectedDates}
             month={month}
             onMonthChange={setMonth}

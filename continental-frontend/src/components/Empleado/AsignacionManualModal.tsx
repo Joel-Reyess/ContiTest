@@ -324,7 +324,7 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-semibold text-continental-black flex items-center gap-2">
                         <CalendarPlus2 className="h-5 w-5 text-blue-600" />
-                        Asignar Vacaciones Manualmente
+                        Asignar Vacaciones Manualmente{anioCaptura ? ` — ${anioCaptura}` : ''}
                     </h2>
                     <button
                         onClick={onClose}
@@ -372,7 +372,10 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
                                 <p className="text-yellow-800 font-medium">No hay días disponibles para asignar</p>
                             </div>
                             <p className="text-sm text-yellow-700 mt-1">
-                                El empleado ya tiene asignados todos sus días de vacaciones disponibles.
+                                El empleado ya tiene asignados todos sus días de {anioCaptura}.
+                                {config?.anioProgramacionAnual && config.anioProgramacionAnual !== anioCaptura
+                                    ? ` Para asignarle días de ${config.anioProgramacionAnual}, cierra esta ventana y elige ${config.anioProgramacionAnual} en «Año de vacaciones», arriba del calendario.`
+                                    : ''}
                             </p>
                         </div>
                     )}
