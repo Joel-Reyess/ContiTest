@@ -322,8 +322,15 @@ namespace tiempo_libre.Services
         {
             try
             {
+                // Solicitud = la que capturó alguien en la app (delegado), y esas
+                // SIEMPRE traen FechaSolicitud. EstadoSolicitud no sirve para
+                // distinguirlas: las filas que carga la sincronización del Excel de
+                // SAP también lo traen ("Aprobada"/"Aprobado"). Con solo ese filtro
+                // el delegado veía las ~13 mil filas del Excel como "solicitudes de
+                // Sistema" y, como no tienen FechaSolicitud, cada una salía con la
+                // hora en que se abría la pantalla: parecía que se generaban al abrir.
                 var query = _db.PermisosEIncapacidadesSAP
-                    .Where(p => p.EstadoSolicitud != null) // ✅ Solo solicitudes
+                    .Where(p => p.EstadoSolicitud != null && p.FechaSolicitud != null)
                     .AsQueryable();
 
                 if (request.NominaEmpleado.HasValue)
