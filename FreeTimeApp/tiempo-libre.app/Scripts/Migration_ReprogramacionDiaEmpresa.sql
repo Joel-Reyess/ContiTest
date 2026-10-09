@@ -38,8 +38,12 @@ BEGIN
         CONSTRAINT FK_SRDE_AprobadoPor FOREIGN KEY ([AprobadoPorId])
             REFERENCES [dbo].[Users] ([Id])            ON DELETE NO ACTION,
 
+        -- Lista completa desde oct-2026 (ver Migration_ReprogramacionDiaEmpresa_Motivos.sql):
+        -- debe coincidir con MotivosReprogramacionDiaEmpresa.Validos.
         CONSTRAINT CK_SRDE_MotivoValido CHECK
-            ([MotivoTipo] IN ('Incapacidad','PermisoDefuncion','Paternidad','Maternidad'))
+            ([MotivoTipo] IN ('Incapacidad','PermisoDefuncion','Paternidad','Maternidad',
+                              'PermisoConGoce','PermisoSinGoce','PermisoSinGoceSueldo',
+                              'AccidenteTrabajo','RiesgoTrabajo','Suspension','Vacacion','Otro'))
     );
 
     CREATE INDEX IX_SRDE_EmpleadoEstado ON [dbo].[SolicitudesReprogramacionDiaEmpresa] ([EmpleadoId], [EstadoSolicitud]);

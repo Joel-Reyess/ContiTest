@@ -22,6 +22,7 @@ FROM (VALUES
   ('Tabla ConfiguracionEdicionDiasEmpresa',      'Scripts/Migration_EdicionDiasEmpresa.sql',          IIF(OBJECT_ID('dbo.ConfiguracionEdicionDiasEmpresa') IS NOT NULL,1,0)),
   ('Tabla SolicitudesEdicionDiasEmpresa',        'Scripts/Migration_EdicionDiasEmpresa.sql',          IIF(OBJECT_ID('dbo.SolicitudesEdicionDiasEmpresa') IS NOT NULL,1,0)),
   ('Tabla SolicitudesReprogramacionDiaEmpresa',  'Scripts/Migration_ReprogramacionDiaEmpresa.sql',    IIF(OBJECT_ID('dbo.SolicitudesReprogramacionDiaEmpresa') IS NOT NULL,1,0)),
+  ('CK_SRDE_MotivoValido con los 12 motivos (incluye Otro)','Scripts/Migration_ReprogramacionDiaEmpresa_Motivos.sql', IIF(EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_SRDE_MotivoValido' AND definition LIKE '%Otro%'),1,0)),
   ('Tabla SolicitudesReprogramacionPostIncapacidad','Scripts/Migration_ReprogramacionPostIncapacidad.sql', IIF(OBJECT_ID('dbo.SolicitudesReprogramacionPostIncapacidad') IS NOT NULL,1,0)),
   ('PermisosEIncapacidadesSAP.ProtegidoPorExtension','Scripts/Migration_ProtecccionExtensionPermiso.sql', IIF(COL_LENGTH('dbo.PermisosEIncapacidadesSAP','ProtegidoPorExtension') IS NOT NULL,1,0)),
   ('PermisosEIncapacidadesSAP.PermisoOriginalId','Scripts/Migration_ProtecccionExtensionPermiso.sql', IIF(COL_LENGTH('dbo.PermisosEIncapacidadesSAP','PermisoOriginalId') IS NOT NULL,1,0)),

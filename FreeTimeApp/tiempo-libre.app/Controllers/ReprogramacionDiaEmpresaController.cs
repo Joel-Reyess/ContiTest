@@ -63,7 +63,7 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error obteniendo vacaciones asignadas reprogramables para {EmpleadoId}", empleadoId);
-                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.GetBaseException().Message));
             }
         }
 
@@ -90,7 +90,7 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error solicitando reprogramación día empresa");
-                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.GetBaseException().Message));
             }
         }
 
@@ -112,7 +112,7 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error aprobando/rechazando reprogramación día empresa");
-                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.GetBaseException().Message));
             }
         }
 
@@ -130,7 +130,7 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error obteniendo pendientes");
-                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.GetBaseException().Message));
             }
         }
 
@@ -148,7 +148,7 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error obteniendo solicitudes-area");
-                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.GetBaseException().Message));
             }
         }
 
@@ -174,7 +174,7 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error obteniendo todas");
-                return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.GetBaseException().Message));
             }
         }
     }
