@@ -123,6 +123,25 @@ namespace tiempo_libre.Services
             var reprogramadasSet = new HashSet<(int, DateOnly)>(
                 fechasReprogramadasAprobadas.Select(r => (r.EmpleadoId, r.FechaOriginalGuardada)));
 
+            // Días de empresa que la app ya movió: "Edición de días empresa" y la
+            // reprogramación de día empresa del superusuario. Las dos cambian la
+            // fecha EN EL MISMO registro, así que la app ya no tiene nada en el
+            // día original; si el Excel todavía lo trae, el 1100 de SAP pintaba
+            // "V" ahí (caso 32813149: 12/10 movido al 20/09 y la V seguía en el
+            // rol). Cuentan igual que una reprogramación aprobada. Donde manda el
+            // Excel (hasta su última carga) esto no aplica: ahí la V se va cuando
+            // RH corrige SAP.
+            var empresaMovidosEdicion = await _db.SolicitudesEdicionDiasEmpresa
+                .Where(s => s.EstadoSolicitud == "Aprobada" && empleadosIds.Contains(s.EmpleadoId))
+                .Select(s => new { s.EmpleadoId, s.FechaOriginal })
+                .ToListAsync();
+            var empresaMovidosSuper = await _db.SolicitudesReprogramacionDiaEmpresa
+                .Where(s => s.EstadoSolicitud == "Aprobada" && empleadosIds.Contains(s.EmpleadoId))
+                .Select(s => new { s.EmpleadoId, s.FechaOriginal })
+                .ToListAsync();
+            foreach (var m in empresaMovidosEdicion) reprogramadasSet.Add((m.EmpleadoId, m.FechaOriginal));
+            foreach (var m in empresaMovidosSuper) reprogramadasSet.Add((m.EmpleadoId, m.FechaOriginal));
+
             // Permisos / incapacidades SAP
             var empleadosNominas = empleados.Where(e => e.Nomina.HasValue).Select(e => e.Nomina!.Value).ToList();
             var permisosIncapacidades = await _db.PermisosEIncapacidadesSAP
