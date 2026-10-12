@@ -349,7 +349,7 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                         </span>
                         <span className="flex items-center gap-1.5">
                             <span className="inline-block w-3 border-t border-dashed border-slate-500" />
-                            Reparto parejo
+                            Referencia de distribución mensual
                         </span>
                     </div>
                 </div>
@@ -395,17 +395,17 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                     <div
                                         className="absolute left-0 right-0 border-t border-dashed border-slate-500"
                                         style={{ bottom: `${parejo}%` }}
-                                        title={`Reparto parejo: ${m.diasEsperadosSiFueraParejo} días`}
+                                        title={`Referencia de distribución mensual: ${Math.round(m.diasEsperadosSiFueraParejo)} días`}
                                     />
                                 </div>
                                 <p className="text-xs mt-2 tabular-nums">
-                                    Día promedio: {(Number(m.porcentajeEmpresa) + Number(m.porcentajeCapturado)).toFixed(2)}%
+                                    Promedio diario en vacaciones: {(Number(m.porcentajeEmpresa) + Number(m.porcentajeCapturado)).toFixed(2)}%
                                     <span className="text-continental-gray-1">
                                         {" "}(empresa {m.porcentajeEmpresa}% + operador {m.porcentajeCapturado}%)
                                     </span>
                                 </p>
                                 <p className="text-xs tabular-nums text-continental-gray-1">
-                                    Día más lleno: {m.porcentajeMaximo}% de {datos.porcentajeMaximoGlobal}%
+                                    Máximo diario ausente: {m.porcentajeMaximo}% (límite {datos.porcentajeMaximoGlobal}%)
                                 </p>
                                 {m.diasConRebase > 0 && (
                                     <p className="text-xs text-red-600 font-medium">
@@ -417,27 +417,28 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                     })}
                 </div>
                 <div className="text-xs text-continental-gray-1 mt-2 space-y-1">
+                    {/* Redacción del cliente (oct-2026). Solo se agregan los valores
+                        reales entre paréntesis. */}
                     <p>
-                        <span className="font-medium">Línea punteada (reparto parejo):</span> si la empresa
-                        hubiera repartido sus días del año igual en los 12 meses, a cada mes le tocarían{" "}
-                        {Math.round(datos.meses[0]?.diasEsperadosSiFueraParejo ?? 0).toLocaleString("es-MX")} días.
-                        No es un límite. Compárala solo con lo <span className="font-medium">azul</span>: si
-                        lo azul queda muy arriba de la línea, la empresa amontonó días en ese mes. Lo amarillo
-                        (lo que capturan los operadores) no cuenta para esta línea.
+                        <span className="font-medium">Referencia de distribución mensual (línea punteada):</span>{" "}
+                        indica cuántos días corresponderían a cada mes si los días asignados por la empresa se
+                        distribuyeran uniformemente durante el año (
+                        {Math.round(datos.meses[0]?.diasEsperadosSiFueraParejo ?? 0).toLocaleString("es-MX")} días
+                        por mes). Se compara únicamente con las barras azules y no representa un límite.
                     </p>
                     <p>
-                        <span className="font-medium">Día promedio:</span> qué porcentaje de la plantilla
-                        está de vacaciones un día cualquiera del mes, y cuánto de eso puso la empresa y cuánto
-                        capturaron los operadores. Mientras más se acerque al {datos.porcentajeMaximoGlobal}%,
-                        más lleno viene el mes.
+                        <span className="font-medium">Promedio diario de personal en vacaciones:</span> porcentaje
+                        promedio de la plantilla que estará de vacaciones cada día del mes. Incluye los días
+                        asignados por la empresa y los registrados por los operadores, mostrando la contribución
+                        de cada uno.
                     </p>
                     <p>
-                        <span className="font-medium">Día más lleno:</span> el día del mes con más gente fuera
-                        (vacaciones, permisos e incapacidades), juntando{" "}
-                        {areaId ? "toda el área elegida" : alcance}. Es una referencia: el cupo de{" "}
-                        {datos.porcentajeMaximoGlobal}% se revisa grupo por grupo, así que un grupo puede
-                        pasarse aunque este número salga abajo (o al revés). Lo que de verdad cuenta son los
-                        días en <span className="text-red-600 font-medium">rojo</span>.
+                        <span className="font-medium">Máximo diario de personal ausente:</span> mayor porcentaje de
+                        la plantilla ausente en un mismo día del mes, considerando vacaciones, permisos e
+                        incapacidades. El límite del porcentaje determinado por ingeniería industrial (
+                        {datos.porcentajeMaximoGlobal}%) se verifica por grupo; por ello, este indicador general
+                        puede estar por debajo del límite y aun así existir un grupo que lo supere. Los días con
+                        rebase se identifican en <span className="text-red-600 font-medium">rojo</span>.
                     </p>
                 </div>
             </div>
