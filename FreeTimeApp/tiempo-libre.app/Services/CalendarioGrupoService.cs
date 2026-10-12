@@ -230,6 +230,12 @@ namespace tiempo_libre.Services
                 .Where(d => d.Fecha >= fechaInicioOnly && d.Fecha <= fechaFinOnly)
                 .ToListAsync();
 
+            // Lo que la app movió o canceló, y cuándo: una fila 1100 del Excel que
+            // llegó ANTES de ese cambio ya no vale para ese día (manda lo más
+            // reciente, igual que en el rol semanal).
+            var cambiosApp = await CambiosAppVsExcel.ObtenerAsync(
+                _db, new[] { usuarioId }, fechaInicioOnly, fechaFinOnly);
+
             // Aplicar incidencias al calendario
             foreach (var dia in calendarioBase)
             {
@@ -275,7 +281,12 @@ namespace tiempo_libre.Services
                 // Dias == 0 significa que SAP la dejó sin efecto; no se pinta.
                 var vacacionSap = permisosSap.FirstOrDefault(p =>
                     fechaDia >= p.Desde && fechaDia <= p.Hasta &&
-                    p.ClAbPre == 1100 && (p.Dias == null || p.Dias > 0));
+                    p.ClAbPre == 1100 && (p.Dias == null || p.Dias > 0) &&
+                    // El día de empresa del 32813149 se movió del 12/10 al 20/09 y
+                    // aquí seguía saliendo la V del 12/10 porque el Excel aún la
+                    // traía. Si la app quitó ese día después de que llegó la fila,
+                    // la fila ya no manda.
+                    !cambiosApp.AppQuitoDespuesDe(usuarioId, fechaDia, p.FechaRegistro));
                 if (vacacionSap != null)
                 {
                     dia.Incidencia = "V";

@@ -62,15 +62,24 @@ namespace tiempo_libre.Services
             // son las que no capturó nadie en la app (EsRegistroManual) ni vienen
             // de una solicitud (FechaSolicitud).
             DateOnly? corteExcel = null;
+            DateTime? ultimaCargaExcel = null;
             if (soloLoQueTraeElExcel)
             {
-                var ultimaCarga = await _db.PermisosEIncapacidadesSAP
+                ultimaCargaExcel = await _db.PermisosEIncapacidadesSAP
                     .Where(p => !p.EsRegistroManual && p.FechaSolicitud == null)
                     .MaxAsync(p => (DateTime?)p.FechaRegistro);
-                if (ultimaCarga.HasValue)
-                    corteExcel = DateOnly.FromDateTime(ultimaCarga.Value);
+                if (ultimaCargaExcel.HasValue)
+                    corteExcel = DateOnly.FromDateTime(ultimaCargaExcel.Value);
             }
             bool MandaElExcel(DateOnly f) => corteExcel.HasValue && f <= corteExcel.Value;
+
+            // ...salvo lo que la app cambió DESPUÉS de esa carga: el Excel todavía
+            // no lo puede traer (CambiosAppVsExcel, "manda lo más reciente"). Se
+            // llena abajo, cuando ya se conocen los empleados.
+            CambiosAppVsExcel.Cambios? cambiosApp = null;
+            bool AppPusoDespuesDeLaCarga(int empleadoId, DateOnly f) =>
+                cambiosApp != null && ultimaCargaExcel.HasValue &&
+                cambiosApp.AppPusoDespuesDe(empleadoId, f, ultimaCargaExcel.Value);
 
             var inicioDt = inicio.ToDateTime(TimeOnly.MinValue);
             var finDt = fin.ToDateTime(TimeOnly.MinValue);
@@ -86,6 +95,9 @@ namespace tiempo_libre.Services
             if (empleados.Count == 0) return resultado;
 
             var empleadosIds = empleados.Select(e => e.Id).ToList();
+
+            if (corteExcel.HasValue)
+                cambiosApp = await CambiosAppVsExcel.ObtenerAsync(_db, empleadosIds, inicio, fin);
 
             // 1) Calendario real de empleados → turnosReales[fecha][empId]
             var turnosReales = new Dictionary<string, Dictionary<int, string>>();
@@ -195,9 +207,25 @@ namespace tiempo_libre.Services
                 {
                     if (MandaElExcel(fechaActual))
                     {
-                        // Solo lo que trae el Excel. Un 1100 en 0 días es el propio
-                        // SAP diciendo que ese día no es vacación.
-                        if (!esDelExcel || (permiso.ClAbPre == 1100 && permiso.Dias == 0))
+                        // Solo lo que trae el Excel, y lo que la app capturó DESPUÉS
+                        // de la última carga (el Excel aún no lo puede traer).
+                        // Un 1100 en 0 días es el propio SAP diciendo que ese día no
+                        // es vacación; y un 1100 de un día que la app movió o canceló
+                        // después de que llegó esa fila ya no vale: manda lo más
+                        // reciente.
+                        var capturadoEnApp = permiso.EsRegistroManual
+                            ? permiso.FechaRegistro
+                            : (permiso.FechaRespuesta ?? permiso.FechaSolicitud ?? permiso.FechaRegistro);
+                        var appDespuesDeLaCarga = !esDelExcel && ultimaCargaExcel.HasValue &&
+                                                  capturadoEnApp > ultimaCargaExcel.Value;
+                        var empDelPermiso = empleados.FirstOrDefault(e => e.Nomina == permiso.Nomina);
+                        var appQuitoElDia = esDelExcel && permiso.ClAbPre == 1100 && empDelPermiso != null &&
+                                            cambiosApp != null &&
+                                            cambiosApp.AppQuitoDespuesDe(empDelPermiso.Id, fechaActual, permiso.FechaRegistro);
+
+                        if ((!esDelExcel && !appDespuesDeLaCarga) ||
+                            (permiso.ClAbPre == 1100 && permiso.Dias == 0) ||
+                            appQuitoElDia)
                         {
                             fechaActual = fechaActual.AddDays(1);
                             continue;
@@ -301,13 +329,16 @@ namespace tiempo_libre.Services
             var festivosAprobados = await _db.SolicitudesFestivosTrabajados
                 .Where(f => f.FechaNuevaSolicitada >= inicio && f.FechaNuevaSolicitada <= fin &&
                             f.EstadoSolicitud == "Aprobada" && empleadosIds.Contains(f.EmpleadoId))
-                .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada })
+                .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada, f.FechaRespuesta })
                 .ToListAsync();
             // El día que se da por trabajar un festivo es de la app: donde manda el
-            // Excel solo cuenta si SAP lo trae (y entonces sale con su propio código).
+            // Excel solo cuenta si SAP lo trae (y entonces sale con su propio código)
+            // o si se aprobó después de la última carga.
             var festivosSet = new HashSet<(int, string)>(
                 festivosAprobados
-                    .Where(f => !MandaElExcel(f.FechaNuevaSolicitada))
+                    .Where(f => !MandaElExcel(f.FechaNuevaSolicitada) ||
+                                (ultimaCargaExcel.HasValue && f.FechaRespuesta.HasValue &&
+                                 f.FechaRespuesta.Value > ultimaCargaExcel.Value))
                     .Select(f => (f.EmpleadoId, f.FechaNuevaSolicitada.ToString("yyyy-MM-dd"))));
 
             // Días empresa reprogramados → "C"
@@ -330,7 +361,8 @@ namespace tiempo_libre.Services
 
                     var fechaDia = DateOnly.FromDateTime(dia.Fecha);
 
-                    if (diasEmpresaReprogSet.Contains((emp.Id, fechaStr)) && !MandaElExcel(fechaDia))
+                    if (diasEmpresaReprogSet.Contains((emp.Id, fechaStr)) &&
+                        (!MandaElExcel(fechaDia) || AppPusoDespuesDeLaCarga(emp.Id, fechaDia)))
                     {
                         codigoTurno = "C";
                     }
@@ -395,7 +427,7 @@ namespace tiempo_libre.Services
             // filas 1100 (arriba, en los permisos SAP).
             var vacacionesSet = new HashSet<(int, DateOnly)>();
             foreach (var vac in vacacionesProgramadas)
-                if (!MandaElExcel(vac.FechaVacacion))
+                if (!MandaElExcel(vac.FechaVacacion) || AppPusoDespuesDeLaCarga(vac.EmpleadoId, vac.FechaVacacion))
                     vacacionesSet.Add((vac.EmpleadoId, vac.FechaVacacion));
             foreach (var vac in vacacionesLegacy)
                 if (!MandaElExcel(vac.FechaVacacion))
