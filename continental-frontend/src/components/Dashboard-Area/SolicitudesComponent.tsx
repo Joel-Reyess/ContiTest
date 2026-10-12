@@ -146,8 +146,8 @@ const SolicitudesComponent: React.FC = () => {
                                 Periodo Cerrado
                             </h2>
                             <p className="text-gray-600">
-                                El periodo de vacaciones se encuentra cerrado. El superusuario debe
-                                activarlo para comenzar la programación anual.
+                                El periodo de vacaciones se encuentra cerrado: no se pueden capturar
+                                solicitudes nuevas. Abajo siguen las que ya existen.
                             </p>
                         </div>
                     </div>
@@ -176,8 +176,12 @@ const SolicitudesComponent: React.FC = () => {
                     se quedaba nada mas con los bloques y perdia de vista todo lo
                     pendiente del ano vigente. Se muestra en los dos periodos; con
                     el periodo cerrado sigue oculto (arriba ya se explica por que). */}
-                {(config?.periodoActual === 'Reprogramacion' ||
-                  config?.periodoActual === 'ProgramacionAnual') && (
+                {/* Ahora en TODOS los periodos (oct-2026): con el periodo en
+                    "Cerrado" (como quedó TEST tras "Concluir Reprogramación") el
+                    jefe se quedaba sin la sección y no veía ni lo que ya estaba
+                    pendiente de aprobar. Cerrado impide capturar cosas nuevas, no
+                    revisar las que hay. */}
+                {config && (
                     <>
                         {/* Dropdown selector */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
