@@ -34,7 +34,7 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Solicitar una reprogramaciA3n de vacaciones (siempre queda pendiente de aprobaciA3n del jefe de A­rea).
+        /// Solicitar una reprogramación de vacaciones (siempre queda pendiente de aprobación del jefe de área).
         /// </summary>
         public async Task<ApiResponse<SolicitudReprogramacionResponse>> SolicitarReprogramacionAsync(
             SolicitudReprogramacionRequest request, int usuarioSolicitanteId)
@@ -43,7 +43,7 @@ namespace tiempo_libre.Services
 
             try
             {
-                // 1. Validar periodo activo de reprogramaciA3n
+                // 1. Validar periodo activo de reprogramación
                 var configuracion = await _db.ConfiguracionVacaciones
                     .OrderByDescending(c => c.CreatedAt)
                     .FirstOrDefaultAsync();
@@ -79,10 +79,10 @@ namespace tiempo_libre.Services
                 if (!esJefeArea && !esDelegadoSindical && !esSuperUsuario)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "Solo los Jefes de A­rea, Delegados Sindicales y SuperUsuarios pueden solicitar reprogramaciones");
+                        "Solo los Jefes de área, Delegados Sindicales y SuperUsuarios pueden solicitar reprogramaciones");
                 }
 
-                // 3. Obtener informaciA3n del empleado
+                // 3. Obtener información del empleado
                 var empleado = await _db.Users
                     .Include(u => u.Area)
                     .Include(u => u.Grupo)
@@ -94,31 +94,31 @@ namespace tiempo_libre.Services
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null, "Empleado no encontrado");
                 }
 
-                // 4. Validar que la vacaciA3n original existe y pertenece al empleado
+                // 4. Validar que la vacación original existe y pertenece al empleado
                 var vacacionOriginal = await _db.VacacionesProgramadas
                     .FirstOrDefaultAsync(v => v.Id == request.VacacionOriginalId);
 
                 if (vacacionOriginal == null)
                 {
-                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null, "VacaciA3n original no encontrada");
+                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null, "Vacación original no encontrada");
                 }
 
                 if (vacacionOriginal.EmpleadoId != request.EmpleadoId)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "La vacaciA3n original no pertenece al empleado especificado");
+                        "La vacación original no pertenece al empleado especificado");
                 }
 
                 if (vacacionOriginal.TipoVacacion != "Anual" && vacacionOriginal.TipoVacacion != "Reprogramacion")
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        $"Solo se pueden reprogramar vacaciones de tipo 'Anual' o ya reprogramadas. Esta vacaciA3n es de tipo '{vacacionOriginal.TipoVacacion}'");
+                        $"Solo se pueden reprogramar vacaciones de tipo 'Anual' o ya reprogramadas. Esta vacación es de tipo '{vacacionOriginal.TipoVacacion}'");
                 }
 
                 if (vacacionOriginal.EstadoVacacion != "Activa")
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        $"Solo se pueden reprogramar vacaciones activas. Esta vacaciA3n estA­ '{vacacionOriginal.EstadoVacacion}'");
+                        $"Solo se pueden reprogramar vacaciones activas. Esta vacación está '{vacacionOriginal.EstadoVacacion}'");
                 }
 
                 // 5. Validar fechas
@@ -137,26 +137,46 @@ namespace tiempo_libre.Services
                         "La fecha debe ser del año 2020 en adelante");
                 }
 
-                // 6. Validar dA-as inhA-biles
+                // 6. Validar días inhábiles
                 var esDiaInhabil = await _db.DiasInhabiles
                     .AnyAsync(d => d.Fecha == request.FechaNueva);
 
                 if (esDiaInhabil)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "No se puede reprogramar una vacaciA3n a un dA-a inhA­bil o festivo");
+                        "No se puede reprogramar una vacación a un día inhábil o festivo");
                 }
 
-                // 7. Validar que no exista ya una vacaciA3n programada en la fecha nueva
+                // 7. Validar que no exista ya una vacación programada en la fecha nueva.
+                //    El mensaje dice QUÉ hay ese día: con solo "ya tiene una
+                //    vacación" se leía como "la solicitud ya está en proceso" y la
+                //    gente buscaba una solicitud pendiente que no existía (32813224,
+                //    oct-2026: el 25/09 ya era vacación suya, nada que ver con su
+                //    solicitud rechazada).
                 var vacacionExistente = await _db.VacacionesProgramadas
-                    .AnyAsync(v => v.EmpleadoId == request.EmpleadoId &&
-                                   v.FechaVacacion == request.FechaNueva &&
-                                   v.EstadoVacacion == "Activa");
+                    .Where(v => v.EmpleadoId == request.EmpleadoId &&
+                                v.FechaVacacion == request.FechaNueva &&
+                                v.EstadoVacacion == "Activa")
+                    .Select(v => new { v.TipoVacacion, v.Observaciones })
+                    .FirstOrDefaultAsync();
 
-                if (vacacionExistente)
+                if (vacacionExistente != null)
                 {
+                    var queEs = vacacionExistente.TipoVacacion switch
+                    {
+                        "Automatica" or "AsignadaAutomaticamente" => "un día asignado por la empresa",
+                        "DiaEmpresaReprogramado" => "un día de empresa reprogramado",
+                        "FestivoTrabajado" => "un día por festivo trabajado",
+                        "Anual" => "una vacación que eligió en su programación anual",
+                        "Reprogramacion" => "una vacación reprogramada",
+                        _ => $"una vacación ({vacacionExistente.TipoVacacion})"
+                    };
+                    var nota = string.IsNullOrWhiteSpace(vacacionExistente.Observaciones)
+                        ? ""
+                        : $" Nota: {vacacionExistente.Observaciones}.";
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "El empleado ya tiene una vacaciA3n programada para la fecha nueva solicitada");
+                        $"El {request.FechaNueva:dd/MM/yyyy} el empleado ya tiene {queEs}, así que no se puede " +
+                        $"mover otra vacación a ese día. Elige otra fecha nueva.{nota}");
                 }
 
                 // 8. Verificar que no haya otra solicitud pendiente o aprobada para
@@ -173,7 +193,7 @@ namespace tiempo_libre.Services
                         $"Ya existe una solicitud de reprogramación (pendiente o aprobada) para el día {vacacionOriginal.FechaVacacion:dd/MM/yyyy}");
                 }
 
-                // 9. Calcular porcentaje de ausencia (solo para auditorA-a, la aprobaciA3n siempre es manual)
+                // 9. Calcular porcentaje de ausencia (solo para auditoría, la aprobación siempre es manual)
                 decimal? porcentajeCalculado = null;
                 var validacionRequest = new ValidacionDisponibilidadRequest
                 {
@@ -182,18 +202,18 @@ namespace tiempo_libre.Services
                 };
 
                 var validacionResponse = await _ausenciaService.ValidarDisponibilidadDiaAsync(validacionRequest);
-                string mensajeValidacion = "La solicitud requiere aprobaciA3n del jefe de A­rea.";
+                string mensajeValidacion = "La solicitud requiere aprobación del jefe de área.";
 
                 if (validacionResponse.Success && validacionResponse.Data != null)
                 {
                     porcentajeCalculado = validacionResponse.Data.PorcentajeAusenciaConEmpleado;
                     if (!validacionResponse.Data.DiaDisponible)
                     {
-                        mensajeValidacion += " El dA-a excede el porcentaje permitido.";
+                        mensajeValidacion += " El día excede el porcentaje permitido.";
                     }
                 }
 
-                // 10. Obtener el jefe del A­rea (para notificar y asignar aprobador)
+                // 10. Obtener el jefe del área (para notificar y asignar aprobador)
                 User? jefeArea = null;
                 if (empleado.AreaId.HasValue)
                 {
@@ -247,8 +267,8 @@ namespace tiempo_libre.Services
 
                     await _notificacionesService.CrearNotificacionAsync(
                         TiposDeNotificacionEnum.SolicitudReprogramacion,
-                        "Solicitud de reprogramaciA3n pendiente",
-                        $"Tu solicitud para cambiar la vacaciA3n del {solicitud.FechaOriginalGuardada:dd/MM/yyyy} al {solicitud.FechaNuevaSolicitada:dd/MM/yyyy} estA­ pendiente de aprobaciA3n",
+                        "Solicitud de reprogramación pendiente",
+                        $"Tu solicitud para cambiar la vacación del {solicitud.FechaOriginalGuardada:dd/MM/yyyy} al {solicitud.FechaNuevaSolicitada:dd/MM/yyyy} está pendiente de aprobación",
                         usuarioSolicitante.FullName ?? string.Empty,
                         idUsuarioReceptor: request.EmpleadoId,
                         idUsuarioEmisor: usuarioSolicitanteId,
@@ -283,11 +303,11 @@ namespace tiempo_libre.Services
                 };
 
                 _logger.LogInformation(
-                    "Solicitud de reprogramaciA3n creada para empleado {EmpleadoId}: {FechaOriginal} -> {FechaNueva}. Estado: Pendiente",
+                    "Solicitud de reprogramación creada para empleado {EmpleadoId}: {FechaOriginal} -> {FechaNueva}. Estado: Pendiente",
                     empleado.Id, solicitud.FechaOriginalGuardada, solicitud.FechaNuevaSolicitada);
 
                 return new ApiResponse<SolicitudReprogramacionResponse>(true, response,
-                    "Solicitud de reprogramaciA3n creada y pendiente de aprobaciA3n");
+                    "Solicitud de reprogramación creada y pendiente de aprobación");
             }
             catch (Exception ex)
             {
@@ -295,14 +315,14 @@ namespace tiempo_libre.Services
                 // a las notificaciones); revertir entonces lanza y taparía el
                 // error real.
                 try { await transaction.RollbackAsync(); } catch { /* ya confirmada */ }
-                _logger.LogError(ex, "Error al solicitar reprogramaciA3n");
+                _logger.LogError(ex, "Error al solicitar reprogramación");
                 return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
                     $"Error inesperado: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Aprobar o rechazar una solicitud de reprogramaciA3n.
+        /// Aprobar o rechazar una solicitud de reprogramación.
         /// </summary>
         public async Task<ApiResponse<AprobarReprogramacionResponse>> AprobarRechazarSolicitudAsync(
             AprobarReprogramacionRequest request, int usuarioAprobadorId)
@@ -608,14 +628,14 @@ namespace tiempo_libre.Services
                 // La transacción ya pudo quedar confirmada (commit previo a las
                 // notificaciones); revertir entonces lanza y taparía el error real.
                 try { await transaction.RollbackAsync(); } catch { /* ya confirmada */ }
-                _logger.LogError(ex, "Error al aprobar/rechazar solicitud de reprogramaciA3n");
+                _logger.LogError(ex, "Error al aprobar/rechazar solicitud de reprogramación");
                 return new ApiResponse<AprobarReprogramacionResponse>(false, null,
                     $"Error inesperado: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Consultar solicitudes de reprogramaciA3n con filtros.
+        /// Consultar solicitudes de reprogramación con filtros.
         /// </summary>
         public async Task<ApiResponse<ListaSolicitudesReprogramacionResponse>> ConsultarSolicitudesAsync(
     ConsultaSolicitudesRequest request, int usuarioConsultaId)
@@ -1019,7 +1039,7 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Validar si una reprogramaciA3n es posible antes de solicitarla.
+        /// Validar si una reprogramación es posible antes de solicitarla.
         /// </summary>
         public async Task<ApiResponse<ValidarReprogramacionResponse>> ValidarReprogramacionAsync(
             ValidarReprogramacionRequest request)
@@ -1039,7 +1059,7 @@ namespace tiempo_libre.Services
                 if (vacacionOriginal == null)
                 {
                     response.EsValida = false;
-                    response.MotivoInvalidez = "VacaciA3n original no encontrada";
+                    response.MotivoInvalidez = "Vacación original no encontrada";
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
@@ -1056,7 +1076,7 @@ namespace tiempo_libre.Services
                 if (vacacionOriginal.EstadoVacacion != "Activa")
                 {
                     response.EsValida = false;
-                    response.MotivoInvalidez = "La vacaciA3n no estA­ activa";
+                    response.MotivoInvalidez = "La vacación no está activa";
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
@@ -1072,7 +1092,7 @@ namespace tiempo_libre.Services
                 if (esDiaInhabil)
                 {
                     response.EsValida = false;
-                    response.MotivoInvalidez = "No se puede reprogramar una vacaciA3n a un dA-a inhA­bil o festivo";
+                    response.MotivoInvalidez = "No se puede reprogramar una vacación a un día inhábil o festivo";
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
@@ -1084,7 +1104,7 @@ namespace tiempo_libre.Services
                 if (conflicto)
                 {
                     response.EsValida = false;
-                    response.MotivoInvalidez = "Ya existe una vacaciA3n programada para esa fecha";
+                    response.MotivoInvalidez = "Ya existe una vacación programada para esa fecha";
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
@@ -1103,7 +1123,7 @@ namespace tiempo_libre.Services
 
                     if (!validacionResponse.Data.DiaDisponible)
                     {
-                        response.Advertencias.Add($"El dA-a excede el porcentaje de ausencia permitido ({response.PorcentajeMaximo}%). RequerirA­ aprobaciA3n del jefe de A­rea.");
+                        response.Advertencias.Add($"El día excede el porcentaje de ausencia permitido ({response.PorcentajeMaximo}%). Requerirá aprobación del jefe de área.");
                     }
                 }
 
@@ -1123,7 +1143,7 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al validar reprogramaciA3n");
+                _logger.LogError(ex, "Error al validar reprogramación");
                 return new ApiResponse<ValidarReprogramacionResponse>(false, null,
                     $"Error inesperado: {ex.Message}");
             }
