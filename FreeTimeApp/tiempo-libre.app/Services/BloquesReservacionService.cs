@@ -1017,7 +1017,8 @@ namespace tiempo_libre.Services
         public async Task<ApiResponse<EliminacionBloquesResponse>> EliminarBloquesAsync(
             int anioObjetivo,
             List<int>? grupoIds,
-            int usuarioId)
+            int usuarioId,
+            bool cancelarCapturas = false)
         {
             try
             {
@@ -1115,6 +1116,68 @@ namespace tiempo_libre.Services
                         cambiosAEliminar.Count, anioObjetivo);
                 }
 
+                // Lo que ya capturaron los operadores en esos bloques. Si se borran
+                // los bloques y las capturas se quedan, al regenerar la vista de
+                // turnos los pone como "sin captura" aunque ya tengan sus días, y el
+                // superusuario no les puede asignar nada porque ya están al tope
+                // (Tubuladoras, oct-2026). Se cancelan —no se borran: quedan con
+                // nota para rastrearlas— los días "Anual" del año de los empleados
+                // de esos grupos (o asignados a esos bloques). Los días que puso la
+                // empresa, festivos trabajados y reprogramaciones no se tocan.
+                //
+                // SOLO para un año posterior al vigente (el que se prepara). En el
+                // vigente esos días son las vacaciones reales del año en curso.
+                if (cancelarCapturas)
+                {
+                    var config = await _db.ConfiguracionVacaciones
+                        .OrderByDescending(c => c.Id)
+                        .FirstOrDefaultAsync();
+                    if (config != null && anioObjetivo <= config.AnioVigente)
+                    {
+                        return new ApiResponse<EliminacionBloquesResponse>(false, null,
+                            $"No se cancelan capturas de {anioObjetivo}: es el año vigente o uno anterior y " +
+                            "esos días son vacaciones reales. Solo se pueden cancelar las del año en preparación.");
+                    }
+
+                    var gruposBorrados = bloquesAEliminar.Select(b => b.GrupoId).Distinct().ToList();
+                    var empleadosAsignados = bloquesAEliminar
+                        .Where(b => b.AsignacionesBloque != null)
+                        .SelectMany(b => b.AsignacionesBloque)
+                        .Select(a => a.EmpleadoId)
+                        .Distinct()
+                        .ToList();
+                    var inicioAnio = new DateOnly(anioObjetivo, 1, 1);
+                    var finAnio = new DateOnly(anioObjetivo, 12, 31);
+
+                    var capturas = await _db.VacacionesProgramadas
+                        .Where(v => v.TipoVacacion == "Anual" &&
+                                    v.EstadoVacacion == "Activa" &&
+                                    v.FechaVacacion >= inicioAnio && v.FechaVacacion <= finAnio &&
+                                    (empleadosAsignados.Contains(v.EmpleadoId) ||
+                                     _db.Users.Any(u => u.Id == v.EmpleadoId && u.GrupoId.HasValue &&
+                                                        gruposBorrados.Contains(u.GrupoId.Value))))
+                        .ToListAsync();
+
+                    var nota = $"Cancelada al borrar los bloques de {anioObjetivo} ({DateTime.Now:dd/MM/yyyy HH:mm})";
+                    foreach (var v in capturas)
+                    {
+                        v.EstadoVacacion = "Cancelada";
+                        v.UpdatedAt = DateTime.Now;
+                        v.UpdatedBy = usuarioId;
+                        v.Observaciones = string.IsNullOrWhiteSpace(v.Observaciones)
+                            ? nota
+                            : (v.Observaciones + " | " + nota).Length > 500
+                                ? (v.Observaciones + " | " + nota).Substring(0, 500)
+                                : v.Observaciones + " | " + nota;
+                    }
+
+                    response.VacacionesCanceladas = capturas.Count;
+                    response.EmpleadosConCapturaCancelada = capturas.Select(v => v.EmpleadoId).Distinct().Count();
+                    _logger.LogWarning(
+                        "Al borrar bloques {Anio} se cancelan {Dias} días Anual de {Empleados} empleados",
+                        anioObjetivo, response.VacacionesCanceladas, response.EmpleadosConCapturaCancelada);
+                }
+
                 // Eliminar los bloques
                 _db.BloquesReservacion.RemoveRange(bloquesAEliminar);
                 await _db.SaveChangesAsync();
@@ -1158,7 +1221,10 @@ namespace tiempo_libre.Services
                 }
 
                 return new ApiResponse<EliminacionBloquesResponse>(true, response,
-                    $"Se eliminaron {response.TotalBloquesEliminados} bloques de {response.GruposAfectados} grupos");
+                    $"Se eliminaron {response.TotalBloquesEliminados} bloques de {response.GruposAfectados} grupos" +
+                    (cancelarCapturas
+                        ? $" y se cancelaron {response.VacacionesCanceladas} días ya capturados de {response.EmpleadosConCapturaCancelada} empleados"
+                        : ""));
             }
             catch (Exception ex)
             {

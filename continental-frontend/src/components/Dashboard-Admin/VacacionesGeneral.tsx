@@ -459,27 +459,35 @@ export const VacacionesGeneral = ({
   // preparación no tenía botón propio, tampoco había forma de rehacer los del
   // año que se está preparando, que es justo lo que se necesita al probar.
   const handleEliminarBloques = async (anio: number) => {
-    // Borrar bloques arrastra sus asignaciones y no se puede deshacer. Las
-    // vacaciones ya capturadas NO se borran (viven en VacacionesProgramadas),
-    // así que quien ya capturó se queda con sus días y al regenerar aparecerá
-    // como duplicado si intenta capturar otra vez.
+    // Borrar bloques arrastra sus asignaciones y no se puede deshacer. En el año
+    // que se prepara también se cancelan los días que ya capturaron los
+    // operadores: si se quedaban, al regenerar la vista de turnos los mostraba
+    // "sin captura" aunque ya tuvieran sus días, y el superusuario no les podía
+    // asignar nada porque ya estaban al tope. En el vigente NO: ahí esos días son
+    // las vacaciones reales del año.
+    const cancelarCapturas = anio > anioVigente;
     const confirmado = window.confirm(
       `Se van a borrar los bloques de ${anio} y todas sus asignaciones.\n\n` +
-      `Esto NO se puede deshacer. Las vacaciones ya capturadas no se borran: ` +
-      `siguen registradas y habrá que revisarlas aparte.\n\n` +
-      `¿Borrar los bloques de ${anio}?`
+      (cancelarCapturas
+        ? `También se CANCELAN los días que los operadores ya capturaron para ${anio} (tipo Anual), ` +
+          `para que puedan volver a capturar con los bloques nuevos. Los días asignados por la empresa no se tocan.\n\n`
+        : `Las vacaciones ya capturadas de ${anio} NO se borran: son las del año en curso.\n\n`) +
+      `Esto NO se puede deshacer. ¿Borrar los bloques de ${anio}?`
     );
     if (!confirmado) return;
 
     try {
       setIsEliminandoBloques(true);
 
-      const response = await BloquesReservacionService.eliminarBloques(anio);
+      const response = await BloquesReservacionService.eliminarBloques(anio, cancelarCapturas);
 
       onNotification(
         "success",
         "Bloques Eliminados",
-        `Se eliminaron ${response.totalBloquesEliminados} bloques de ${response.gruposAfectados} grupos del año ${anio}.`
+        `Se eliminaron ${response.totalBloquesEliminados} bloques de ${response.gruposAfectados} grupos del año ${anio}.` +
+          (cancelarCapturas
+            ? ` Se cancelaron ${response.vacacionesCanceladas ?? 0} días ya capturados de ${response.empleadosConCapturaCancelada ?? 0} operadores.`
+            : "")
       );
 
       // Las estadísticas de la pantalla son del año vigente: solo se limpian si

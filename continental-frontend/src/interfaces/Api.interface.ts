@@ -284,6 +284,9 @@ export interface EliminarBloquesResponse {
     detalleGrupos: DetalleGrupoEliminado[];
     fechaEliminacion: string;
     usuarioEjecuto: string;
+    /** Días "Anual" ya capturados que se cancelaron junto con los bloques (año en preparación). */
+    vacacionesCanceladas?: number;
+    empleadosConCapturaCancelada?: number;
 }
 
 export enum EmpleadoEstado {

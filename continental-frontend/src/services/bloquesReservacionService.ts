@@ -167,12 +167,15 @@ export class BloquesReservacionService {
    * @param anioObjetivo - Año para eliminar bloques
    * @returns Respuesta de la eliminación
    */
-  static async eliminarBloques(anioObjetivo: number): Promise<EliminarBloquesResponse> {
+  // cancelarCapturas: cancela también los días "Anual" que ya capturaron los
+  // operadores en esos bloques. El backend solo lo acepta para un año posterior
+  // al vigente (el que se prepara).
+  static async eliminarBloques(anioObjetivo: number, cancelarCapturas = false): Promise<EliminarBloquesResponse> {
     try {
       console.log('Eliminando bloques de reservación para año:', anioObjetivo);
       
       const response = await httpClient.delete<ApiResponse<EliminarBloquesResponse>>(
-        `/api/bloques-reservacion/eliminar?anioObjetivo=${anioObjetivo}`,
+        `/api/bloques-reservacion/eliminar?anioObjetivo=${anioObjetivo}${cancelarCapturas ? '&cancelarCapturas=true' : ''}`,
         { timeout: 60000 } // 1 minuto para operaciones de eliminación
       );
 

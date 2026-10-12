@@ -66,20 +66,29 @@ export const ProgramacionAnualContent: React.FC<ProgramacionAnualContentProps> =
    * rehacerlos desde esta pantalla.
    */
   const handleBorrarBloques = async () => {
+    // Igual que en el panel de preparación: en un año posterior al vigente se
+    // cancelan también los días ya capturados, para poder volver a capturar.
+    const cancelarCapturas = anioObjetivo > anioVigente;
     const confirmado = window.confirm(
       `Se van a borrar los bloques de ${anioObjetivo} y sus asignaciones, para poder generarlos de nuevo.\n\n` +
-      `NO se tocan las vacaciones ya asignadas ni las capturadas: para eso es "Cancelar Programación", que es otra cosa.\n\n` +
+      (cancelarCapturas
+        ? `También se CANCELAN los días que los operadores ya capturaron para ${anioObjetivo} (tipo Anual). ` +
+          `Los días asignados por la empresa no se tocan.\n\n`
+        : `NO se tocan las vacaciones ya asignadas ni las capturadas: para eso es "Cancelar Programación", que es otra cosa.\n\n`) +
       `Esto no se puede deshacer. ¿Borrar los bloques de ${anioObjetivo}?`
     );
     if (!confirmado) return;
 
     try {
       setIsEliminandoBloques(true);
-      const r = await BloquesReservacionService.eliminarBloques(anioObjetivo);
+      const r = await BloquesReservacionService.eliminarBloques(anioObjetivo, cancelarCapturas);
       onNotification(
         "success",
         "Bloques borrados",
         `Se eliminaron ${r.totalBloquesEliminados} bloques de ${r.gruposAfectados} grupos del año ${anioObjetivo}. ` +
+        (cancelarCapturas
+          ? `Se cancelaron ${r.vacacionesCanceladas ?? 0} días ya capturados de ${r.empleadosConCapturaCancelada ?? 0} operadores. `
+          : "") +
         "Ya puedes generarlos otra vez con la fecha de hoy."
       );
       onEstadisticasUpdate();

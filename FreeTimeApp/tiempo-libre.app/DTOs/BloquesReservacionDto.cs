@@ -223,6 +223,10 @@ namespace tiempo_libre.DTOs
         public List<DetalleGrupoEliminado> DetalleGrupos { get; set; } = new();
         public DateTime FechaEliminacion { get; set; } = DateTime.Now;
         public string UsuarioEjecuto { get; set; } = string.Empty;
+
+        /// <summary>Días "Anual" ya capturados que se cancelaron junto con los bloques.</summary>
+        public int VacacionesCanceladas { get; set; }
+        public int EmpleadosConCapturaCancelada { get; set; }
     }
 
     public class DetalleGrupoEliminado

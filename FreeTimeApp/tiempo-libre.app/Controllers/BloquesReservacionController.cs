@@ -401,7 +401,8 @@ namespace tiempo_libre.Controllers
         [Authorize(Roles = "SuperUsuario,Administrador")]
         public async Task<IActionResult> EliminarBloques(
             [FromQuery] int anioObjetivo,
-            [FromQuery] List<int>? grupoIds = null)
+            [FromQuery] List<int>? grupoIds = null,
+            [FromQuery] bool cancelarCapturas = false)
         {
             try
             {
@@ -420,7 +421,7 @@ namespace tiempo_libre.Controllers
                 _logger.LogWarning("Usuario {UsuarioId} eliminando bloques de reservación para año {Anio}",
                     usuarioId, anioObjetivo);
 
-                var response = await _bloquesService.EliminarBloquesAsync(anioObjetivo, grupoIds, usuarioId);
+                var response = await _bloquesService.EliminarBloquesAsync(anioObjetivo, grupoIds, usuarioId, cancelarCapturas);
 
                 if (!response.Success)
                     return BadRequest(response);
