@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Calendar, BarChart3, CheckCircle, Info, X, CalendarDays } from "lucide-react";
+import { DiasEmpresaEnDescanso } from "./DiasEmpresaEnDescanso";
 import { VacacionesGeneral } from "./VacacionesGeneral";
 import { VacacionesCalendario } from "./VacacionesCalendario";
 import { ConfigEdicionDias } from "./ConfigEdicionDias";
@@ -34,7 +35,7 @@ const editableDesde = (cfg: VacacionesConfig) => ({
 });
 
 export const Vacaciones = () => {
-  const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias' | 'empresa-descanso'>('general');
   const [config, setConfig] = useState<VacacionesConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -329,7 +330,7 @@ export const Vacaciones = () => {
           <div className="flex w-full">
             <button
               onClick={() => setActiveTab('general')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/3 ${activeTab === 'general'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/4 ${activeTab === 'general'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -339,7 +340,7 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('calendario')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/3 ${activeTab === 'calendario'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/4 ${activeTab === 'calendario'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -349,7 +350,7 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('edicion-dias')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/3 ${activeTab === 'edicion-dias'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/4 ${activeTab === 'edicion-dias'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -357,10 +358,21 @@ export const Vacaciones = () => {
               <CalendarDays size={16} />
               <span>Edición días empresa</span>
             </button>
+            <button
+              onClick={() => setActiveTab('empresa-descanso')}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/4 ${activeTab === 'empresa-descanso'
+                ? 'bg-white text-continental-black shadow-sm'
+                : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
+                }`}
+            >
+              <CalendarDays size={16} />
+              <span>Días empresa en descanso</span>
+            </button>
           </div>
         </div>
 
         {/* Content based on active tab */}
+        {activeTab === 'empresa-descanso' && <DiasEmpresaEnDescanso />}
         {activeTab === 'edicion-dias' && (
           <div className="p-4 bg-white border border-continental-gray-3 rounded-lg">
             <ConfigEdicionDias />

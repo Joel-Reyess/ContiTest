@@ -117,6 +117,30 @@ export interface SolicitudReprogramacionDiaEmpresa {
     motivoRechazo?: string | null
 }
 
+/** Día asignado por la empresa que cae en descanso según el rol actual del empleado. */
+export interface DiaEmpresaEnDescanso {
+    empleadoId: number
+    nomina?: number | null
+    nombre: string
+    areaId?: number | null
+    area: string
+    grupoId: number
+    grupo: string
+    vacacionId: number
+    fecha: string
+    tipoVacacion: string
+    turno: string
+    yaPaso: boolean
+    tieneSolicitudPendiente: boolean
+}
+
+export interface DiasEmpresaEnDescansoResponse {
+    anio: number
+    totalDias: number
+    totalEmpleados: number
+    dias: DiaEmpresaEnDescanso[]
+}
+
 async function unwrap<T>(p: Promise<ApiResponse<unknown>>): Promise<T> {
     const r = (await p) as unknown as ApiResponse<T>
     if (!r.success) throw new Error(r.errorMsg || r.message || 'Error en la respuesta del servidor')
@@ -150,4 +174,11 @@ export const reprogramacionDiaEmpresaService = {
         const qs = estado ? `?estado=${encodeURIComponent(estado)}` : ''
         return unwrap<SolicitudReprogramacionDiaEmpresa[]>(httpClient.get(`${BASE}/todas${qs}`))
     },
+
+    // Días de empresa que caen en descanso según el rol actual (toda la planta;
+    // puede tardar unos segundos: calcula el rol de cada grupo del año).
+    getDiasEnDescanso: (anio: number) =>
+        unwrap<DiasEmpresaEnDescansoResponse>(
+            httpClient.get(`${BASE}/dias-en-descanso?anio=${anio}`, undefined, { timeout: 120000 })
+        ),
 }

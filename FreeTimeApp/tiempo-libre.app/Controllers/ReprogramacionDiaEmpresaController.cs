@@ -21,14 +21,40 @@ namespace tiempo_libre.Controllers
     public class ReprogramacionDiaEmpresaController : ControllerBase
     {
         private readonly ReprogramacionDiaEmpresaService _service;
+        private readonly DiasEmpresaEnDescansoService _enDescanso;
         private readonly ILogger<ReprogramacionDiaEmpresaController> _logger;
 
         public ReprogramacionDiaEmpresaController(
             ReprogramacionDiaEmpresaService service,
+            DiasEmpresaEnDescansoService enDescanso,
             ILogger<ReprogramacionDiaEmpresaController> logger)
         {
             _service = service;
+            _enDescanso = enDescanso;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Días asignados por la empresa que caen en descanso según el rol actual
+        /// del grupo de cada empleado (p. ej. tras un cambio de grupo). Es la lista
+        /// para que el superusuario los reprograme sin tener que encontrarlos uno
+        /// por uno en el calendario.
+        /// </summary>
+        [HttpGet("dias-en-descanso")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario")]
+        public async Task<IActionResult> DiasEnDescanso([FromQuery] int anio, [FromQuery] int? areaId = null)
+        {
+            try
+            {
+                var resp = await _enDescanso.ObtenerAsync(anio, areaId);
+                if (!resp.Success) return BadRequest(resp);
+                return Ok(resp);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al listar días de empresa en descanso");
+                return StatusCode(500, new ApiResponse<object>(false, null, ex.GetBaseException().Message));
+            }
         }
 
         private int ObtenerUsuarioId()
