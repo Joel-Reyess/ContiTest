@@ -56,6 +56,9 @@ namespace tiempo_libre.Controllers
                 uptime = DateTime.Now - _startupTime,
                 environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
                 version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0",
+                // "1.0.0+abc1234": el commit con el que se compiló lo publicado.
+                build = Assembly.GetExecutingAssembly()
+                    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
                 services = new
                 {
                     database = await CheckDatabase(),
@@ -82,6 +85,9 @@ namespace tiempo_libre.Controllers
                 uptime = DateTime.Now - _startupTime,
                 environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
                 version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0",
+                // "1.0.0+abc1234": el commit con el que se compiló lo publicado.
+                build = Assembly.GetExecutingAssembly()
+                    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
                 system = new
                 {
                     machineName = Environment.MachineName,

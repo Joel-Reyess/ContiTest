@@ -18,6 +18,21 @@
     un error de CORS. Siguen copiandose al bin para `dotnet run` en local; lo
     unico que cambia es que publish ya no los incluye.
   -->
+  <!--
+    Commit del build en la version informativa ("1.0.0+abc1234"). La reporta
+    api/Health/status como "build": asi se sabe si un arreglo ya llego al
+    servidor sin adivinar. Si no hay git, no pasa nada (queda solo "1.0.0").
+  -->
+  <Target Name="AgregarCommitAlBuild" BeforeTargets="AddSourceRevisionToInformationalVersion" Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_GitExit" />
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommit" />
+    </Exec>
+    <PropertyGroup Condition="'$(_GitExit)' == '0'">
+      <SourceRevisionId>$(_GitCommit)</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+
   <ItemGroup>
     <Content Update="appsettings.Test.json" CopyToPublishDirectory="Never" />
     <Content Update="appsettings.Production.json" CopyToPublishDirectory="Never" />

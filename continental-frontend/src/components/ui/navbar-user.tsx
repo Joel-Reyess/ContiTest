@@ -155,6 +155,10 @@ export const NavbarUser = () => {
                 <LogOut className="w-4 h-4" />
                 Cerrar sesión
               </button>
+              {/* Versión publicada: para comprobar si un arreglo ya llegó. */}
+              <p className="px-4 pt-1 pb-1.5 text-[10px] text-continental-gray-1 tabular-nums select-all">
+                Versión {__APP_BUILD__}
+              </p>
             </div>
           </div>
         </>
