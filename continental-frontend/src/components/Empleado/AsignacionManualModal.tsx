@@ -284,10 +284,16 @@ export const AsignacionManualModal: React.FC<AsignacionManualModalProps> = ({
             }
         } catch (error) {
             console.error('Error al asignar vacaciones:', error);
+            // httpClient lanza un objeto { message, status, details }, no un Error:
+            // con "instanceof Error" el motivo del backend (tope por antigüedad,
+            // día ya ocupado...) se mostraba como "Error desconocido".
+            const motivo =
+                (error as { message?: string } | null)?.message || 'Error desconocido';
             toast.error(
-                'Error al asignar vacaciones',
+                'No se pudo asignar',
                 {
-                    description: error instanceof Error ? error.message : 'Error desconocido',
+                    description: motivo,
+                    duration: 10000,
                 }
             );
         } finally {
