@@ -113,9 +113,12 @@ namespace tiempo_libre.Services
 
             // Mismo criterio que AusenciaService: las filas que vienen del Excel no
             // llevan FechaSolicitud; las capturadas en la app solo cuentan aprobadas.
+            // Días del Excel retenidos por pasarse de la antigüedad: no son ausencia.
+            var nominasRetenidas = await RetencionesSap.NominasNoCuentanEnAsync(_db, fecha);
             var porPermisos = await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Desde <= fecha && p.Hasta >= fecha
                             && (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                .Where(p => !(p.ClAbPre == 1100 && nominasRetenidas.Contains(p.Nomina)))
                 .Join(usuariosDeLosGrupos,
                       p => p.Nomina,
                       u => u.Nomina,

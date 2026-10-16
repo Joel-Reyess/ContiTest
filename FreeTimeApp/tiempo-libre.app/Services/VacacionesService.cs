@@ -62,7 +62,24 @@ namespace tiempo_libre.Services
             return new ApiResponse<VacacionesEmpleadoResponse>(true, response, null);
         }
 
-        public VacacionesCalculadas CalcularVacacionesPorAntiguedad(int antiguedadEnAnios)
+        public VacacionesCalculadas CalcularVacacionesPorAntiguedad(int antiguedadEnAnios) =>
+            TablaArt68(antiguedadEnAnios);
+
+        /// <summary>
+        /// Lo que le toca a un empleado en <paramref name="anio"/> por antigüedad al 31 de
+        /// diciembre, sin necesitar el servicio (lo usa la sincronización del Excel,
+        /// que corre en segundo plano). null si no tiene fecha de ingreso o no
+        /// cumple 1 año: en ese caso la app no le reconoce días.
+        /// </summary>
+        public static (int Antiguedad, VacacionesCalculadas Derecho)? DerechoAl31Dic(DateOnly? fechaIngreso, int anio)
+        {
+            if (fechaIngreso == null) return null;
+            var antiguedad = CalcularAntiguedadEnAnios(fechaIngreso.Value, new DateOnly(anio, 12, 31));
+            if (antiguedad < 1) return null;
+            return (antiguedad, TablaArt68(antiguedad));
+        }
+
+        private static VacacionesCalculadas TablaArt68(int antiguedadEnAnios)
         {
             const int diasEmpresa = 12;
             int diasAsignadosAutomaticamente = 0;
@@ -96,7 +113,7 @@ namespace tiempo_libre.Services
             };
         }
 
-        private int CalcularAntiguedadEnAnios(DateOnly fechaIngreso, DateOnly fechaReferencia)
+        private static int CalcularAntiguedadEnAnios(DateOnly fechaIngreso, DateOnly fechaReferencia)
         {
             var antiguedad = fechaReferencia.Year - fechaIngreso.Year;
 

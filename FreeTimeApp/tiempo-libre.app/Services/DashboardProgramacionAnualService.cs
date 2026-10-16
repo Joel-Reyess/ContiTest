@@ -124,8 +124,10 @@ namespace tiempo_libre.Services
                 var permisos = await _db.PermisosEIncapacidadesSAP
                     .Where(p => p.Desde <= fin && p.Hasta >= inicio
                                 && (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-                    .Select(p => new { p.Nomina, p.Desde, p.Hasta })
+                    .Select(p => new { p.Nomina, p.Desde, p.Hasta, p.ClAbPre })
                     .ToListAsync();
+                // Días del Excel retenidos por pasarse de la antigüedad: no son ausencia.
+                var retenidosSap = await RetencionesSap.NoCuentanAsync(_db, inicio, fin);
 
                 var festivos = await _db.SolicitudesFestivosTrabajados
                     .Where(f => f.EstadoSolicitud == "Aprobada"
@@ -207,7 +209,10 @@ namespace tiempo_libre.Services
                     var desde = p.Desde < inicio ? inicio : p.Desde;
                     var hasta = p.Hasta > fin ? fin : p.Hasta;
                     for (var d = desde; d <= hasta; d = d.AddDays(1))
+                    {
+                        if (p.ClAbPre == 1100 && retenidosSap.Contains((p.Nomina, d))) continue;
                         Marcar(empleadoId, d);
+                    }
                 }
 
                 foreach (var f in festivos)

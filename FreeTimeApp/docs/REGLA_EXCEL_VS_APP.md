@@ -66,8 +66,13 @@ seguir esta regla.
 - **No borra ni cambia datos.** Solo decide qué se muestra. SAP y la base quedan igual.
 - **No corrige SAP.** Si en SAP hay un día que no corresponde, RH lo tiene que dejar
   en 0 días; la siguiente carga lo refleja.
-- **No pone tope por antigüedad** a lo que trae el Excel (eso es otra decisión
-  pendiente: la sincronización sigue dando de alta lo que trae el Excel).
+- **Tope por antigüedad (opción B, oct-2026):** si el Excel trae un día que dejaría
+  al empleado con más días de común acuerdo de los que le tocan, la sincronización
+  **no lo da de alta**: queda **retenido** en Superusuario → Vacaciones → "Días de
+  más por antigüedad". Mientras esté pendiente no cuenta en el rol, el calendario,
+  el porcentaje del día ni el dashboard. El superusuario lo **acepta** (se crea la
+  vacación) o lo **descarta** (RH lo deja en 0 días en SAP; si SAP lo manda en 0,
+  la retención se cierra sola).
 
 **Límite conocido:** si una fila del Excel llega **igual** en cargas posteriores
 (sin ningún cambio), la app conserva la fecha de su primera carga. Si la app movió

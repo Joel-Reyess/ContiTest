@@ -93,6 +93,8 @@ namespace tiempo_libre.Services
                                 (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                     .Select(p => new { p.Nomina, p.Desde, p.Hasta, p.ClaseAbsentismo, p.ClAbPre })
                     .ToListAsync();
+                // Días del Excel retenidos por pasarse de la antigüedad: no son ausencia.
+                var retenidosSap = await RetencionesSap.NoCuentanAsync(_db, fechaMin, fechaMax);
 
                 // ─── 4b. Reprogramaciones aprobadas (1 query) ────────────────────────
                 // El día ORIGINAL de una vacación SAP (1100) reprogramada ya no debe
@@ -219,6 +221,9 @@ namespace tiempo_libre.Services
                                 if (emp == null) return null!;
                                 // Día original de una vacación SAP (1100) reprogramada → ya no es ausencia
                                 if (p.ClAbPre == 1100 && reprogramadasSet.Contains((emp.Id, fecha)))
+                                    return null!;
+                                // Retenido por pasarse de la antigüedad → no es ausencia
+                                if (p.ClAbPre == 1100 && retenidosSap.Contains((p.Nomina, fecha)))
                                     return null!;
                                 return new EmpleadoAusenteDto
                                 {
@@ -570,9 +575,12 @@ namespace tiempo_libre.Services
             // 2. Permisos e Incapacidades SAP
             // Si tiene FechaSolicitud = es solicitud manual, requiere aprobacion
             // Si NO tiene FechaSolicitud = viene de Excel/SAP, siempre se muestra
+            // Días del Excel retenidos por pasarse de la antigüedad: no son ausencia.
+            var nominasRetenidas = await RetencionesSap.NominasNoCuentanEnAsync(_db, fecha);
             var permisosIncapacidades = await _db.PermisosEIncapacidadesSAP
                 .Where(p => p.Desde <= fecha && p.Hasta >= fecha
                     && (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                .Where(p => !(p.ClAbPre == 1100 && nominasRetenidas.Contains(p.Nomina)))
                 .Join(_db.Users.Where(u => u.GrupoId == grupoId && u.Status == Models.Enums.UserStatus.Activo),
                       p => p.Nomina,
                       u => u.Nomina,

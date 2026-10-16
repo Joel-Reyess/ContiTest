@@ -507,6 +507,22 @@ namespace tiempo_libre.Services
             {
                 var sinEfecto = await VacacionesActivasAsync(context, empleadoId.Value, desde, hasta);
 
+                // Lo que estaba retenido en esos días también se cierra: SAP ya lo
+                // dejó sin efecto, no hay nada que aceptar.
+                if (await RetencionesSap.TablaExisteAsync(context))
+                {
+                    var retenidos = await context.VacacionesRetenidasSAP
+                        .Where(r => r.EmpleadoId == empleadoId && r.Estado == "Pendiente" &&
+                                    r.Fecha >= desde && r.Fecha <= hasta)
+                        .ToListAsync();
+                    foreach (var r in retenidos)
+                    {
+                        r.Estado = "Descartada";
+                        r.FechaResolucion = DateTime.Now;
+                        r.Nota = "Cerrada sola: el Excel la reporta con 0 días.";
+                    }
+                }
+
                 foreach (var v in sinEfecto)
                 {
                     v.EstadoVacacion = "Cancelada";
@@ -576,6 +592,12 @@ namespace tiempo_libre.Services
                 }
                 else
                 {
+                    // Tope por antigüedad (opción B, oct-2026): si con este día se
+                    // pasa de lo que le toca, no se da de alta; queda retenido para
+                    // que el superusuario lo acepte o lo descarte.
+                    if (await RetenerPorAntiguedadAsync(context, empleadoId.Value, nomina, f))
+                        continue;
+
                     context.VacacionesProgramadas.Add(new VacacionesProgramadas
                     {
                         EmpleadoId = empleadoId.Value,
@@ -596,6 +618,63 @@ namespace tiempo_libre.Services
                         nomina, f);
                 }
             }
+        }
+
+        /// <summary>
+        /// ¿Se retiene este día del Excel? Sí, si con él el empleado queda con más días
+        /// de común acuerdo (Anual + Reprogramacion activos del año) de los que le tocan
+        /// por antigüedad. El Excel se puede editar antes de cargarse; un día de más no
+        /// debe llegar al empleado ni a los roles sin que alguien lo revise
+        /// (VacacionRetenidaSap). Si no se puede calcular la antigüedad (sin fecha de
+        /// ingreso) o la tabla no existe todavía, se comporta como antes: se da de alta.
+        /// </summary>
+        private async Task<bool> RetenerPorAntiguedadAsync(FreeTimeDbContext context, int empleadoId, int nomina, DateOnly f)
+        {
+            if (!await RetencionesSap.TablaExisteAsync(context))
+            {
+                _logger.LogError(
+                    "No existe la tabla VacacionesRetenidasSAP: el día {Fecha:yyyy-MM-dd} de nómina {Nomina} se da de alta SIN revisar la antigüedad. " +
+                    "Corre Scripts/Migration_VacacionesRetenidasSAP.sql.", f, nomina);
+                return false;
+            }
+
+            var fechaIngreso = await context.Users
+                .Where(u => u.Id == empleadoId)
+                .Select(u => u.FechaIngreso)
+                .FirstOrDefaultAsync();
+            var derecho = VacacionesService.DerechoAl31Dic(fechaIngreso, f.Year);
+            if (derecho == null) return false;
+
+            var activasDelAnio = await VacacionesActivasAsync(
+                context, empleadoId, new DateOnly(f.Year, 1, 1), new DateOnly(f.Year, 12, 31));
+            var yaTiene = activasDelAnio.Count(v => v.TipoVacacion == "Anual" || v.TipoVacacion == "Reprogramacion");
+            var corresponden = derecho.Value.Derecho.DiasProgramables;
+            if (yaTiene + 1 <= corresponden) return false;
+
+            await context.VacacionesRetenidasSAP
+                .Where(r => r.EmpleadoId == empleadoId && r.Fecha == f && r.Estado == "Pendiente")
+                .LoadAsync();
+            var yaRetenido = context.VacacionesRetenidasSAP.Local
+                .Any(r => r.EmpleadoId == empleadoId && r.Fecha == f && r.Estado == "Pendiente");
+            if (!yaRetenido)
+            {
+                context.VacacionesRetenidasSAP.Add(new VacacionRetenidaSap
+                {
+                    EmpleadoId = empleadoId,
+                    Nomina = nomina,
+                    Fecha = f,
+                    Antiguedad = derecho.Value.Antiguedad,
+                    Corresponden = corresponden,
+                    YaTenia = yaTiene,
+                    Estado = "Pendiente",
+                    FechaCargaExcel = DateTime.Now
+                });
+            }
+
+            _logger.LogWarning(
+                "Excel manda con tope: día {Fecha:yyyy-MM-dd} de nómina {Nomina} RETENIDO — le corresponden {Corresponden} de común acuerdo y ya tiene {YaTiene}",
+                f, nomina, corresponden, yaTiene);
+            return true;
         }
 
         // La sincronización guarda cada 100 filas, y una consulta normal a la base

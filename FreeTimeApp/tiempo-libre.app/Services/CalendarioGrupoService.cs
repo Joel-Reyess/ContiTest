@@ -235,6 +235,8 @@ namespace tiempo_libre.Services
             // reciente, igual que en el rol semanal).
             var cambiosApp = await CambiosAppVsExcel.ObtenerAsync(
                 _db, new[] { usuarioId }, fechaInicioOnly, fechaFinOnly);
+            // Días del Excel retenidos por pasarse de la antigüedad: no se pintan.
+            var retenidosSap = await RetencionesSap.NoCuentanAsync(_db, fechaInicioOnly, fechaFinOnly);
 
             // Aplicar incidencias al calendario
             foreach (var dia in calendarioBase)
@@ -286,7 +288,8 @@ namespace tiempo_libre.Services
                     // aquí seguía saliendo la V del 12/10 porque el Excel aún la
                     // traía. Si la app quitó ese día después de que llegó la fila,
                     // la fila ya no manda.
-                    !cambiosApp.AppQuitoDespuesDe(usuarioId, fechaDia, p.FechaRegistro));
+                    !cambiosApp.AppQuitoDespuesDe(usuarioId, fechaDia, p.FechaRegistro) &&
+                    !retenidosSap.Contains((p.Nomina, fechaDia)));
                 if (vacacionSap != null)
                 {
                     dia.Incidencia = "V";

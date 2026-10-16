@@ -59,6 +59,8 @@ public partial class FreeTimeDbContext : DbContext
     public virtual DbSet<FestivosEmpleadosTrabajadosUpload> FestivosEmpleadosTrabajadosUpload { get; set; }
     public virtual DbSet<SolicitudReprogramacionPostIncapacidad> SolicitudesReprogramacionPostIncapacidad { get; set; } = null!;
     public virtual DbSet<SolicitudReprogramacionDiaEmpresa> SolicitudesReprogramacionDiaEmpresa { get; set; } = null!;
+    // Días que trajo el Excel de SAP y se retuvieron por pasarse de la antigüedad.
+    public virtual DbSet<VacacionRetenidaSap> VacacionesRetenidasSAP { get; set; } = null!;
 
     public DbSet<SuplentePeriodo> SuplentePeriodos { get; set; }
     public DbSet<Permuta> Permutas { get; set; }

@@ -198,6 +198,9 @@ namespace tiempo_libre.Services
                 vacacionesDeLaApp.Where(v => v.EstadoVacacion == "Activa")
                                  .Select(v => (v.EmpleadoId, v.FechaVacacion)));
 
+            // Días del Excel retenidos por pasarse de la antigüedad: no se pintan.
+            var retenidosSap = await RetencionesSap.NoCuentanAsync(_db, inicio, fin);
+
             var permisosPorEmpleadoYFecha = new Dictionary<string, Dictionary<int, string>>();
             foreach (var permiso in permisosIncapacidades)
             {
@@ -205,6 +208,12 @@ namespace tiempo_libre.Services
                 var fechaActual = permiso.Desde;
                 while (fechaActual <= permiso.Hasta)
                 {
+                    if (permiso.ClAbPre == 1100 && retenidosSap.Contains((permiso.Nomina, fechaActual)))
+                    {
+                        fechaActual = fechaActual.AddDays(1);
+                        continue;
+                    }
+
                     if (MandaElExcel(fechaActual))
                     {
                         // Solo lo que trae el Excel, y lo que la app capturó DESPUÉS
