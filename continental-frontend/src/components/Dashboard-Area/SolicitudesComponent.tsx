@@ -32,13 +32,11 @@ import React, { useState } from 'react'
 import { useVacationConfig } from '../../hooks/useVacationConfig'
 import { TurnosActuales } from './TurnosActuales'
 import { TablaSolicitudes } from './TablaSolicitudes'
-import { SolicitudesPermisos } from './SolicitudesPermisos';
 import { TablaFestivosTrabajados } from './TablaFestivosTrabajados';
 import { TablaPermutas } from './TablaPermutas';
-import { SolicitudesEdicionDias } from './SolicitudesEdicionDias';
-import { SolicitudesReprogramacionPostIncapacidad } from './SolicitudesReprogramacionPostIncapacidad';
-import { SolicitudesVacacionLaborada } from './SolicitudesVacacionLaborada';
-import { SolicitudesReprogramacionDiaEmpresa } from './SolicitudesReprogramacionDiaEmpresa';
+// Permisos, vacación laborada, post-incapacidad, día empresa y edición de días empresa
+// usan el formato de Solicitudes de Reprogramaciones (oct-2026).
+import { TablaSolicitudesOficial } from './TablaSolicitudesOficial';
 import { ChevronDown } from 'lucide-react'
 import { useLocation } from 'react-router-dom';
 // Las dos etapas no son excluyentes: con 2027 en preparación, su captura anual
@@ -207,12 +205,12 @@ const SolicitudesComponent: React.FC = () => {
                         <div className="animate-fadeIn">
                             {selectedTab === 'vacaciones' && <TablaSolicitudes />}
                             {selectedTab === 'festivos' && <TablaFestivosTrabajados />}
-                            {selectedTab === 'permisos' && <SolicitudesPermisos />}
+                            {selectedTab === 'permisos' && <TablaSolicitudesOficial key="permisos" tipo="permisos" />}
                             {selectedTab === 'permutas' && <TablaPermutas />}
-                            {selectedTab === 'edicion-dias' && <SolicitudesEdicionDias />}
-                            {selectedTab === 'post-incapacidad' && <SolicitudesReprogramacionPostIncapacidad />}
-                            {selectedTab === 'vacacion-laborada' && <SolicitudesVacacionLaborada />}
-                            {selectedTab === 'dia-empresa' && <SolicitudesReprogramacionDiaEmpresa />}
+                            {selectedTab === 'edicion-dias' && <TablaSolicitudesOficial key="edicion-dias" tipo="edicion-dias" />}
+                            {selectedTab === 'post-incapacidad' && <TablaSolicitudesOficial key="post-incapacidad" tipo="post-incapacidad" />}
+                            {selectedTab === 'vacacion-laborada' && <TablaSolicitudesOficial key="vacacion-laborada" tipo="vacacion-laborada" />}
+                            {selectedTab === 'dia-empresa' && <TablaSolicitudesOficial key="dia-empresa" tipo="dia-empresa" />}
                         </div>
                     </>
                 )}

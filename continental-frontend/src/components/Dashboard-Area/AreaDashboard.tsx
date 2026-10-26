@@ -40,6 +40,7 @@ import { Calendar, File, FileChartColumn, Users, CalendarClock, BarChart3, Calen
 import CalendarComponent from "./CalendarComponent";
 import SolicitudesComponent from "./SolicitudesComponent";
 import SolicitudDetallePage from "./SolicitudDetallePage";
+import SolicitudOficialDetallePage from "./SolicitudOficialDetallePage";
 import SolicitudPermisoDetalle from "./SolicitudPermisoDetalle";
 import { Plantilla } from "./Plantilla";
 import { Reportes } from "./Reportes";
@@ -132,6 +133,7 @@ const AreaDashboard = (): JSX.Element => {
                         <>
                             <Route path="solicitudes" element={<SolicitudesComponent />} />
                             <Route path="solicitudes/:id" element={<SolicitudDetallePage />} />
+                            <Route path="solicitudes/:tipo/:id" element={<SolicitudOficialDetallePage />} />
                             <Route path="solicitudes-permisos/:id" element={<SolicitudPermisoDetalle />} />
                             <Route path="festivos/:id" element={<FestivoDetallePage />} />
                         </>

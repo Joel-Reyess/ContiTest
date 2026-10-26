@@ -48,6 +48,9 @@ interface ApproveModalProps {
     tipoSolicitud: string;
     fechaActual: string;
     fechaReprogramacion: string;
+    /** Por defecto "Fecha actual" / "Nueva fecha"; en permisos, "Desde" / "Hasta". */
+    etiquetaFechaActual?: string;
+    etiquetaFechaNueva?: string;
 }
 
 const ApproveModal: React.FC<ApproveModalProps> = ({
@@ -58,7 +61,9 @@ const ApproveModal: React.FC<ApproveModalProps> = ({
     nombreEmpleado,
     tipoSolicitud,
     fechaActual,
-    fechaReprogramacion
+    fechaReprogramacion,
+    etiquetaFechaActual = 'Fecha actual',
+    etiquetaFechaNueva = 'Nueva fecha'
 }) => {
     const onSubmit = () => {
         onConfirm();
@@ -104,11 +109,11 @@ const ApproveModal: React.FC<ApproveModalProps> = ({
                                 </div>
                                 <div className="border-t border-emerald-200 pt-2 mt-2">
                                     <div className="text-sm">
-                                        <span className="font-medium text-gray-700">Fecha actual:</span>
+                                        <span className="font-medium text-gray-700">{etiquetaFechaActual}:</span>
                                         <span className="ml-1 text-red-600 font-medium">{fechaActual}</span>
                                     </div>
                                     <div className="text-sm mt-1">
-                                        <span className="font-medium text-gray-700">Nueva fecha:</span>
+                                        <span className="font-medium text-gray-700">{etiquetaFechaNueva}:</span>
                                         <span className="ml-1 text-blue-600 font-medium">{fechaReprogramacion}</span>
                                     </div>
                                 </div>
