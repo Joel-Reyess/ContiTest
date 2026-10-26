@@ -271,7 +271,7 @@ const TableView: React.FC<TableViewProps> = ({
                                 </td>
                                 {weekDays.map((date, dayIndex) => {
                                     const { percentage, exceeds } = getGroupDayData(groupId, date);
-                                    const isCritical = exceeds || (percentage ?? 0) > 4.5;
+                                    const isCritical = exceeds;
                                     return (
                                         <td
                                             key={dayIndex}

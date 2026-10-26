@@ -15,6 +15,7 @@ import { exportWeeklyRolesExcel } from "@/utils/weeklyRolesExcel";
 import { UserRole } from "@/interfaces/User.interface";
 import { httpClient } from '@/services/httpClient'; 
 import { vacacionesService } from "@/services/vacacionesService";
+import { capacidadPorcentajeService } from "@/services/capacidadPorcentajeService";
 import { excepcionesManningService } from "@/services/excepcionesManningService";
 import { SAP_NOMENCLATURA, getSAPEntry } from "@/utils/sapNomenclatura";
 import { esJefeDelArea } from "@/utils/areaJefes";
@@ -402,6 +403,31 @@ const WeeklyRoles = () => {
     }, [selectedGroup, isBoss]); // ✅ Agregar isBoss como dependencia
 
     const weekDays = useMemo(() => buildWeekDays(weekStart), [weekStart]);
+
+    // Límite de cada día para el grupo (capacidad por periodo, excepción o el del
+    // año). Sin esto la fila "% de tiempo extra" se comparaba siempre contra el
+    // general aunque ese mes se hubiera autorizado más.
+    const [limitesDia, setLimitesDia] = useState<Record<string, number>>({});
+    useEffect(() => {
+        const grupoId = Number(selectedGroup);
+        if (!grupoId || weekDays.length === 0) {
+            setLimitesDia({});
+            return;
+        }
+        let cancelado = false;
+        capacidadPorcentajeService
+            .limites(grupoId, formatIso(weekDays[0]), formatIso(weekDays[weekDays.length - 1]))
+            .then((lista) => {
+                if (!cancelado) setLimitesDia(Object.fromEntries(lista.map((l) => [l.fecha.slice(0, 10), l.porcentaje])));
+            })
+            .catch(() => !cancelado && setLimitesDia({}));
+        return () => {
+            cancelado = true;
+        };
+    }, [selectedGroup, weekDays]);
+    const limiteDe = (dateStr: string) => limitesDia[dateStr] ?? porcentajeAusenciaMaximo;
+    const limitesSemana = Array.from(new Set(weekDays.map((d) => limiteDe(formatIso(d)))));
+    const textoLimiteSemana = limitesSemana.length === 1 ? `${limitesSemana[0]}%` : `${Math.min(...limitesSemana)}–${Math.max(...limitesSemana)}%`;
     const weekLabel = useMemo(() => {
         const startLabel = format(weekDays[0], "dd MMM", { locale: es });
         const endLabel = format(weekDays[6], "dd MMM yyyy", { locale: es });
@@ -912,7 +938,7 @@ const WeeklyRoles = () => {
                         <thead className="bg-blue-50">
                             <tr>
                                 <th className="px-3 py-2 text-left font-semibold text-gray-700 w-48">
-                                    Resumen requerimiento tiempo extra / {porcentajeAusenciaMaximo}%
+                                    Resumen requerimiento tiempo extra / {textoLimiteSemana}
                                 </th>
                                 {weekDays.map((day, idx) => (
                                     <th key={idx} className="px-3 py-2 text-center font-semibold text-gray-600">
@@ -961,10 +987,10 @@ const WeeklyRoles = () => {
                                     )
                                 },
                                 {
-                                    label: `% de tiempo extra (${porcentajeAusenciaMaximo}%)`,
+                                    label: `% de tiempo extra (${textoLimiteSemana})`,
                                     render: (stat: typeof weeklyStats[0]) => {
                                         const pct = stat.pctExtraVAP * 100;
-                                        const color = pct > porcentajeAusenciaMaximo ? "text-red-600 font-semibold" : "text-green-600 font-semibold";
+                                        const color = pct > limiteDe(stat.dateStr) ? "text-red-600 font-semibold" : "text-green-600 font-semibold";
                                         return <span className={color}>{stat.esDiaDescanso || stat.horasTiempoNormal === 0 ? "—" : pct.toFixed(1) + "%"}</span>;
                                     }
                                 },

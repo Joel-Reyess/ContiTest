@@ -36,6 +36,8 @@ export interface FilaSolicitudOficial {
     detalles: { etiqueta: string; valor: string }[]
     porcentajeCalculado?: number | null
     porcentajeDelDia?: number | null
+    /** Límite que rige ese día para su grupo (para el semáforo). */
+    porcentajeMaximoPermitido?: number | null
 }
 
 export interface DefinicionSolicitudOficial {
@@ -249,6 +251,7 @@ export async function completarPorcentajes(filas: FilaSolicitudOficial[]): Promi
                 grupoEmpleado: f.grupoEmpleado || r.grupo,
                 porcentajeCalculado: r.porcentajeTurno ?? null,
                 porcentajeDelDia: r.porcentajeDia ?? null,
+                porcentajeMaximoPermitido: r.porcentajeMaximo ?? null,
             }
         })
     } catch (e) {

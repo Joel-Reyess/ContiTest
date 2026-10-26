@@ -161,6 +161,21 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                     <span className="text-red-600 font-medium">rojo</span> son los que de verdad pasan
                     el cupo en algún grupo.
                 </p>
+                {datos.capacidadesDelAnio && datos.capacidadesDelAnio.length > 0 && (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                        <p className="font-medium">
+                            En estas fechas el cupo es otro (capacidad por periodo); los días en rojo ya lo toman en cuenta:
+                        </p>
+                        <ul className="mt-1 space-y-0.5">
+                            {datos.capacidadesDelAnio.map((c, i) => (
+                                <li key={i}>
+                                    <span className="font-semibold">{c.porcentaje}%</span> · {c.descripcion}
+                                    {c.grupo ? ` · ${c.grupo}` : c.area ? ` · ${c.area}` : ""}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </div>
 
             <div className="min-w-[240px] max-w-xs">

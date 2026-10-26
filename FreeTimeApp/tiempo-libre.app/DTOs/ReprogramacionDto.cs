@@ -134,6 +134,8 @@ namespace tiempo_libre.DTOs
         public bool RequiereAprobacion { get; set; }
         public decimal? PorcentajeCalculado { get; set; }
         public decimal? PorcentajeDelDia { get; set; }
+        /// <summary>Límite que rige ese día para el grupo del empleado (para el semáforo de la lista).</summary>
+        public decimal? PorcentajeMaximoPermitido { get; set; }
         public DateTime FechaSolicitud { get; set; }
         public string SolicitadoPor { get; set; } = string.Empty;
         public DateTime? FechaAprobacion { get; set; }

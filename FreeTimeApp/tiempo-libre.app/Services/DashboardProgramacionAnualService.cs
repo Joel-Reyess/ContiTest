@@ -29,15 +29,18 @@ namespace tiempo_libre.Services
 
         private readonly FreeTimeDbContext _db;
         private readonly ValidadorPorcentajeService _validador;
+        private readonly LimitePorcentajeService _limites;
         private readonly ILogger<DashboardProgramacionAnualService> _logger;
 
         public DashboardProgramacionAnualService(
             FreeTimeDbContext db,
             ValidadorPorcentajeService validador,
+            LimitePorcentajeService limites,
             ILogger<DashboardProgramacionAnualService> logger)
         {
             _db = db;
             _validador = validador;
+            _limites = limites;
             _logger = logger;
         }
 
@@ -136,14 +139,9 @@ namespace tiempo_libre.Services
                     .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada })
                     .ToListAsync();
 
-                var excepciones = await _db.ExcepcionesPorcentaje
-                    .Where(e => e.Fecha >= inicio && e.Fecha <= fin && grupoIds.Contains(e.GrupoId))
-                    .Select(e => new { e.GrupoId, e.Fecha, e.PorcentajeMaximoPermitido })
-                    .ToListAsync();
-
-                var excepcionPorClave = excepciones
-                    .GroupBy(e => (e.GrupoId, e.Fecha))
-                    .ToDictionary(g => g.Key, g => g.First().PorcentajeMaximoPermitido);
+                // Límite de cada grupo cada día: excepción del grupo, capacidad por
+                // periodo o el del año (el mismo que usa el candado).
+                var limites = await _limites.PrecargarAsync(grupoIds, inicio, fin);
 
                 // ── Cruce en memoria ────────────────────────────────────────
                 // (grupo, fecha) -> empleados ausentes distintos. Un empleado que
@@ -243,7 +241,7 @@ namespace tiempo_libre.Services
 
                         if (plantillaGrupo == 0 || ausentesGrupo == 0) continue;
 
-                        var maximo = excepcionPorClave.TryGetValue(clave, out var exc) ? exc : porcentajeGlobal;
+                        var maximo = limites.Limite(grupo.GrupoId, fecha);
                         var regla = _validador.EvaluarRegla(plantillaGrupo, ausentesGrupo, 0, maximo);
 
                         if (!regla.Permitido)
@@ -361,6 +359,21 @@ namespace tiempo_libre.Services
                 {
                     Anio = anio,
                     PorcentajeMaximoGlobal = porcentajeGlobal,
+                    CapacidadesDelAnio = (await _limites.CapacidadesVigentesAsync(inicio, fin))
+                        .Where(c => c.Alcance == "Planta" ||
+                                    (c.Alcance == "Area" && grupos.Any(g => g.AreaId == c.AreaId)) ||
+                                    (c.Alcance == "Grupo" && grupoIds.Contains(c.GrupoId ?? 0)))
+                        .OrderBy(c => c.FechaInicio)
+                        .Select(c => new CapacidadDelAnioDto
+                        {
+                            Descripcion = LimitePorcentajeService.DescribirCapacidad(c),
+                            Porcentaje = c.Porcentaje,
+                            FechaInicio = c.FechaInicio,
+                            FechaFin = c.FechaFin,
+                            Area = c.Alcance == "Area" ? grupos.FirstOrDefault(g => g.AreaId == c.AreaId)?.Area?.NombreGeneral : null,
+                            Grupo = c.Alcance == "Grupo" ? grupos.FirstOrDefault(g => g.GrupoId == c.GrupoId)?.Rol : null
+                        })
+                        .ToList(),
                     PlantillaTotal = plantillaTotal,
                     DiasEmpresaAsignados = totalDias,
                     DiasCapturadosPorOperador = totalCapturados,

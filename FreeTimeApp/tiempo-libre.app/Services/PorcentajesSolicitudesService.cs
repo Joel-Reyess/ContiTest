@@ -32,13 +32,15 @@ namespace tiempo_libre.Services
 
         private readonly FreeTimeDbContext _db;
         private readonly AusenciaService _ausencias;
+        private readonly LimitePorcentajeService _limites;
         private readonly ILogger<PorcentajesSolicitudesService> _logger;
 
         public PorcentajesSolicitudesService(FreeTimeDbContext db, AusenciaService ausencias,
-            ILogger<PorcentajesSolicitudesService> logger)
+            LimitePorcentajeService limites, ILogger<PorcentajesSolicitudesService> logger)
         {
             _db = db;
             _ausencias = ausencias;
+            _limites = limites;
             _logger = logger;
         }
 
@@ -87,6 +89,11 @@ namespace tiempo_libre.Services
 
             var turno = await PorcentajeTurnoAsync(conArea, i => empleados[i.EmpleadoId].AreaId!.Value,
                 i => empleados[i.EmpleadoId].GrupoId);
+            var conGrupo = conArea.Where(i => empleados[i.EmpleadoId].GrupoId.HasValue).ToList();
+            var limites = conGrupo.Count == 0 ? null : await _limites.PrecargarAsync(
+                conGrupo.Select(i => empleados[i.EmpleadoId].GrupoId!.Value),
+                conGrupo.Min(i => i.Fecha), conGrupo.Max(i => i.Fecha));
+
             var dia = await PorcentajeDiaAsync(conArea
                 .Select(i => (AreaId: empleados[i.EmpleadoId].AreaId!.Value, i.Fecha))
                 .Distinct()
@@ -103,7 +110,8 @@ namespace tiempo_libre.Services
                     Area = e?.Area ?? string.Empty,
                     Grupo = e?.Grupo ?? string.Empty,
                     PorcentajeTurno = pctTurno,
-                    PorcentajeDia = pctDia
+                    PorcentajeDia = pctDia,
+                    PorcentajeMaximo = limites != null && e?.GrupoId != null ? limites.Limite(e.GrupoId.Value, i.Fecha) : null
                 };
             }).ToList();
         }

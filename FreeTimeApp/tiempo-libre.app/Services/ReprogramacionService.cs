@@ -15,6 +15,7 @@ namespace tiempo_libre.Services
     {
         private readonly FreeTimeDbContext _db;
         private readonly ValidadorPorcentajeService _validadorPorcentaje;
+        private readonly LimitePorcentajeService _limites;
         private readonly NotificacionesService _notificacionesService;
         private readonly AusenciaService _ausenciaService;
         private readonly ILogger<ReprogramacionService> _logger;
@@ -24,8 +25,10 @@ namespace tiempo_libre.Services
             ValidadorPorcentajeService validadorPorcentaje,
             NotificacionesService notificacionesService,
             AusenciaService ausenciaService,
-            ILogger<ReprogramacionService> logger)
+            ILogger<ReprogramacionService> logger,
+            LimitePorcentajeService limites)
         {
+            _limites = limites;
             _db = db;
             _validadorPorcentaje = validadorPorcentaje;
             _notificacionesService = notificacionesService;
@@ -985,6 +988,13 @@ namespace tiempo_libre.Services
                     ? await AreasVisiblesHelper.AreasVisiblesAsync(_db, usuarioConsultaId)
                     : new List<int>();
 
+                // Límite de cada fila (grupo del empleado, día nuevo) para el semáforo.
+                var conGrupo = solicitudes.Where(s => s.Empleado?.GrupoId != null).ToList();
+                var limitesLista = conGrupo.Count == 0 ? null : await _limites.PrecargarAsync(
+                    conGrupo.Select(s => s.Empleado.GrupoId!.Value),
+                    conGrupo.Min(s => s.FechaNuevaSolicitada),
+                    conGrupo.Max(s => s.FechaNuevaSolicitada));
+
                 var solicitudesDto = solicitudes.Select(s => new SolicitudReprogramacionDto
                 {
                     Id = s.Id,
@@ -1005,6 +1015,9 @@ namespace tiempo_libre.Services
                     RequiereAprobacion = s.EstadoSolicitud == "Pendiente",
                     PorcentajeCalculado = s.PorcentajeCalculado,
                     PorcentajeDelDia = porcentajesDelDia.TryGetValue(s.Id, out var pctDia) ? pctDia : null,
+                    PorcentajeMaximoPermitido = limitesLista != null && s.Empleado?.GrupoId != null
+                        ? limitesLista.Limite(s.Empleado.GrupoId.Value, s.FechaNuevaSolicitada)
+                        : null,
                     FechaSolicitud = s.FechaSolicitud,
                     SolicitadoPor = s.SolicitadoPor?.FullName ?? "Sistema",
                     FechaAprobacion = s.FechaRespuesta,

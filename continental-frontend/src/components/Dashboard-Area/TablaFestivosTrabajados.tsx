@@ -10,6 +10,7 @@ import { userService } from '../../services/userService'
 import { UserRole, type User } from '@/interfaces/User.interface'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { clasePorcentaje } from '@/utils/semaforoPorcentaje'
 
 export function TablaFestivosTrabajados() {
     const { user, hasRole } = useAuth()
@@ -243,9 +244,9 @@ export function TablaFestivosTrabajados() {
             label: '% Turno',
             sortable: true,
             className: 'w-[90px]',
-            render: (value) => {
+            render: (value, row) => {
                 const pct = Number(value)
-                const colorClass = pct > 4.5 ? 'text-red-600 font-bold' : pct > 3 ? 'text-yellow-600 font-semibold' : 'text-gray-900 font-semibold'
+                const colorClass = clasePorcentaje(pct, row.porcentajeMaximoPermitido)
                 return (
                     <div className={`text-xs text-center px-1 ${colorClass}`}>
                         {pct.toFixed(1)}%
@@ -259,9 +260,9 @@ export function TablaFestivosTrabajados() {
             label: '% Día',
             sortable: true,
             className: 'w-[90px]',
-            render: (value) => {
+            render: (value, row) => {
                 const pct = Number(value ?? 0)
-                const colorClass = pct > 4.5 ? 'text-red-600 font-bold' : pct > 3 ? 'text-yellow-600 font-semibold' : 'text-gray-900 font-semibold'
+                const colorClass = clasePorcentaje(pct, row.porcentajeMaximoPermitido)
                 return (
                     <div className={`text-xs text-center px-1 ${colorClass}`}>
                         {pct > 0 ? `${pct.toFixed(1)}%` : '—'}

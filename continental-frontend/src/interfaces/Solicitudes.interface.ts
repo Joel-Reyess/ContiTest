@@ -24,6 +24,8 @@ export interface Solicitud {
   requiereAprobacion: boolean;
   porcentajeCalculado: number;
   porcentajeDelDia?: number | null;
+  /** Límite que rige ese día para el grupo (para el semáforo). */
+  porcentajeMaximoPermitido?: number | null;
   fechaSolicitud: string;
   solicitadoPor: string;
   fechaAprobacion?: string;

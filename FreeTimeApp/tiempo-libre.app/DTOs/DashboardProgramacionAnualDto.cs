@@ -14,6 +14,12 @@ namespace tiempo_libre.DTOs
         public int Anio { get; set; }
         public decimal PorcentajeMaximoGlobal { get; set; }
 
+        /// <summary>
+        /// Capacidades por periodo vigentes en el año para el filtro: en esas
+        /// fechas el cupo no es el global (los rebases ya se calculan con ellas).
+        /// </summary>
+        public List<CapacidadDelAnioDto> CapacidadesDelAnio { get; set; } = new();
+
         /// <summary>Empleados activos de los grupos incluidos en el filtro.</summary>
         public int PlantillaTotal { get; set; }
 
@@ -121,5 +127,15 @@ namespace tiempo_libre.DTOs
 
         public int OperadoresDebenCapturar { get; set; }
         public int OperadoresYaCapturaron { get; set; }
+    }
+
+    public class CapacidadDelAnioDto
+    {
+        public string Descripcion { get; set; } = string.Empty;
+        public decimal Porcentaje { get; set; }
+        public DateOnly FechaInicio { get; set; }
+        public DateOnly FechaFin { get; set; }
+        public string? Area { get; set; }
+        public string? Grupo { get; set; }
     }
 }

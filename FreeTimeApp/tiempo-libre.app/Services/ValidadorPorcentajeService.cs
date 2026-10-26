@@ -12,6 +12,7 @@ namespace tiempo_libre.Services
     {
         private readonly FreeTimeDbContext _db;
         private readonly ILogger<ValidadorPorcentajeService> _logger;
+        private readonly LimitePorcentajeService _limites;
 
         // Memoria de la petición (el servicio es scoped). Nada de esto cambia
         // mientras corre una asignación anual, y releerlo era el grueso de las
@@ -20,14 +21,15 @@ namespace tiempo_libre.Services
         private readonly Dictionary<int, Grupo?> _gruposCache = new();
         private readonly Dictionary<int, int> _totalEmpleadosCache = new();
         private readonly Dictionary<(int AreaId, int Anio, int Mes), decimal?> _manningCache = new();
-        private readonly Dictionary<(int GrupoId, DateOnly Fecha), decimal?> _excepcionPorcentajeCache = new();
         private readonly Dictionary<int, List<int>> _gruposPorAreaCache = new();
         private readonly Dictionary<int, int> _totalEmpleadosAreaCache = new();
 
-        public ValidadorPorcentajeService(FreeTimeDbContext db, ILogger<ValidadorPorcentajeService> logger)
+        public ValidadorPorcentajeService(FreeTimeDbContext db, ILogger<ValidadorPorcentajeService> logger,
+            LimitePorcentajeService limites)
         {
             _db = db;
             _logger = logger;
+            _limites = limites;
         }
 
         /// <summary>
@@ -140,27 +142,13 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Porcentaje máximo que aplica a un grupo en una fecha: la excepción
-        /// capturada para ese grupo y día (ExcepcionesPorcentaje) manda sobre el
-        /// porcentaje global de ConfiguracionVacaciones.
-        ///
-        /// El tablero de ausencias ya respetaba estas excepciones; el candado no,
-        /// así que el jefe veía el día "abierto" por la excepción y la app lo
-        /// rechazaba al guardar (o al revés).
+        /// Porcentaje máximo que aplica a un grupo en una fecha. Lo resuelve
+        /// LimitePorcentajeService (excepción del grupo ese día, capacidad por
+        /// periodo, porcentaje del año), el mismo que usan el calendario, el
+        /// dashboard y los festivos: así la vista y el candado no se contradicen.
         /// </summary>
-        private async Task<decimal> ObtenerPorcentajeMaximoAsync(int grupoId, DateOnly fecha, decimal porcentajeGlobal)
-        {
-            var clave = (grupoId, fecha);
-            if (!_excepcionPorcentajeCache.TryGetValue(clave, out var excepcion))
-            {
-                excepcion = await _db.ExcepcionesPorcentaje
-                    .Where(e => e.GrupoId == grupoId && e.Fecha == fecha)
-                    .Select(e => (decimal?)e.PorcentajeMaximoPermitido)
-                    .FirstOrDefaultAsync();
-                _excepcionPorcentajeCache[clave] = excepcion;
-            }
-            return excepcion ?? porcentajeGlobal;
-        }
+        private Task<decimal> ObtenerPorcentajeMaximoAsync(int grupoId, DateOnly fecha) =>
+            _limites.LimiteAsync(grupoId, fecha);
 
         /// <summary>
         /// LA regla del porcentaje, sin base de datos, para que el candado (aquí),
@@ -263,8 +251,7 @@ namespace tiempo_libre.Services
                     _totalEmpleadosCache[grupoId] = totalEmpleados;
                 }
 
-                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada,
-                    Helpers.PorcentajeAusenciaHelper.ParaAnio(config, fechaEvaluada.Year));
+                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada);
 
                 // Ausencias ya programadas para el día que se evalúa
                 ausenciasActuales ??= await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
@@ -349,8 +336,7 @@ namespace tiempo_libre.Services
 
             var dia = fecha ?? DateOnly.FromDateTime(DateTime.Today);
             var ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, dia);
-            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia,
-                Helpers.PorcentajeAusenciaHelper.ParaAnio(config, dia.Year));
+            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia);
             var estado = EvaluarRegla(totalEmpleados, ausenciasActuales, 0, porcentajeMaximo);
 
             var manningAreaEstado = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, dia);

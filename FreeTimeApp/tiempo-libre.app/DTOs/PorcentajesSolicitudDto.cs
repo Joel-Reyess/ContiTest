@@ -28,5 +28,7 @@ namespace tiempo_libre.DTOs
         public decimal? PorcentajeTurno { get; set; }
         /// <summary>% de ausencia del área ese día.</summary>
         public decimal? PorcentajeDia { get; set; }
+        /// <summary>Límite que rige ese día para el grupo del empleado (para el semáforo).</summary>
+        public decimal? PorcentajeMaximo { get; set; }
     }
 }

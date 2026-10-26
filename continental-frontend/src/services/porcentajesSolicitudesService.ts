@@ -7,6 +7,8 @@ export interface PorcentajeSolicitud {
     grupo: string
     porcentajeTurno?: number | null
     porcentajeDia?: number | null
+    /** Límite que rige ese día para el grupo del empleado. */
+    porcentajeMaximo?: number | null
 }
 
 export interface PorcentajeSolicitudItem {

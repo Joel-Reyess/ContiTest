@@ -18,13 +18,16 @@ namespace tiempo_libre.Services
         private readonly ILogger<FestivoTrabajadoService> _logger;
         private readonly NotificacionesService _notificacionesService;
         private readonly ValidadorPorcentajeService _validadorPorcentaje;
+        private readonly LimitePorcentajeService _limites;
 
         public FestivoTrabajadoService(
             FreeTimeDbContext db,
             ILogger<FestivoTrabajadoService> logger,
             NotificacionesService notificacionesService,
-            ValidadorPorcentajeService validadorPorcentaje)
+            ValidadorPorcentajeService validadorPorcentaje,
+            LimitePorcentajeService limites)
         {
+            _limites = limites;
             _db = db;
             _logger = logger;
             _notificacionesService = notificacionesService;
@@ -136,8 +139,11 @@ namespace tiempo_libre.Services
                 var requiereAprobacion = false;
                 var configuracion = await _db.ConfiguracionVacaciones
                     .OrderByDescending(c => c.CreatedAt).FirstOrDefaultAsync();
-                var porcentajeMaximo = Helpers.PorcentajeAusenciaHelper.ParaAnio(
-                    configuracion, request.FechaNueva.Year);
+                // El límite de ese día para su grupo (excepción, capacidad por periodo
+                // o el del año), igual que el candado.
+                var porcentajeMaximo = empleado.GrupoId.HasValue
+                    ? await _limites.LimiteAsync(empleado.GrupoId.Value, request.FechaNueva)
+                    : Helpers.PorcentajeAusenciaHelper.ParaAnio(configuracion, request.FechaNueva.Year);
 
                 if (empleado.GrupoId.HasValue)
                 {
@@ -629,6 +635,13 @@ namespace tiempo_libre.Services
                 }
 
                 // Mapear a DTOs
+                // Límite de cada fila (grupo del empleado, día nuevo) para el semáforo.
+                var conGrupo = solicitudes.Where(s => s.Empleado?.GrupoId != null).ToList();
+                var limitesLista = conGrupo.Count == 0 ? null : await _limites.PrecargarAsync(
+                    conGrupo.Select(s => s.Empleado.GrupoId!.Value),
+                    conGrupo.Min(s => s.FechaNuevaSolicitada),
+                    conGrupo.Max(s => s.FechaNuevaSolicitada));
+
                 var solicitudesDto = solicitudes.Select(s => new SolicitudFestivoDto
                 {
                     Id = s.Id,
@@ -645,6 +658,9 @@ namespace tiempo_libre.Services
                     RequiereAprobacion = s.EstadoSolicitud == "Pendiente",
                     PorcentajeCalculado = s.PorcentajeCalculado,
                     PorcentajeDelDia = porcentajesDelDia.TryGetValue(s.Id, out var pctDia) ? pctDia : (decimal?)null,
+                    PorcentajeMaximoPermitido = limitesLista != null && s.Empleado?.GrupoId != null
+                        ? limitesLista.Limite(s.Empleado.GrupoId.Value, s.FechaNuevaSolicitada)
+                        : null,
                     FechaSolicitud = s.FechaSolicitud,
                     SolicitadoPor = s.SolicitadoPor?.FullName ?? "",
                     FechaAprobacion = s.FechaRespuesta,
@@ -1034,12 +1050,7 @@ namespace tiempo_libre.Services
                         }
                     }
 
-                    var configuracion = await _db.ConfiguracionVacaciones
-                        .OrderByDescending(c => c.CreatedAt)
-                        .FirstOrDefaultAsync();
-
-                    var porcentajeMaximo = Helpers.PorcentajeAusenciaHelper.ParaAnio(
-                        configuracion, request.FechaNueva.Year);
+                    var porcentajeMaximo = await _limites.LimiteAsync(empleado.GrupoId.Value, request.FechaNueva);
 
                     if (porcentaje > porcentajeMaximo)
                     {

@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { userService } from '../../services/userService'
 import { type User } from '@/interfaces/User.interface'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { clasePorcentaje } from '@/utils/semaforoPorcentaje'
 import {
     SOLICITUDES_OFICIALES,
     completarPorcentajes,
@@ -109,7 +110,7 @@ export function TablaSolicitudesOficial({ tipo }: { tipo: TipoSolicitudOficial }
     const aprobadas = delArea.filter((f) => f.estadoSolicitud === 'Aprobada').length
     const rechazadas = delArea.filter((f) => f.estadoSolicitud === 'Rechazada').length
 
-    const porcentaje = (value: unknown, sufijo: string) => {
+    const porcentaje = (value: unknown, sufijo: string, limite?: number | null) => {
         if (value == null) {
             return (
                 <div className="text-xs text-center px-1 text-gray-400">
@@ -119,7 +120,7 @@ export function TablaSolicitudesOficial({ tipo }: { tipo: TipoSolicitudOficial }
             )
         }
         const pct = Number(value)
-        const colorClass = pct > 4.5 ? 'text-red-600 font-bold' : pct > 3 ? 'text-yellow-600 font-semibold' : 'text-gray-900 font-semibold'
+        const colorClass = clasePorcentaje(pct, limite)
         return (
             <div className={`text-xs text-center px-1 ${colorClass}`}>
                 {pct.toFixed(1)}%
@@ -201,14 +202,14 @@ export function TablaSolicitudesOficial({ tipo }: { tipo: TipoSolicitudOficial }
             label: '% Turno',
             sortable: true,
             className: 'w-[90px]',
-            render: (value) => porcentaje(value, 'del turno'),
+            render: (value, row) => porcentaje(value, 'del turno', row.porcentajeMaximoPermitido),
         },
         {
             key: 'porcentajeDelDia',
             label: '% Día',
             sortable: true,
             className: 'w-[90px]',
-            render: (value) => porcentaje(value, 'del día'),
+            render: (value, row) => porcentaje(value, 'del día', row.porcentajeMaximoPermitido),
         },
         {
             key: 'acciones',

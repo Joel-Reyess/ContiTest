@@ -12,12 +12,15 @@ namespace tiempo_libre.Services
     {
         private readonly FreeTimeDbContext _db;
         private readonly ValidadorPorcentajeService _validadorPorcentaje;
+        private readonly LimitePorcentajeService _limites;
         private const decimal PORCENTAJE_AUSENCIA_MAXIMO_DEFAULT = 4.5m;
 
-        public AusenciaService(FreeTimeDbContext db, ValidadorPorcentajeService validadorPorcentaje)
+        public AusenciaService(FreeTimeDbContext db, ValidadorPorcentajeService validadorPorcentaje,
+            LimitePorcentajeService limites)
         {
             _db = db;
             _validadorPorcentaje = validadorPorcentaje;
+            _limites = limites;
         }
 
         public async Task<ApiResponse<List<AusenciaPorFechaResponse>>> CalcularAusenciasPorFechasAsync(ConsultaAusenciaRequest request)
@@ -125,18 +128,9 @@ namespace tiempo_libre.Services
                                 e.Activa)
                     .ToListAsync();
 
-                // ─── 7. Porcentaje máximo: excepciones + config global (1+1 queries) ─
-                var excepcionesPorcentaje = await _db.ExcepcionesPorcentaje
-                    .Where(e => grupoIds.Contains(e.GrupoId) &&
-                                e.Fecha >= fechaMin && e.Fecha <= fechaMax)
-                    .ToListAsync();
-
-                // El año en preparación puede tener su propio porcentaje, así que
-                // se resuelve por la fecha de cada día y no una sola vez para todo
-                // el rango (que además puede cruzar de un año al otro).
-                var configPorcentaje = await _db.ConfiguracionVacaciones
-                    .OrderByDescending(c => c.Id)
-                    .FirstOrDefaultAsync();
+                // ─── 7. Porcentaje máximo por grupo y día (excepción del grupo,
+                // capacidad por periodo o el del año), igual que el candado.
+                var limites = await _limites.PrecargarAsync(grupoIds, fechaMin, fechaMax);
 
                 // ─── 8. Mapas auxiliares para lookups O(1) ───────────────────────────
                 var nominaToEmpleado = empleadosPorGrupo
@@ -188,10 +182,7 @@ namespace tiempo_libre.Services
                         if (manning <= 0) manning = 1;
 
                         // Porcentaje máximo
-                        var excPct = excepcionesPorcentaje
-                            .FirstOrDefault(e => e.GrupoId == grupo.GrupoId && e.Fecha == fecha);
-                        var porcentajeMaximo = excPct?.PorcentajeMaximoPermitido
-                            ?? Helpers.PorcentajeAusenciaHelper.ParaAnio(configPorcentaje, fecha.Year);
+                        var porcentajeMaximo = limites.Limite(grupo.GrupoId, fecha);
 
                         // Ausentes del día (de memoria)
                         // Defensivo: aunque vacacionesBatch ya filtra EstadoVacacion="Activa",
@@ -356,7 +347,9 @@ namespace tiempo_libre.Services
                     empleado.GrupoId.Value, 1, null, request.Fecha);
 
                 // Obtener el estado detallado del grupo para información adicional
-                var estadoGrupo = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value);
+                // Del día que se pide (antes salía el de hoy: el límite y el
+                // mensaje no correspondían a la fecha validada).
+                var estadoGrupo = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value, request.Fecha);
 
                 // Simular la ausencia incluyendo al empleado para obtener el porcentaje
                 var ausenciaConEmpleado = await CalcularAusenciaPorGrupoAsync(request.Fecha, empleado.GrupoId.Value, request.EmpleadoId);
@@ -634,23 +627,8 @@ namespace tiempo_libre.Services
             return todosAusentes;
         }
 
-        private async Task<decimal> ObtenerPorcentajeMaximoPermitidoAsync(int grupoId, DateOnly fecha)
-        {
-            // Primero verificar si hay una excepción específica para este grupo y fecha
-            var excepcion = await _db.ExcepcionesPorcentaje
-                .FirstOrDefaultAsync(e => e.GrupoId == grupoId && e.Fecha == fecha);
-
-            if (excepcion != null)
-                return excepcion.PorcentajeMaximoPermitido;
-
-            // Si no hay excepción, la configuración: el año en preparación puede
-            // traer su propio porcentaje.
-            var config = await _db.ConfiguracionVacaciones
-                .OrderByDescending(c => c.Id)
-                .FirstOrDefaultAsync();
-
-            return Helpers.PorcentajeAusenciaHelper.ParaAnio(config, fecha.Year);
-        }
+        private Task<decimal> ObtenerPorcentajeMaximoPermitidoAsync(int grupoId, DateOnly fecha) =>
+            _limites.LimiteAsync(grupoId, fecha);
 
         /// <summary>
         /// Calcular si el grupo puede permitir una reserva adicional sin exceder los límites

@@ -53,6 +53,8 @@ builder.Services.AddScoped<tiempo_libre.Services.ReprogramacionDiaEmpresaService
 builder.Services.AddScoped<tiempo_libre.Services.DiasEmpresaEnDescansoService>();
 builder.Services.AddScoped<tiempo_libre.Services.VacacionesRetenidasService>();
 builder.Services.AddScoped<tiempo_libre.Services.PorcentajesSolicitudesService>();
+builder.Services.AddScoped<tiempo_libre.Services.LimitePorcentajeService>();
+builder.Services.AddScoped<tiempo_libre.Services.CapacidadPorcentajeService>();
 builder.Services.AddScoped<tiempo_libre.Services.VacacionesExportService>();
 builder.Services.AddScoped<tiempo_libre.Services.ReportesVacacionesService>();
 builder.Services.AddScoped<tiempo_libre.Services.PermutaService>();

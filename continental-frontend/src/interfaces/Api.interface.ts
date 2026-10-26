@@ -1341,6 +1341,15 @@ export interface GrupoProgramacionAnual {
 export interface DashboardProgramacionAnual {
     anio: number;
     porcentajeMaximoGlobal: number;
+    /** Capacidades por periodo del año: en esas fechas el cupo no es el global. */
+    capacidadesDelAnio?: {
+        descripcion: string;
+        porcentaje: number;
+        fechaInicio: string;
+        fechaFin: string;
+        area?: string | null;
+        grupo?: string | null;
+    }[];
     plantillaTotal: number;
     diasEmpresaAsignados: number;
     diasCapturadosPorOperador: number;
