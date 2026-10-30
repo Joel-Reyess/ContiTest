@@ -138,3 +138,10 @@
 .calendario-cuadricula .rbc-month-view .rbc-header + .rbc-header {
   border-left: 1px solid var(--calendar-grid);
 }
+
+/* Domingo (o sábado) no laborable por la regla de la unidad organizativa:
+   rayado para que se distinga del día inhábil y del lleno de un vistazo. */
+.custom-date-cell-wrapper.no-laborable-day {
+  background-image: repeating-linear-gradient(135deg, rgba(30, 41, 59, 0.14) 0 6px, transparent 6px 12px) !important;
+  cursor: not-allowed;
+}

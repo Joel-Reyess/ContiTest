@@ -652,6 +652,20 @@ namespace tiempo_libre.Services
                 return result;
             }
 
+            // 1b. Domingo (o sábado) no laborable por la regla de su unidad organizativa
+            if (empleado.GrupoId.HasValue)
+            {
+                var motivoNoLaborable = await new CalendarioLaboralService(_context)
+                    .MotivoNoLaborableAsync(empleado.GrupoId.Value, fecha);
+                if (motivoNoLaborable != null)
+                {
+                    result.EsValida = false;
+                    result.Motivo = fecha.DayOfWeek == DayOfWeek.Sunday ? "Domingo no laborable" : "Sábado no laborable";
+                    result.Detalle = motivoNoLaborable;
+                    return result;
+                }
+            }
+
             // 2. Validar que no sea día de descanso según calendario del empleado
             var esDescanso = await ValidarDiaDescansoEmpleadoAsync(fecha, empleado);
             if (esDescanso)

@@ -41,6 +41,7 @@ import CalendarComponent from "./CalendarComponent";
 import SolicitudesComponent from "./SolicitudesComponent";
 import SolicitudDetallePage from "./SolicitudDetallePage";
 import SolicitudOficialDetallePage from "./SolicitudOficialDetallePage";
+import { CapacidadPorPeriodo } from "../Dashboard-Admin/CapacidadPorPeriodo";
 import SolicitudPermisoDetalle from "./SolicitudPermisoDetalle";
 import { Plantilla } from "./Plantilla";
 import { Reportes } from "./Reportes";
@@ -89,6 +90,9 @@ const AreaDashboard = (): JSX.Element => {
         ...(!isLeader ? [{ to: "/area/reportes", label: "Reportes", icon: <FileChartColumn /> }] : []),
         //// Transferencia de personal solo para INDUSTRIAL
         //...(isIndustrial ? [{ to: "/area/transferencia-personal", label: "Transferencia", icon: <ArrowLeftRight /> }] : []),
+        // Capacidad adicional por periodo: Ingeniería Industrial la configura
+        // igual que el superusuario (planeación 2027, punto 3).
+        ...(isIndustrial ? [{ to: "/area/capacidad", label: "Capacidad", icon: <BarChart3 /> }] : []),
     ];
 
     return (
@@ -149,6 +153,9 @@ const AreaDashboard = (): JSX.Element => {
                     {/* Solo LEADER no puede ver */}
                     {!isLeader && <Route path="reportes" element={<Reportes />} />}
 
+                    {isIndustrial && (
+                        <Route path="capacidad" element={<div className="p-6 max-w-[1400px] mx-auto"><CapacidadPorPeriodo /></div>} />
+                    )}
                     {/* Transferencia de personal solo para INDUSTRIAL */}
                     {/*{isIndustrial && <Route path="transferencia-personal" element={<TransferenciaPersonal />} />}*/}
                 </Routes>

@@ -43,6 +43,8 @@ interface VacacionesGeneralProps {
   onConfigUpdate?: (config: VacacionesConfig) => void;
   /** Cambia a la pestaña Calendario (pasos 1-2 del wizard). */
   onIrACalendario?: () => void;
+  /** Cambia a otra pestaña de Vacaciones y, si se da, baja a esa sección. */
+  onIrAPestana?: (pestana: 'calendario' | 'domingos' | 'capacidad', seccion?: string) => void;
 }
 
 export const VacacionesGeneral = ({
@@ -50,6 +52,7 @@ export const VacacionesGeneral = ({
   anioVigente,
   onConfigUpdate,
   onIrACalendario,
+  onIrAPestana,
 }: VacacionesGeneralProps) => {
   const [fechaInicio, setFechaInicio] = useState<string>("");
   const [configVacaciones, setConfigVacaciones] =
@@ -828,6 +831,7 @@ export const VacacionesGeneral = ({
                   version={wizardVersion}
                   onNotification={onNotification}
                   onIrACalendario={onIrACalendario}
+                  onIrAPestana={onIrAPestana}
                   onAbrirProgramarDias={() => {
                     setModalesEnPreparacion(true);
                     setShowProgramacionModal(true);
@@ -1008,6 +1012,7 @@ export const VacacionesGeneral = ({
             version={wizardVersion}
             onNotification={onNotification}
             onIrACalendario={onIrACalendario}
+            onIrAPestana={onIrAPestana}
             onAbrirProgramarDias={() => {
               setModalesEnPreparacion(false);
               setShowProgramacionModal(true);

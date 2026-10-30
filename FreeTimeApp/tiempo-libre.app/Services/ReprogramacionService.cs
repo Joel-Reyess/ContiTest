@@ -150,6 +150,11 @@ namespace tiempo_libre.Services
                         "No se puede reprogramar una vacación a un día inhábil o festivo");
                 }
 
+                // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
+                var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, request.FechaNueva);
+                if (motivoNoLaborable != null)
+                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null, motivoNoLaborable);
+
                 // 7. Validar que no exista ya una vacación programada en la fecha nueva.
                 //    El mensaje dice QUÉ hay ese día: con solo "ya tiene una
                 //    vacación" se leía como "la solicitud ya está en proceso" y la

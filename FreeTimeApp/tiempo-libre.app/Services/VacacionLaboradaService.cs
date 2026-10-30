@@ -81,6 +81,11 @@ namespace tiempo_libre.Services
                 return new ApiResponse<VacacionLaboradaDto>(false, null,
                     "La fecha nueva es día inhábil / festivo.");
 
+            // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
+            var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, fechaNueva);
+            if (motivoNoLaborable != null)
+                return new ApiResponse<VacacionLaboradaDto>(false, null, motivoNoLaborable);
+
             // Regla anti-duplicado (#69): no otra solicitud pendiente o aprobada
             // sobre la MISMA fecha original.
             var duplicada = await _db.SolicitudesVacacionLaborada

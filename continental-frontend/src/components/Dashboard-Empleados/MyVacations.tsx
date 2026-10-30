@@ -31,6 +31,7 @@ import { UserRole } from "@/interfaces/User.interface";
 import { ChangePasswordModal } from "@/components/Empleado/ChangePasswordModal";
 import { SolicitarPermisoModal } from "./SolicitarPermisoModal";
 import { SolicitarReprogramacionPostIncapacidadModal } from "./SolicitarReprogramacionPostIncapacidadModal";
+import { AvisoDomingosNoLaborables } from "@/components/Calendar/AvisoDomingosNoLaborables";
 
 /**
  * `permiteReprogramacion` va aparte de `currentPeriod` porque la reprogramación
@@ -335,6 +336,7 @@ const MyVacations = ({
                     </span>
                 </div>
             )}
+            <AvisoDomingosNoLaborables empleadoId={idCalendario} anio={anioConsulta} />
             <div className="flex gap-8 justify-between">
                 <div className="flex-2">
                     <Calendar

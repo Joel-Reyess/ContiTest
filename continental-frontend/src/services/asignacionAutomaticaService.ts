@@ -9,7 +9,8 @@ import type {
   AsignacionAutomaticaRequest,
   AsignacionAutomaticaResponse,
   RevertirAsignacionResponse,
-  ResumenAsignacionAutomaticaResponse
+  ResumenAsignacionAutomaticaResponse,
+  VentanaAsignacion
 } from '@/interfaces/Api.interface';
 
 export interface EmpleadoSinAsignacion {
@@ -52,14 +53,14 @@ export class AsignacionAutomaticaService {
    * @param semanasExcluidas - Array de números de semana a excluir de la asignación
    * @returns Promise<AsignacionAutomaticaResponse>
    */
-  static async ejecutarAsignacion(anio: number, semanasExcluidas?: number[]): Promise<AsignacionAutomaticaResponse> {
+  static async ejecutarAsignacion(anio: number, semanasExcluidas?: number[], ventanasPreferentes?: VentanaAsignacion[]): Promise<AsignacionAutomaticaResponse> {
     try {
       console.log('🔄 Ejecutando asignación automática para año:', anio, 'con semanas excluidas:', semanasExcluidas);
       
       // Usar timeout de 6 minutos (360000ms) para esta operación que puede tardar hasta 5 minutos
       const response = await httpClient.post<ApiResponse<AsignacionAutomaticaResponse>>(
         '/api/asignacion-automatica/ejecutar',
-        { anio, semanasExcluidas } as AsignacionAutomaticaRequest,
+        { anio, semanasExcluidas, ventanasPreferentes } as AsignacionAutomaticaRequest,
         { timeout: 1200000 } // 20 minutos
       );
 

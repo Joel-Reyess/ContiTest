@@ -176,6 +176,25 @@ namespace tiempo_libre.Services
                         ". Quita esas fechas de la selección.");
                 }
 
+                // Domingos (o sábados) que la regla de su unidad organizativa deja no
+                // laborables: ahí no se programan vacaciones ni días por la empresa.
+                if (empleado.GrupoId.HasValue)
+                {
+                    var calendarioLaboral = new CalendarioLaboralService(_db);
+                    var noLaborables = new List<DateOnly>();
+                    foreach (var f in request.FechasVacaciones.Distinct().OrderBy(f => f))
+                        if (await calendarioLaboral.EsNoLaborableAsync(empleado.GrupoId.Value, f))
+                            noLaborables.Add(f);
+                    if (noLaborables.Count > 0)
+                    {
+                        await transaction.RollbackAsync();
+                        return new ApiResponse<AsignacionManualResponse>(false, null,
+                            "No se pueden programar días no laborables por la regla dominical de su unidad organizativa: " +
+                            string.Join(", ", noLaborables.Select(f => f.ToString("ddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-MX")))) +
+                            ". Quita esas fechas de la selección.");
+                    }
+                }
+
                 // Tope por antigüedad (tabla del Art. 68). Esta ruta —jefe,
                 // ingeniero y superusuario— no lo revisaba: el único límite estaba
                 // en el modal y se lo saltaban las fechas que llegaban marcadas

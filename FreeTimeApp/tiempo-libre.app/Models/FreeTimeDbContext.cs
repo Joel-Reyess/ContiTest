@@ -64,6 +64,8 @@ public partial class FreeTimeDbContext : DbContext
 
     public virtual DbSet<CapacidadPorcentaje> CapacidadesPorcentaje { get; set; } = null!;
 
+    public virtual DbSet<ReglaDomingo> ReglasDomingo { get; set; } = null!;
+
     public DbSet<SuplentePeriodo> SuplentePeriodos { get; set; }
     public DbSet<Permuta> Permutas { get; set; }
     public virtual DbSet<PermisosEIncapacidadesSAP> PermisosEIncapacidadesSAP { get; set; }
@@ -883,6 +885,14 @@ public partial class FreeTimeDbContext : DbContext
                 .HasDefaultValue("Cerrado");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("GETDATE()");
+        });
+
+        modelBuilder.Entity<ReglaDomingo>(entity =>
+        {
+            entity.HasOne(e => e.Area).WithMany().HasForeignKey(e => e.AreaId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Grupo).WithMany().HasForeignKey(e => e.GrupoId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.CreadoPor).WithMany().HasForeignKey(e => e.CreadoPorId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.DesactivadoPor).WithMany().HasForeignKey(e => e.DesactivadoPorId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<CapacidadPorcentaje>(entity =>

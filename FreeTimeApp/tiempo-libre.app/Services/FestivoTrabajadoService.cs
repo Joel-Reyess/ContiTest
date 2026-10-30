@@ -126,6 +126,11 @@ namespace tiempo_libre.Services
                     return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
                         "No se puede programar una vacación en un día inhábil o festivo");
 
+                // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
+                var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, request.FechaNueva);
+                if (motivoNoLaborable != null)
+                    return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null, motivoNoLaborable);
+
                 var conflictoVacaciones = await _db.VacacionesProgramadas
                     .AnyAsync(v => v.EmpleadoId == request.EmpleadoId &&
                                   v.FechaVacacion == request.FechaNueva &&

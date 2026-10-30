@@ -142,6 +142,9 @@ const CustomDateCellWrapper = ({
           }
         } else if (eventData.incidencia === 'DI') {
           sapChip = SAP_NOMENCLATURA['DI'];
+        } else if (eventData.incidencia === 'NL') {
+          sapChip = SAP_NOMENCLATURA['NL'];
+          className += " no-laborable-day";
         }
         break;
       default:

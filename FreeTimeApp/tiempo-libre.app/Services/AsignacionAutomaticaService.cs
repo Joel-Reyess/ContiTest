@@ -72,19 +72,6 @@ namespace tiempo_libre.Services
                         "No se encontraron empleados sindicalizados para procesar.");
                 }
 
-                // Empleados que ya tienen asignación automática activa para este año.
-                // Sin este filtro, re-ejecutar el proceso (p. ej. tras un intento que
-                // murió a medias) duplicaba los días: no hay índice único en BD que
-                // frene la segunda inserción.
-                var empleadosYaAsignados = (await _db.VacacionesProgramadas
-                    .Where(v => v.FechaVacacion.Year == request.Anio
-                        && v.OrigenAsignacion == "Automatica"
-                        && v.TipoVacacion == "Automatica"
-                        && v.EstadoVacacion == "Activa")
-                    .Select(v => v.EmpleadoId)
-                    .Distinct()
-                    .ToListAsync(ct)).ToHashSet();
-
                 // Obtener semanas excluidas
                 var semanasExcluidas = request.SemanasExcluidas?.Any() == true
                     ? request.SemanasExcluidas
@@ -129,6 +116,11 @@ namespace tiempo_libre.Services
                     return new ApiResponse<AsignacionAutomaticaResponse>(false, response, motivoSinSemanaSanta);
                 }
 
+                // Re-ejecutar no duplica: a cada empleado se le cuentan los días de
+                // empresa que ya tiene en el año y solo se le asigna lo que falte.
+                var ctx = await PrepararContextoAsync(request.Anio, empleados, semanasExcluidas, diasInhabiles,
+                    semanaSantaFechaFinal, request.VentanasPreferentes, ct);
+
                 var reloj = System.Diagnostics.Stopwatch.StartNew();
                 var procesados = 0;
 
@@ -140,17 +132,18 @@ namespace tiempo_libre.Services
                     // saturando la instancia y tirando el resto de la aplicación.
                     ct.ThrowIfCancellationRequested();
 
-                    if (empleadosYaAsignados.Contains(empleado.Id))
+                    var resultado = await ProcesarEmpleadoAsync(empleado, ctx);
+                    if (resultado.YaTeniaTodos)
                     {
                         response.TotalEmpleadosAsignados++;
                         response.Advertencias.Add(
-                            $"Empleado {empleado.FullName} ({empleado.Nomina}): ya tenía asignación automática para {request.Anio}; se omitió.");
+                            $"Empleado {empleado.FullName} ({empleado.Nomina}): ya tenía todos sus días por la empresa de {request.Anio}; se omitió.");
                         continue;
                     }
-
-                    var resultado = await ProcesarEmpleadoAsync(
-                        empleado, request.Anio, semanasExcluidas, diasInhabiles, semanaSantaFechaFinal);
                     response.ResultadosPorEmpleado.Add(resultado);
+                    if (resultado.AsignacionExitosa && resultado.CompletaFaltantes)
+                        response.Advertencias.Add(
+                            $"Empleado {empleado.FullName} ({empleado.Nomina}): tenía días a medias; se le completaron {resultado.DiasAsignados}.");
 
                     // Traza de avance: sin esto, una corrida larga se ve idéntica a
                     // un proceso colgado. Cada 25 empleados se puede estimar cuánto
@@ -240,12 +233,96 @@ namespace tiempo_libre.Services
                 .ToListAsync(ct);
         }
 
-        private async Task<AsignacionEmpleadoResult> ProcesarEmpleadoAsync(
-            User empleado, 
-            int anio, 
-            List<int> semanasExcluidas, 
-            List<DateOnly> diasInhabiles,
-            DateOnly? semanaSantaFechaFinal)
+        /// <summary>
+        /// Lo que no cambia durante la corrida y lo que se va actualizando en
+        /// memoria conforme se asigna (ocupación de cada empleado y carga de cada
+        /// grupo por semana).
+        /// </summary>
+        private sealed class ContextoAsignacion
+        {
+            public int Anio;
+            public HashSet<int> SemanasExcluidas = new();
+            public HashSet<DateOnly> Inhabiles = new();
+            public DateOnly? SemanaSanta;
+            public TablaNoLaborables NoLaborables = null!;
+            public Dictionary<int, HashSet<DateOnly>> Ocupados = new();
+            public Dictionary<int, int> DiasEmpresaExistentes = new();
+            public Dictionary<(int GrupoId, int Semana), int> CargaPorGrupoSemana = new();
+            public List<VentanaAsignacion> Ventanas = new();
+            public Random Azar = new();
+        }
+
+        private static readonly string[] TiposEmpresa = { "Automatica", "AsignadaAutomaticamente", "DiaEmpresaReprogramado" };
+
+        private async Task<ContextoAsignacion> PrepararContextoAsync(
+            int anio, List<User> empleados, List<int> semanasExcluidas, List<DateOnly> diasInhabiles,
+            DateOnly? semanaSanta, List<VentanaAsignacion>? ventanas, CancellationToken ct)
+        {
+            var ini = new DateOnly(anio, 1, 1);
+            var fin = new DateOnly(anio, 12, 31);
+            var ctx = new ContextoAsignacion
+            {
+                Anio = anio,
+                SemanasExcluidas = semanasExcluidas.ToHashSet(),
+                Inhabiles = diasInhabiles.ToHashSet(),
+                SemanaSanta = semanaSanta,
+                Ventanas = (ventanas ?? new List<VentanaAsignacion>())
+                    .Where(v => v.AreaIds?.Count > 0 && v.FechaFin >= v.FechaInicio)
+                    .OrderBy(v => v.FechaInicio)
+                    .ToList()
+            };
+
+            var grupoIds = empleados.Where(e => e.GrupoId.HasValue).Select(e => e.GrupoId!.Value).Distinct().ToList();
+            ctx.NoLaborables = await new CalendarioLaboralService(_db).PrecargarAsync(grupoIds);
+
+            // Vacaciones activas del año de todos los grupos: ocupación de cada
+            // empleado, carga de cada grupo por semana y días de empresa que ya tiene.
+            var vacaciones = await _db.VacacionesProgramadas.AsNoTracking()
+                .Where(v => v.EstadoVacacion == "Activa" && v.FechaVacacion >= ini && v.FechaVacacion <= fin &&
+                            v.Empleado.GrupoId != null && grupoIds.Contains(v.Empleado.GrupoId.Value))
+                .Select(v => new { v.EmpleadoId, v.FechaVacacion, v.TipoVacacion, GrupoId = v.Empleado.GrupoId!.Value })
+                .ToListAsync(ct);
+            foreach (var v in vacaciones)
+            {
+                Ocupar(ctx, v.EmpleadoId, v.FechaVacacion);
+                var clave = (v.GrupoId, NumeroSemana(anio, v.FechaVacacion));
+                ctx.CargaPorGrupoSemana[clave] = ctx.CargaPorGrupoSemana.GetValueOrDefault(clave) + 1;
+                if (TiposEmpresa.Contains(v.TipoVacacion))
+                    ctx.DiasEmpresaExistentes[v.EmpleadoId] = ctx.DiasEmpresaExistentes.GetValueOrDefault(v.EmpleadoId) + 1;
+            }
+
+            // Permisos e incapacidades del año: esos días la persona ya no está.
+            var porNomina = empleados.Where(e => e.Nomina.HasValue)
+                .GroupBy(e => e.Nomina!.Value).ToDictionary(g => g.Key, g => g.First().Id);
+            var nominas = porNomina.Keys.ToList();
+            var permisos = await _db.PermisosEIncapacidadesSAP.AsNoTracking()
+                .Where(p => nominas.Contains(p.Nomina) && p.Desde <= fin && p.Hasta >= ini &&
+                            (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada") &&
+                            (p.ClAbPre != 1100 || p.Dias == null || p.Dias > 0))
+                .Select(p => new { p.Nomina, p.Desde, p.Hasta })
+                .ToListAsync(ct);
+            foreach (var p in permisos)
+                for (var d = p.Desde < ini ? ini : p.Desde; d <= (p.Hasta > fin ? fin : p.Hasta); d = d.AddDays(1))
+                    Ocupar(ctx, porNomina[p.Nomina], d);
+
+            return ctx;
+        }
+
+        private static void Ocupar(ContextoAsignacion ctx, int empleadoId, DateOnly fecha)
+        {
+            if (!ctx.Ocupados.TryGetValue(empleadoId, out var set))
+                ctx.Ocupados[empleadoId] = set = new HashSet<DateOnly>();
+            set.Add(fecha);
+        }
+
+        /// <summary>Semana N del año: la del lunes que contiene el 1 de enero es la 1 (igual que ObtenerRangoSemana).</summary>
+        private int NumeroSemana(int anio, DateOnly fecha)
+        {
+            var lunesSemana1 = ObtenerRangoSemana(anio, 1).FechaInicio;
+            return (fecha.DayNumber - lunesSemana1.DayNumber) / 7 + 1;
+        }
+
+        private async Task<AsignacionEmpleadoResult> ProcesarEmpleadoAsync(User empleado, ContextoAsignacion ctx)
         {
             var resultado = new AsignacionEmpleadoResult
             {
@@ -259,7 +336,7 @@ namespace tiempo_libre.Services
             try
             {
                 // Obtener días que le corresponden automáticamente
-                var vacacionesResponse = await _vacacionesService.CalcularVacacionesPorEmpleadoAsync(empleado.Id, anio);
+                var vacacionesResponse = await _vacacionesService.CalcularVacacionesPorEmpleadoAsync(empleado.Id, ctx.Anio);
                 if (!vacacionesResponse.Success || vacacionesResponse.Data == null)
                 {
                     resultado.MotivoFallo = "No se pudieron calcular las vacaciones del empleado";
@@ -275,38 +352,40 @@ namespace tiempo_libre.Services
                     return resultado;
                 }
 
-                // Limitar a máximo permitido
-                var diasAAsignar = Math.Min(resultado.DiasCorrespondientes, MAX_DIAS_AUTOMATICOS);
-
-                // Buscar semana disponible
-                var semanaEncontrada = await BuscarSemanaDisponibleAsync(
-                    empleado, anio, diasAAsignar, semanasExcluidas, diasInhabiles, semanaSantaFechaFinal);
-
-                if (semanaEncontrada == null)
+                // Solo lo que le falta: antes, a quien le habían quedado días a medias
+                // (una corrida cortada, o una semana que no alcanzó) nunca se le
+                // completaban, porque cualquier día automático lo saltaba.
+                var corresponden = Math.Min(resultado.DiasCorrespondientes, MAX_DIAS_AUTOMATICOS);
+                var faltan = corresponden - ctx.DiasEmpresaExistentes.GetValueOrDefault(empleado.Id);
+                resultado.CompletaFaltantes = faltan < corresponden;
+                if (faltan <= 0)
                 {
-                    // Con el grupo y los días pedidos, la advertencia se puede
-                    // triar sin abrir la base: casi siempre es un grupo chico
-                    // (menos del mínimo para aplicar porcentaje, así que admite
-                    // una sola ausencia por día) o uno ya saturado.
-                    resultado.MotivoFallo =
-                        $"No se encontró una semana con {diasAAsignar} día(s) disponibles en el grupo " +
-                        $"{resultado.NombreGrupo} (todas las semanas del año quedaron llenas o excluidas)";
+                    resultado.YaTeniaTodos = true;
                     return resultado;
                 }
 
-                // Asignar días en la semana encontrada
-                var diasAsignados = await AsignarDiasEnSemanaAsync(
-                    empleado, semanaEncontrada, diasAAsignar, diasInhabiles, semanaSantaFechaFinal);
-
-                resultado.SemanaAsignada = semanaEncontrada.NumeroSemana;
-                resultado.DiasVacaciones = diasAsignados;
-                resultado.DiasAsignados = diasAsignados.Count;
-                resultado.AsignacionExitosa = diasAsignados.Count > 0;
-
-                if (!resultado.AsignacionExitosa)
+                var secuencia = await BuscarSecuenciaAsync(empleado, faltan, ctx);
+                if (secuencia == null)
                 {
-                    resultado.MotivoFallo = "No se pudieron asignar días en la semana seleccionada";
+                    resultado.MotivoFallo =
+                        $"No se encontraron {faltan} día(s) laborables seguidos en el grupo {resultado.NombreGrupo} " +
+                        "(contando hasta la semana siguiente): todas las opciones quedaron llenas, excluidas o en descanso.";
+                    return resultado;
                 }
+
+                resultado.SemanaAsignada = NumeroSemana(ctx.Anio, secuencia[0].Fecha);
+                resultado.DiasVacaciones = secuencia;
+                resultado.DiasAsignados = secuencia.Count;
+                resultado.AsignacionExitosa = secuencia.Count > 0;
+
+                // Lo asignado ya ocupa: al empleado y a la carga de su grupo.
+                foreach (var d in secuencia)
+                {
+                    Ocupar(ctx, empleado.Id, d.Fecha);
+                    var clave = (empleado.GrupoId ?? 0, NumeroSemana(ctx.Anio, d.Fecha));
+                    ctx.CargaPorGrupoSemana[clave] = ctx.CargaPorGrupoSemana.GetValueOrDefault(clave) + 1;
+                }
+                ctx.DiasEmpresaExistentes[empleado.Id] = ctx.DiasEmpresaExistentes.GetValueOrDefault(empleado.Id) + secuencia.Count;
 
                 return resultado;
             }
@@ -318,68 +397,123 @@ namespace tiempo_libre.Services
             }
         }
 
-        private async Task<SemanaCalendario?> BuscarSemanaDisponibleAsync(
-            User empleado,
-            int anio,
-            int diasAAsignar,
-            List<int> semanasExcluidas,
-            List<DateOnly> diasInhabiles,
-            DateOnly? semanaSantaFechaFinal)
+        /// <summary>
+        /// ¿El empleado trabaja ese día? No es inhábil, el rol no le da descanso, la
+        /// regla dominical de su unidad no lo cierra y no está ya ausente
+        /// (vacación, permiso o incapacidad).
+        /// </summary>
+        private bool EsDiaLaborable(User empleado, DateOnly fecha, ContextoAsignacion ctx, out string turno)
         {
-            var random = new Random();
-            var semanasDelAnio = Enumerable.Range(1, 52).ToList();
-            
-            // Remover semanas excluidas
-            semanasDelAnio = semanasDelAnio.Except(semanasExcluidas).ToList();
-            
-            // Mezclar aleatoriamente
-            semanasDelAnio = semanasDelAnio.OrderBy(x => random.Next()).ToList();
+            turno = "";
+            if (ctx.Inhabiles.Contains(fecha)) return false;
+            if (ctx.NoLaborables.EsNoLaborable(empleado.GrupoId ?? 0, fecha)) return false;
+            if (ctx.Ocupados.TryGetValue(empleado.Id, out var ocupados) && ocupados.Contains(fecha)) return false;
+            turno = ObtenerTurnoEmpleado(empleado.Grupo?.Rol ?? "", fecha, ctx.SemanaSanta);
+            return !TurnosHelper.EsDescanso(turno);
+        }
 
-            foreach (var numeroSemana in semanasDelAnio)
+        /// <summary>
+        /// Busca los días seguidos (requerimiento de planeación 2027, punto 2): los
+        /// siguientes días LABORABLES del empleado según su rol y las reglas, sin
+        /// saltarse ninguno. Descansos, inhábiles y domingos no laborables no
+        /// cuentan ni rompen la secuencia; si la semana no alcanza, sigue en la
+        /// siguiente (hasta 14 días desde el primero). Si un día laborable de en
+        /// medio está lleno por el porcentaje, esa opción se descarta en lugar de
+        /// saltarlo, para no partir los días.
+        ///
+        /// Orden de las opciones: primero las fechas de arranque/paro elegidas para
+        /// el área del empleado; luego las semanas del año de la menos cargada a la
+        /// más cargada para su grupo (empate al azar), para no concentrar ausencias
+        /// en las mismas fechas. Antes se tomaban semanas al azar y había que
+        /// completar los días dentro de la misma semana.
+        /// </summary>
+        private async Task<List<DiaVacacionAsignado>?> BuscarSecuenciaAsync(User empleado, int dias, ContextoAsignacion ctx)
+        {
+            var anio = ctx.Anio;
+            var inicioAnio = new DateOnly(anio, 1, 1);
+            var finAnio = new DateOnly(anio, 12, 31);
+            var grupoId = empleado.GrupoId ?? 0;
+            var areaId = empleado.Grupo?.AreaId;
+
+            var opciones = new List<(DateOnly Desde, DateOnly Hasta, VentanaAsignacion? Ventana)>();
+            foreach (var v in ctx.Ventanas.Where(v => areaId.HasValue && v.AreaIds.Contains(areaId.Value)))
             {
-                var semana = ObtenerRangoSemana(anio, numeroSemana);
-
-                // El lunes de la semana 1 puede caer en diciembre del año anterior y
-                // la semana 52 puede terminar en enero del siguiente. Sin este recorte,
-                // la asignación escribía días de vacaciones con FechaVacacion fuera del
-                // año objetivo: invisibles para todas las consultas del año programado
-                // pero contando como ausencia en el año equivocado.
-                if (semana.FechaInicio.Year < anio)
-                    semana.FechaInicio = new DateOnly(anio, 1, 1);
-                if (semana.FechaFin.Year > anio)
-                    semana.FechaFin = new DateOnly(anio, 12, 31);
-                if (semana.FechaInicio > semana.FechaFin)
-                    continue;
-
-                // Antes se pedía aquí el calendario completo del grupo para la
-                // semana y el resultado se tiraba: solo se miraba si la llamada
-                // había tenido éxito. Era una consulta pesada por cada semana
-                // candidata y por cada empleado (hasta 52 por persona) que no
-                // aportaba nada a la decisión: quien decide es EsSemanaViableAsync.
-
-                // Validar si la semana es viable
-                if (await EsSemanaViableAsync(empleado, semana, diasAAsignar, diasInhabiles, semanaSantaFechaFinal))
-                {
-                    return semana;
-                }
+                var desde = v.FechaInicio < inicioAnio ? inicioAnio : v.FechaInicio;
+                var hasta = v.FechaFin > finAnio ? finAnio : v.FechaFin;
+                if (desde <= hasta) opciones.Add((desde, hasta, v));
             }
 
+            var semanas = Enumerable.Range(1, 53)
+                .Where(n => !ctx.SemanasExcluidas.Contains(n))
+                .Select(n => ObtenerRangoSemana(anio, n))
+                .Select(s => (s.NumeroSemana,
+                    Desde: s.FechaInicio < inicioAnio ? inicioAnio : s.FechaInicio,
+                    Hasta: s.FechaFin > finAnio ? finAnio : s.FechaFin))
+                .Where(s => s.Desde <= s.Hasta && s.Desde.Year == anio)
+                .OrderBy(s => ctx.CargaPorGrupoSemana.GetValueOrDefault((grupoId, s.NumeroSemana)))
+                .ThenBy(_ => ctx.Azar.Next())
+                .ToList();
+            opciones.AddRange(semanas.Select(s => (s.Desde, s.Hasta, (VentanaAsignacion?)null)));
+
+            foreach (var opcion in opciones)
+            {
+                for (var inicio = opcion.Desde; inicio <= opcion.Hasta; inicio = inicio.AddDays(1))
+                {
+                    if (!EsDiaLaborable(empleado, inicio, ctx, out _)) continue;
+                    var secuencia = await ArmarSecuenciaAsync(empleado, inicio, dias, opcion.Ventana, ctx);
+                    if (secuencia != null) return secuencia;
+                }
+            }
             return null;
+        }
+
+        private async Task<List<DiaVacacionAsignado>?> ArmarSecuenciaAsync(
+            User empleado, DateOnly inicio, int dias, VentanaAsignacion? ventana, ContextoAsignacion ctx)
+        {
+            var elegidos = new List<(DateOnly Fecha, string Turno)>();
+            var limite = inicio.AddDays(13);
+            for (var d = inicio; d <= limite && elegidos.Count < dias; d = d.AddDays(1))
+            {
+                if (d.Year != ctx.Anio) return null;
+                if (!EsDiaLaborable(empleado, d, ctx, out var turno)) continue;
+
+                // Un día que cae en semana excluida corta la opción, salvo que esté
+                // dentro de la fecha de arranque/paro elegida para su área.
+                var enVentana = ventana != null && d >= ventana.FechaInicio && d <= ventana.FechaFin;
+                if (!enVentana && ctx.SemanasExcluidas.Contains(NumeroSemana(ctx.Anio, d))) return null;
+
+                if (!await DiaDisponibleParaGrupoAsync(empleado, d)) return null;
+                elegidos.Add((d, turno));
+            }
+            if (elegidos.Count < dias) return null;
+
+            // Segunda revisión día por día con el cálculo completo (el porcentaje con
+            // el empleado incluido queda en el resultado).
+            var asignados = new List<DiaVacacionAsignado>();
+            foreach (var (fecha, turno) in elegidos)
+            {
+                var validacion = await _ausenciaService.ValidarDisponibilidadDiaAsync(
+                    new ValidacionDisponibilidadRequest { EmpleadoId = empleado.Id, Fecha = fecha });
+                if (!validacion.Success || validacion.Data?.DiaDisponible != true) return null;
+                asignados.Add(new DiaVacacionAsignado
+                {
+                    Fecha = fecha,
+                    TurnoOriginal = turno,
+                    TipoVacacion = "Automatica",
+                    PorcentajeAusenciaCalculado = validacion.Data.PorcentajeAusenciaConEmpleado
+                });
+            }
+            return asignados;
         }
 
         /// <summary>
         /// ¿El grupo admite una ausencia más ese día?
         ///
-        /// Se memoriza por (grupo, fecha) durante la corrida. La respuesta que usa
-        /// la búsqueda de semana —DiaDisponible— sale de
-        /// PuedeGrupoTenerAusencias(grupoId, 1, null, fecha), que depende del grupo
-        /// y del día, no del empleado; y cada validación cuesta media docena de
-        /// consultas. Sin memoria, los 30 o 40 empleados de un mismo grupo
-        /// recalculaban exactamente lo mismo para las mismas fechas, hasta 52
-        /// semanas por persona.
-        ///
-        /// La entrada se borra en cuanto se guardan días de ese grupo en esa fecha
-        /// (ver GuardarVacacionesAsignadasAsync): ahí sí cambió la ocupación.
+        /// Se memoriza por (grupo, fecha) durante la corrida. La respuesta depende
+        /// del grupo y del día, no del empleado; y cada validación cuesta media
+        /// docena de consultas. La entrada se borra en cuanto se guardan días de
+        /// esa fecha (ver GuardarVacacionesAsignadasAsync): ahí sí cambió la
+        /// ocupación.
         /// </summary>
         private async Task<bool> DiaDisponibleParaGrupoAsync(User empleado, DateOnly fecha)
         {
@@ -389,112 +523,10 @@ namespace tiempo_libre.Services
             if (_disponibilidadPorGrupoYFecha.TryGetValue(clave, out var cacheado))
                 return cacheado;
 
-            // Se llama al validador directo y no a ValidarDisponibilidadDiaAsync:
-            // ese envoltorio calcula además el porcentaje del grupo dos veces y su
-            // estado detallado —cuatro consultas pesadas— y de todo eso aquí solo
-            // se ocupa DiaDisponible, que es exactamente este booleano.
             var disponible = await _validadorPorcentaje.PuedeGrupoTenerAusencias(grupoId, 1, null, fecha);
 
             _disponibilidadPorGrupoYFecha[clave] = disponible;
             return disponible;
-        }
-
-        private async Task<bool> EsSemanaViableAsync(
-            User empleado,
-            SemanaCalendario semana,
-            int diasAAsignar,
-            List<DateOnly> diasInhabiles,
-            DateOnly? semanaSantaFechaFinal)
-        {
-            var diasDisponibles = 0;
-            var fechaActual = semana.FechaInicio;
-
-            while (fechaActual <= semana.FechaFin && diasDisponibles < diasAAsignar)
-            {
-                // Si ni contando todos los días que quedan se alcanza la meta, la
-                // semana ya no puede salir: seguir validándola son consultas tiradas.
-                var diasQueRestan = fechaActual > semana.FechaFin
-                    ? 0
-                    : semana.FechaFin.DayNumber - fechaActual.DayNumber + 1;
-                if (diasDisponibles + diasQueRestan < diasAAsignar)
-                    return false;
-
-                // Verificar si es día inhábil
-                if (diasInhabiles.Contains(fechaActual))
-                {
-                    fechaActual = fechaActual.AddDays(1);
-                    continue;
-                }
-
-                // Obtener turno del empleado para este día
-                var turno = ObtenerTurnoEmpleado(empleado.Grupo?.Rol, fechaActual, semanaSantaFechaFinal);
-                
-                // Si no es descanso, verificar porcentaje de ausencia
-                if (!TurnosHelper.EsDescanso(turno))
-                {
-                    if (await DiaDisponibleParaGrupoAsync(empleado, fechaActual))
-                    {
-                        diasDisponibles++;
-                    }
-                }
-
-                fechaActual = fechaActual.AddDays(1);
-            }
-
-            return diasDisponibles >= diasAAsignar;
-        }
-
-        private async Task<List<DiaVacacionAsignado>> AsignarDiasEnSemanaAsync(
-            User empleado,
-            SemanaCalendario semana,
-            int diasAAsignar,
-            List<DateOnly> diasInhabiles,
-            DateOnly? semanaSantaFechaFinal)
-        {
-            var diasAsignados = new List<DiaVacacionAsignado>();
-            var fechaActual = semana.FechaInicio;
-            var diasAsignadosCount = 0;
-
-            while (fechaActual <= semana.FechaFin && diasAsignadosCount < diasAAsignar)
-            {
-                // Saltar días inhábiles
-                if (diasInhabiles.Contains(fechaActual))
-                {
-                    fechaActual = fechaActual.AddDays(1);
-                    continue;
-                }
-
-                var turno = ObtenerTurnoEmpleado(empleado.Grupo?.Rol, fechaActual, semanaSantaFechaFinal);
-
-                // Solo asignar si no es descanso
-                if (!TurnosHelper.EsDescanso(turno))
-                {
-                    // Validar porcentaje una vez más
-                    var validacionResponse = await _ausenciaService.ValidarDisponibilidadDiaAsync(
-                        new ValidacionDisponibilidadRequest
-                        {
-                            EmpleadoId = empleado.Id,
-                            Fecha = fechaActual
-                        });
-
-                    if (validacionResponse.Success && validacionResponse.Data?.DiaDisponible == true)
-                    {
-                        diasAsignados.Add(new DiaVacacionAsignado
-                        {
-                            Fecha = fechaActual,
-                            TurnoOriginal = turno,
-                            TipoVacacion = "Automatica",
-                            PorcentajeAusenciaCalculado = validacionResponse.Data.PorcentajeAusenciaConEmpleado
-                        });
-                        
-                        diasAsignadosCount++;
-                    }
-                }
-
-                fechaActual = fechaActual.AddDays(1);
-            }
-
-            return diasAsignados;
         }
 
         private string ObtenerTurnoEmpleado(string rolGrupo, DateOnly fecha, DateOnly? semanaSantaFechaFinal)
@@ -541,7 +573,8 @@ namespace tiempo_libre.Services
                     EstadoVacacion = "Activa",
                     PeriodoProgramacion = "ProgramacionAnual",
                     PuedeSerIntercambiada = false,
-                    Observaciones = $"Asignación automática - Semana {resultado.SemanaAsignada}"
+                    Observaciones = $"Asignación automática - Semana {resultado.SemanaAsignada}" +
+                                    (resultado.CompletaFaltantes ? " (completa días faltantes)" : "")
                 };
 
                 _db.VacacionesProgramadas.Add(vacacion);

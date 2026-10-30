@@ -4,7 +4,7 @@
 export type SAPCodigo =
     | '1' | '2' | '3' | 'D' | 'CD'
     | 'V' | 'VE' | 'P' | 'E' | 'A' | 'M' | 'G' | 'R' | 'S' | 'O' | 'H' | 'F' | 'C' | 'T'
-    | 'DI' | 'LL';
+    | 'DI' | 'LL' | 'NL';
 
 export interface SAPEntry {
     codigo: SAPCodigo;
@@ -44,6 +44,9 @@ export const SAP_NOMENCLATURA: Record<SAPCodigo, SAPEntry> = {
     // clic: es el "los colores de alerta no funcionaron" de la captura 2026.
     'DI': { codigo: 'DI', label: 'Día inhábil (no se programa)', bg: '#e2e8f0', fg: '#334155', chipBg: 'bg-slate-200', chipFg: 'text-slate-700', grupo: 'otro' },
     'LL': { codigo: 'LL', label: 'Día lleno por vacaciones y/o permisos', bg: '#fee2e2', fg: '#b91c1c', chipBg: 'bg-red-100', chipFg: 'text-red-700', grupo: 'otro' },
+    // Domingo (o sábado) que la regla de la unidad organizativa deja no
+    // laborable en un periodo (planeación 2027): sombreado y no se programa.
+    'NL': { codigo: 'NL', label: 'Domingo no laborable (no se programa)', bg: '#cbd5e1', fg: '#1e293b', chipBg: 'bg-slate-300', chipFg: 'text-slate-800', grupo: 'otro' },
 };
 
 // Convierte un tipoIncidencia arbitrario (letra corta o texto largo) a un SAPCodigo.
@@ -105,6 +108,6 @@ export const NOMENCLATURA_LEGEND_GROUPS: { titulo: string; codigos: SAPCodigo[] 
     { titulo: 'Vacaciones y festivos', codigos: ['V', 'VE', 'F', 'C'] },
     { titulo: 'Permisos', codigos: ['P', 'G', 'H', 'O'] },
     { titulo: 'Incapacidades', codigos: ['E', 'A', 'M', 'R'] },
-    { titulo: 'No disponibles', codigos: ['DI', 'LL'] },
+    { titulo: 'No disponibles', codigos: ['DI', 'NL', 'LL'] },
     { titulo: 'Otros', codigos: ['S', 'T'] },
 ];

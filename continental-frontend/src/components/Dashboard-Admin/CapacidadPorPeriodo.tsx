@@ -6,6 +6,7 @@ import { Gauge, Plus, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { areasService } from "@/services/areasService";
+import { vacacionesService } from "@/services/vacacionesService";
 import type { Area } from "@/interfaces/Areas.interface";
 import {
     capacidadPorcentajeService,
@@ -51,6 +52,13 @@ export const CapacidadPorPeriodo = () => {
     const [motivo, setMotivo] = useState("");
     const [guardando, setGuardando] = useState(false);
 
+    // "General": el porcentaje de siempre (y el del año en preparación), aquí
+    // mismo para que Ingeniería Industrial no dependa de la configuración del
+    // periodo, que solo ve el superusuario.
+    const [general, setGeneral] = useState("");
+    const [prep, setPrep] = useState("");
+    const [guardandoGeneral, setGuardandoGeneral] = useState(false);
+
     const cargar = useCallback(async () => {
         setCargando(true);
         try {
@@ -65,6 +73,39 @@ export const CapacidadPorPeriodo = () => {
     useEffect(() => {
         cargar();
     }, [cargar]);
+
+    useEffect(() => {
+        if (!datos) return;
+        setGeneral(String(datos.porcentajeGeneral));
+        setPrep(datos.porcentajePreparacion != null ? String(datos.porcentajePreparacion) : "");
+    }, [datos]);
+
+    const guardarGeneral = async () => {
+        const g = Number(general);
+        const p = prep.trim() === "" ? null : Number(prep);
+        if (!(g > 0 && g <= 100) || (p != null && !(p > 0 && p <= 100))) {
+            toast.error("Los porcentajes deben ser mayores a 0 y hasta 100");
+            return;
+        }
+        setGuardandoGeneral(true);
+        try {
+            // Se releen periodo y años justo antes: el backend guarda la fila completa.
+            const actual = await vacacionesService.getConfig();
+            await vacacionesService.updateConfig({
+                porcentajeAusenciaMaximo: g,
+                periodoActual: actual.periodoActual,
+                anioVigente: actual.anioVigente,
+                anioProgramacionAnual: actual.anioProgramacionAnual ?? null,
+                porcentajeAusenciaPreparacion: actual.anioProgramacionAnual == null ? null : p,
+            });
+            toast.success("Porcentaje general guardado");
+            await cargar();
+        } catch (e) {
+            toast.error("No se pudo guardar", { description: (e as { message?: string })?.message, duration: 10000 });
+        } finally {
+            setGuardandoGeneral(false);
+        }
+    };
 
     useEffect(() => {
         areasService
@@ -163,15 +204,33 @@ export const CapacidadPorPeriodo = () => {
                     asignación de días por la empresa, la reprogramación, los calendarios y los dashboards.
                 </p>
                 {datos && (
-                    <p className="text-sm mt-2">
-                        Porcentaje general: <strong>{datos.porcentajeGeneral}%</strong>
-                        {datos.anioPreparacion && datos.porcentajePreparacion ? (
-                            <>
-                                {" "}· {datos.anioPreparacion} (en preparación): <strong>{datos.porcentajePreparacion}%</strong>
-                            </>
+                    <div className="mt-3 flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
+                        <span className="font-semibold self-center mr-2">General</span>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs text-continental-gray-1">% de ausencia general</span>
+                            <input
+                                type="number" step="0.1" min="0.1" max="100"
+                                className="h-9 w-28 rounded-md border px-2"
+                                value={general}
+                                onChange={(e) => setGeneral(e.target.value)}
+                            />
+                        </label>
+                        {datos.anioPreparacion ? (
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs text-continental-gray-1">% del año {datos.anioPreparacion} (en preparación; vacío = el general)</span>
+                                <input
+                                    type="number" step="0.1" min="0.1" max="100"
+                                    className="h-9 w-28 rounded-md border px-2"
+                                    value={prep}
+                                    onChange={(e) => setPrep(e.target.value)}
+                                />
+                            </label>
                         ) : null}
-                        <span className="text-continental-gray-1"> (se cambian arriba, en la configuración del periodo)</span>
-                    </p>
+                        <Button variant="outline" onClick={guardarGeneral} disabled={guardandoGeneral}>
+                            {guardandoGeneral ? "Guardando…" : "Guardar general"}
+                        </Button>
+                        <span className="text-xs text-continental-gray-1">Rige todo el año fuera de los periodos de abajo.</span>
+                    </div>
                 )}
                 <p className="text-xs text-continental-gray-1 mt-1">
                     Si en un mismo día aplican varias, manda la más específica: primero la de día, luego la de semana y luego

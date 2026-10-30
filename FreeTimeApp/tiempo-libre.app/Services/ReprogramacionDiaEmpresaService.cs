@@ -118,6 +118,11 @@ namespace tiempo_libre.Services
                     "Formato de fecha inválido (yyyy-MM-dd).");
             }
 
+            // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
+            var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, fechaNueva);
+            if (motivoNoLaborable != null)
+                return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null, motivoNoLaborable);
+
             if (!MotivosReprogramacionDiaEmpresa.EsValido(request.MotivoTipo))
             {
                 return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,

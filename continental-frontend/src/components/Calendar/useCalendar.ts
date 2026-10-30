@@ -127,6 +127,13 @@ export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; us
                             tipoIncid = (entry as any).tipoIncidencia;
                             if (!turno) turno = parsedTurno;
                         }
+                        // 3b. Domingo (o sábado) no laborable por la regla de su unidad organizativa
+                        else if (entry.incidencia === 'NL') {
+                            eventType = "not-work";
+                            razon = (entry as any).tipoIncidencia || "Domingo no laborable: no se programan vacaciones";
+                            incidencia = entry.incidencia;
+                            tipoIncid = "NL";
+                        }
                         // 4. 📅 DÍAS NORMALES (sin incidencia)
                         else {
                             // Días normales
@@ -164,7 +171,8 @@ export const useCalendar = ({groupId, userId, refreshKey}: {groupId?: number; us
                                 // G...) justo los días en que otro compañero del grupo
                                 // también estaba ausente — por eso una incapacidad del
                                 // 23/07 al 19/08 solo pintaba días sueltos.
-                                if (finalEventType !== 'inability') {
+                                // El domingo no laborable tampoco: no está "lleno", está cerrado.
+                                if (finalEventType !== 'inability' && incidencia !== 'NL') {
                                     // Texto del criterio de aceptación de la captura
                                     // (HU95-101, punto 12): el operador debe saber que el
                                     // día está lleno, no sólo que "no está disponible".

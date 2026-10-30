@@ -442,6 +442,16 @@ namespace tiempo_libre.Services
                 if (!MandaElExcel(vac.FechaVacacion))
                     vacacionesSet.Add((vac.EmpleadoId, vac.FechaVacacion));
 
+            // Domingos (o sábados) no laborables por regla de la unidad organizativa:
+            // ese día nadie trabaja, el turno queda en descanso. Va antes de las V y
+            // F para que una vacación programada antes de la regla se siga viendo.
+            var noLaborables = await new CalendarioLaboralService(_db).PrecargarAsync(new[] { grupoId });
+            foreach (var key in resultado.Keys.ToList())
+            {
+                if (resultado[key] is "1" or "2" or "3" && noLaborables.EsNoLaborable(grupoId, key.Item2))
+                    resultado[key] = "D";
+            }
+
             var turnosNormales = new HashSet<string> { "1", "2", "3", "D", "" };
             foreach (var key in resultado.Keys.ToList())
             {

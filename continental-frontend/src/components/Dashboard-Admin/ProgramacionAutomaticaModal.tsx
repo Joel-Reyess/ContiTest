@@ -2,11 +2,13 @@
  * Modal para configuración y ejecución de programación automática de vacaciones
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, AlertTriangle, CheckCircle, XCircle, Clock, X } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, XCircle, Clock, X, Plus, Trash2 } from 'lucide-react';
+import { areasService } from '@/services/areasService';
+import type { Area } from '@/interfaces/Areas.interface';
 import { AsignacionAutomaticaService } from '@/services/asignacionAutomaticaService';
 import type { AsignacionAutomaticaResponse } from '@/interfaces/Api.interface';
 import { format, getWeek, startOfMonth, endOfMonth, eachWeekOfInterval, endOfWeek } from 'date-fns';
@@ -40,6 +42,21 @@ export const ProgramacionAutomaticaModal = ({
   const [resultados, setResultados] = useState<AsignacionAutomaticaResponse | null>(null);
   const [isReverting, setIsReverting] = useState(false);
   const [mesesExcluidos, setMesesExcluidos] = useState<number[]>([]);
+  // Fechas de arranque/paro en las que se "cargan" días por la empresa, solo
+  // para las áreas elegidas en cada una (requerimiento de planeación 2027).
+  type VentanaForm = { id: number; nombre: string; fechaInicio: string; fechaFin: string; areaIds: number[] };
+  const [ventanas, setVentanas] = useState<VentanaForm[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
+  useEffect(() => {
+    if (!isOpen || areas.length > 0) return;
+    areasService
+      .getAreas()
+      .then((a) => setAreas([...a].sort((x, y) => x.nombreGeneral.localeCompare(y.nombreGeneral, 'es'))))
+      .catch(() => setAreas([]));
+  }, [isOpen, areas.length]);
+  const actualizarVentana = (id: number, cambios: Partial<VentanaForm>) =>
+    setVentanas((vs) => vs.map((v) => (v.id === id ? { ...v, ...cambios } : v)));
+  const ventanasValidas = ventanas.filter((v) => v.fechaInicio && v.fechaFin && v.fechaFin >= v.fechaInicio && v.areaIds.length > 0);
 
   // Nombres de los meses
   const MESES = [
@@ -104,6 +121,7 @@ export const ProgramacionAutomaticaModal = ({
     setStep('confirmation');
     setAnio(anioPorDefecto);
     setMesesExcluidos([]);
+    setVentanas([]);
     setResultados(null);
     onClose();
   };
@@ -114,7 +132,11 @@ export const ProgramacionAutomaticaModal = ({
       setStep('processing');
       
       const semanasExcluidas = obtenerSemanasExcluidas();
-      const response = await AsignacionAutomaticaService.ejecutarAsignacion(anio, semanasExcluidas);
+      const response = await AsignacionAutomaticaService.ejecutarAsignacion(
+        anio,
+        semanasExcluidas,
+        ventanasValidas.map((v) => ({ nombre: v.nombre || undefined, fechaInicio: v.fechaInicio, fechaFin: v.fechaFin, areaIds: v.areaIds }))
+      );
       setResultados(response);
       setStep('results');
       
@@ -276,6 +298,85 @@ export const ProgramacionAutomaticaModal = ({
               </button>
             );
           })}
+        </div>
+
+        <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="mr-auto">
+              <Label className="text-sm font-medium text-continental-gray-1">
+                Fechas de arranque o paro de planta (opcional)
+              </Label>
+              <p className="text-xs text-gray-500 mt-1">
+                A los empleados de las áreas que elijas se les asignan primero sus días en estas fechas, aunque el mes
+                esté excluido. Para darles más cupo esos días, captura una capacidad por periodo para el área.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setVentanas((vs) => [...vs, { id: Date.now(), nombre: '', fechaInicio: '', fechaFin: '', areaIds: [] }])
+              }
+              className="flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" /> Agregar fechas
+            </Button>
+          </div>
+          {ventanas.map((v) => (
+            <div key={v.id} className="rounded-md bg-gray-50 p-3 space-y-2">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col text-xs text-gray-600">
+                  Nombre
+                  <Input
+                    className="h-8 w-44"
+                    placeholder="Ej. Arranque de enero"
+                    value={v.nombre}
+                    onChange={(e) => actualizarVentana(v.id, { nombre: e.target.value })}
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-gray-600">
+                  Desde
+                  <Input type="date" className="h-8" value={v.fechaInicio} onChange={(e) => actualizarVentana(v.id, { fechaInicio: e.target.value })} />
+                </label>
+                <label className="flex flex-col text-xs text-gray-600">
+                  Hasta
+                  <Input type="date" className="h-8" min={v.fechaInicio} value={v.fechaFin} onChange={(e) => actualizarVentana(v.id, { fechaFin: e.target.value })} />
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto text-red-600"
+                  onClick={() => setVentanas((vs) => vs.filter((x) => x.id !== v.id))}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="text-xs text-gray-600">Áreas a las que aplica ({v.areaIds.length})</div>
+              <div className="max-h-32 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1 bg-white rounded border p-2">
+                {areas.map((a) => (
+                  <label key={a.areaId} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={v.areaIds.includes(a.areaId)}
+                      onChange={(e) =>
+                        actualizarVentana(v.id, {
+                          areaIds: e.target.checked ? [...v.areaIds, a.areaId] : v.areaIds.filter((x) => x !== a.areaId),
+                        })
+                      }
+                    />
+                    {a.nombreGeneral}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          {ventanas.length > 0 && ventanasValidas.length < ventanas.length && (
+            <p className="text-xs text-orange-700">
+              Las fechas sin "desde", "hasta" o sin áreas no se van a tomar en cuenta.
+            </p>
+          )}
         </div>
 
         {mesesExcluidos.length > 0 && (

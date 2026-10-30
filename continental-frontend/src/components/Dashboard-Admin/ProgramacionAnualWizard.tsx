@@ -10,7 +10,9 @@ import {
   RefreshCw,
   Briefcase,
   LayoutGrid,
+  Gauge,
 } from "lucide-react";
+import { reglasDomingoService } from "@/services/reglasDomingoService";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
 import { diasInhabilesService } from "@/services/diasInhabilesService";
 import { AsignacionAutomaticaService } from "@/services/asignacionAutomaticaService";
@@ -21,8 +23,10 @@ import { BloquesReservacionService } from "@/services/bloquesReservacionService"
  * Verifica y guía la secuencia acordada con el cliente:
  *   1. Cargar el rol (arranques de reglas del año, ej. enero y abril)
  *   2. Cargar festivos / días inhábiles del año
- *   3. Asignar los días por empresa (según tabla de antigüedades)
- *   4. Generar los bloques de captura
+ *   3. Domingos por unidad organizativa y capacidad por periodo (si aplican)
+ *   4. Asignar los días por empresa (según tabla de antigüedades)
+ *   5. Generar los bloques de captura
+ * Cada acción lleva a la pestaña (y sección) donde se hace (reunión oct-2026).
  * No bloquea nada por sí mismo: muestra qué pasos están completos y ofrece la
  * acción de cada uno. El orden importa (los bloques usan los días inhábiles y
  * la asignación usa el calendario de roles), por eso se numeran.
@@ -36,6 +40,7 @@ interface PasoEstado {
 interface EstadoWizard {
   arranques: PasoEstado;
   festivos: PasoEstado;
+  domingos: PasoEstado;
   diasEmpresa: PasoEstado;
   bloques: PasoEstado;
 }
@@ -53,6 +58,8 @@ interface ProgramacionAnualWizardProps {
   onAbrirGenerarBloques: () => void;
   /** Se invoca cuando el usuario pide ir a la pestaña Calendario (pasos 1 y 2). */
   onIrACalendario?: () => void;
+  /** Lleva a una pestaña de Vacaciones y, si se da, a la sección dentro de ella. */
+  onIrAPestana?: (pestana: 'calendario' | 'domingos' | 'capacidad', seccion?: string) => void;
   /** Cámbialo (ej. contador) para que el wizard vuelva a verificar los pasos tras una acción. */
   version?: number;
 }
@@ -63,6 +70,7 @@ export const ProgramacionAnualWizard = ({
   onAbrirProgramarDias,
   onAbrirGenerarBloques,
   onIrACalendario,
+  onIrAPestana,
   version = 0,
 }: ProgramacionAnualWizardProps) => {
   const navigate = useNavigate();
@@ -76,6 +84,7 @@ export const ProgramacionAnualWizard = ({
     const nuevo: EstadoWizard = {
       arranques: { completado: false, detalle: "Sin verificar" },
       festivos: { completado: false, detalle: "Sin verificar" },
+      domingos: { completado: false, detalle: "Sin verificar" },
       diasEmpresa: { completado: false, detalle: "Sin verificar" },
       bloques: { completado: false, detalle: "Sin verificar" },
     };
@@ -131,6 +140,22 @@ export const ProgramacionAnualWizard = ({
     }
 
     try {
+      const r = await reglasDomingoService.listar(anio);
+      const sinDomingo = r.reglas.filter((x) => x.tipo === "SinDomingo");
+      const unidades = new Set(sinDomingo.map((x) => x.areaId)).size;
+      nuevo.domingos = {
+        completado: sinDomingo.length > 0,
+        detalle: !r.tablaExiste
+          ? "Falta correr Scripts/Migration_ReglasDomingo.sql"
+          : sinDomingo.length > 0
+            ? `${unidades} unidad(es) organizativa(s) con domingos no laborables en ${anio}`
+            : `Sin reglas: todas las unidades con rol normal a siete días (opcional)`,
+      };
+    } catch {
+      nuevo.domingos = { completado: false, detalle: "Opcional; no se pudo verificar" };
+    }
+
+    try {
       const resumen = await AsignacionAutomaticaService.obtenerResumen(anio);
       nuevo.diasEmpresa = {
         completado: resumen.asignacionRealizada,
@@ -181,9 +206,11 @@ export const ProgramacionAnualWizard = ({
             `Define cómo inician los roles del año. En la pestaña Calendario, sección "Fechas de arranque por regla", elige el año ${anio}: verás una tarjeta por regla con su patrón y sus subreglas (R0144, R0144_02…). Pon la fecha de arranque en cada regla, o marca varias y agéndales la misma fecha (ej. enero y otra vez en Semana Santa). Desde esa fecha el calendario se calcula con ese patrón. Se puede agendar desde hoy mismo; en pruebas, "Aplicar vencidos" lo aplica sin esperar.`,
           estado: estado.arranques,
           acciones: [
-            ...(onIrACalendario
-              ? [{ etiqueta: "Ir a Calendario", onClick: onIrACalendario }]
-              : []),
+            ...(onIrAPestana
+              ? [{ etiqueta: "Ir a Fechas de arranque", onClick: () => onIrAPestana("calendario", "seccion-arranques") }]
+              : onIrACalendario
+                ? [{ etiqueta: "Ir a Calendario", onClick: onIrACalendario }]
+                : []),
             {
               etiqueta: `Ver calendario ${anio}`,
               onClick: () => navigate(`/admin/calendario-anual?anio=${anio}`),
@@ -196,20 +223,35 @@ export const ProgramacionAnualWizard = ({
           descripcion:
             `Captura los días inhábiles por ley y por Continental de ${anio}, también en la pestaña Calendario. Se pueden cargar aunque ya existan los del año anterior: si un día ya estaba con el mismo motivo se omite y los demás se guardan.`,
           estado: estado.festivos,
-          acciones: onIrACalendario
-            ? [{ etiqueta: "Ir a Calendario", onClick: onIrACalendario }]
-            : [],
+          acciones: onIrAPestana
+            ? [{ etiqueta: "Ir a Días inhábiles", onClick: () => onIrAPestana("calendario", "seccion-inhabiles") }]
+            : onIrACalendario
+              ? [{ etiqueta: "Ir a Calendario", onClick: onIrACalendario }]
+              : [],
         },
         {
           numero: 3,
+          titulo: "Domingos y capacidad por periodo (si aplican)",
+          descripcion:
+            `Antes de asignar días: define qué unidades organizativas no trabajan domingos (o sábados) y en qué periodo, y si alguna área tendrá más capacidad (tiempo extra) en ciertas fechas, por ejemplo en los arranques. La asignación respeta las dos cosas.`,
+          estado: estado.domingos,
+          acciones: onIrAPestana
+            ? [
+                { etiqueta: "Ir a Domingos por unidad organizativa", onClick: () => onIrAPestana("domingos") },
+                { etiqueta: "Ir a Capacidad por periodo", onClick: () => onIrAPestana("capacidad") },
+              ]
+            : [],
+        },
+        {
+          numero: 4,
           titulo: "Asignar días por empresa",
           descripcion:
-            "Ejecuta la asignación automática según la tabla de antigüedades (4 años → 3 días, 5 → 4, 6 o más → 5). Selecciona el año en el modal.",
+            "Ejecuta la asignación automática según la tabla de antigüedades (4 años → 3 días, 5 → 4, 6 o más → 5). Los días van seguidos según el rol de cada quien; si no caben en una semana siguen en la siguiente. En el modal eliges el año, los meses a excluir y, si quieres, las fechas de arranque/paro por área.",
           estado: estado.diasEmpresa,
           acciones: [{ etiqueta: "Programar días", onClick: onAbrirProgramarDias }],
         },
         {
-          numero: 4,
+          numero: 5,
           titulo: "Generar bloques de captura",
           descripcion:
             "Genera los bloques por grupo con los que los empleados capturarán sus días. Requiere los pasos anteriores.",
@@ -241,6 +283,8 @@ export const ProgramacionAnualWizard = ({
       case 2:
         return <CalendarOff className="w-4 h-4" />;
       case 3:
+        return <Gauge className="w-4 h-4" />;
+      case 4:
         return <Briefcase className="w-4 h-4" />;
       default:
         return <LayoutGrid className="w-4 h-4" />;

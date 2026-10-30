@@ -10,6 +10,7 @@ import { NomenclaturaLegend } from "@/components/Calendar/NomenclaturaLegend";
 import { SAP_NOMENCLATURA, type SAPCodigo } from "@/utils/sapNomenclatura";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
 import type { ReglaTurno, RotacionProgramada } from "@/interfaces/Api.interface";
+import { reglasDomingoService, type ReglaDomingo } from "@/services/reglasDomingoService";
 
 const MESES = [
     "Ene", "Feb", "Mar", "Abr", "May", "Jun",
@@ -145,6 +146,31 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
     const [vista, setVista] = useState<"reglas" | "dashboard">("reglas");
     const [filtroRegla, setFiltroRegla] = useState<string>("__todas__");
     const [filtroSubGrupo, setFiltroSubGrupo] = useState<string>("__todos__");
+    // Las reglas de turno son de toda la planta, pero los domingos no laborables
+    // son por unidad organizativa: se elige una para ver cómo le queda el año.
+    const [reglasDomingo, setReglasDomingo] = useState<ReglaDomingo[]>([]);
+    const [areaDomingos, setAreaDomingos] = useState<number | "">("");
+    useEffect(() => {
+        reglasDomingoService
+            .listar(anio)
+            .then((r) => setReglasDomingo(r.reglas.filter((x) => x.activa && !x.grupoId)))
+            .catch(() => setReglasDomingo([]));
+    }, [anio]);
+    const areasConReglas = useMemo(
+        () => Array.from(new Map(reglasDomingo.map((r) => [r.areaId, r.area])).entries()).sort((a, b) => a[1].localeCompare(b[1], "es")),
+        [reglasDomingo]
+    );
+    const noLaborables = useMemo(() => {
+        const dias = new Set<string>();
+        if (!areaDomingos) return dias;
+        for (const r of reglasDomingo.filter((x) => x.areaId === areaDomingos && x.tipo === "SinDomingo")) {
+            const fin = new Date(`${r.fechaFin.slice(0, 10)}T00:00:00`);
+            for (let d = new Date(`${r.fechaInicio.slice(0, 10)}T00:00:00`); d <= fin; d.setDate(d.getDate() + 1)) {
+                if (d.getDay() === 0 || (r.incluyeSabado && d.getDay() === 6)) dias.add(toIsoDate(d));
+            }
+        }
+        return dias;
+    }, [reglasDomingo, areaDomingos]);
 
     const cargar = async () => {
         setLoading(true);
@@ -350,6 +376,23 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
             </div>
 
             <div className="flex items-end gap-3 flex-wrap">
+                {areasConReglas.length > 0 && (
+                    <div className="min-w-[220px]">
+                        <Label className="text-xs flex items-center gap-1">
+                            <Filter className="size-3" /> Ver domingos no laborables de
+                        </Label>
+                        <select
+                            value={areaDomingos}
+                            onChange={(e) => setAreaDomingos(e.target.value ? Number(e.target.value) : "")}
+                            className="w-full border rounded px-2 py-1.5 text-sm mt-1"
+                        >
+                            <option value="">Ninguna unidad (rol a siete días)</option>
+                            {areasConReglas.map(([id, nombre]) => (
+                                <option key={id} value={id}>{nombre}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="min-w-[200px]">
                     <Label className="text-xs flex items-center gap-1">
                         <Filter className="size-3" /> Filtrar por regla
@@ -436,6 +479,7 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
                                     filas={filas}
                                     arranques={arranques}
                                     hoyIso={hoyIso}
+                                    noLaborables={noLaborables}
                                 />
                             ))}
                         </div>
@@ -453,9 +497,11 @@ interface MesTablaProps {
     filas: FilaSubGrupo[];
     arranques: RotacionProgramada[];
     hoyIso: string;
+    /** Días (yyyy-MM-dd) no laborables para la unidad organizativa elegida. */
+    noLaborables: Set<string>;
 }
 
-const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso }: MesTablaProps) => {
+const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso, noLaborables }: MesTablaProps) => {
     const dias = diasEnMes(anio, mes0);
     const fechas = Array.from({ length: dias }, (_, i) => new Date(anio, mes0, i + 1));
 
@@ -491,7 +537,11 @@ const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso }: MesTablaPr
                                 {fila.nombre}
                             </td>
                             {fechas.map((f, i) => {
-                                const codigo = codigoParaFecha(f, fila.regla, arranques, fila.subGrupo);
+                                const codigoRol = codigoParaFecha(f, fila.regla, arranques, fila.subGrupo);
+                                // Domingo (o sábado) no laborable para la unidad elegida: nadie trabaja.
+                                const codigo = noLaborables.has(toIsoDate(f)) && ["1", "2", "3"].includes(codigoRol ?? "")
+                                    ? "NL"
+                                    : codigoRol;
                                 const entry = codigo && (codigo in SAP_NOMENCLATURA)
                                     ? SAP_NOMENCLATURA[codigo as SAPCodigo]
                                     : null;
