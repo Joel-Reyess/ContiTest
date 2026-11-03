@@ -120,6 +120,8 @@ export interface VentanaAsignacion {
     fechaInicio: string; // yyyy-MM-dd
     fechaFin: string;    // yyyy-MM-dd
     areaIds: number[];
+    /** % en esas fechas para esas áreas, solo días por la empresa (se guarda como capacidad por periodo). */
+    porcentaje?: number;
 }
 
 // Interfaces para reversión completa de programación anual

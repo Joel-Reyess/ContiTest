@@ -18,6 +18,7 @@ BEGIN
         [Alcance]             NVARCHAR(10)   NOT NULL,
         [AreaId]              INT            NULL,
         [GrupoId]             INT            NULL,
+        [AplicaA]             NVARCHAR(10)   NOT NULL CONSTRAINT DF_CapPct_AplicaA DEFAULT 'Ambos',
         [Periodo]             NVARCHAR(10)   NOT NULL,
         [FechaInicio]         DATE           NOT NULL,
         [FechaFin]            DATE           NOT NULL,
@@ -35,6 +36,7 @@ BEGIN
         CONSTRAINT FK_CapPct_DesactivadoPor FOREIGN KEY ([DesactivadoPorId]) REFERENCES [dbo].[Users] ([Id])      ON DELETE NO ACTION,
         CONSTRAINT CK_CapPct_Alcance CHECK ([Alcance] IN ('Planta','Area','Grupo')),
         CONSTRAINT CK_CapPct_Periodo CHECK ([Periodo] IN ('Dia','Semana','Mes')),
+        CONSTRAINT CK_CapPct_AplicaA CHECK ([AplicaA] IN ('Ambos','Empresa','Operador')),
         CONSTRAINT CK_CapPct_Fechas  CHECK ([FechaFin] >= [FechaInicio]),
         CONSTRAINT CK_CapPct_Pct     CHECK ([Porcentaje] > 0 AND [Porcentaje] <= 100)
     );
@@ -46,4 +48,14 @@ END
 ELSE
 BEGIN
     PRINT 'La tabla CapacidadesPorcentaje ya existe.';
+END
+
+-- Nov-2026: a qué días aplica cada capacidad (solo días por la empresa, solo lo
+-- que programan los operadores, o ambos). Para la tabla que ya se había creado.
+IF COL_LENGTH('dbo.CapacidadesPorcentaje', 'AplicaA') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[CapacidadesPorcentaje]
+        ADD [AplicaA] NVARCHAR(10) NOT NULL CONSTRAINT DF_CapPct_AplicaA DEFAULT 'Ambos' WITH VALUES;
+    EXEC('ALTER TABLE [dbo].[CapacidadesPorcentaje] ADD CONSTRAINT CK_CapPct_AplicaA CHECK ([AplicaA] IN (''Ambos'',''Empresa'',''Operador''))');
+    PRINT 'Columna CapacidadesPorcentaje.AplicaA agregada.';
 END

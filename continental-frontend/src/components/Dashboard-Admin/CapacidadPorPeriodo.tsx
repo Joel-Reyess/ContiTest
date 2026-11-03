@@ -11,6 +11,7 @@ import type { Area } from "@/interfaces/Areas.interface";
 import {
     capacidadPorcentajeService,
     type AlcanceCapacidad,
+    type AplicaCapacidad,
     type CapacidadesPorcentajeResponse,
     type PeriodoCapacidad,
 } from "@/services/capacidadPorcentajeService";
@@ -42,6 +43,7 @@ export const CapacidadPorPeriodo = () => {
 
     // Formulario
     const [alcance, setAlcance] = useState<AlcanceCapacidad>("Planta");
+    const [aplicaA, setAplicaA] = useState<AplicaCapacidad>("Ambos");
     const [areaId, setAreaId] = useState<number | "">("");
     const [grupoId, setGrupoId] = useState<number | "">("");
     const [periodo, setPeriodo] = useState<PeriodoCapacidad>("Mes");
@@ -158,6 +160,7 @@ export const CapacidadPorPeriodo = () => {
         try {
             await capacidadPorcentajeService.crear({
                 alcance,
+                aplicaA,
                 areaId: alcance === "Area" && areaId ? Number(areaId) : undefined,
                 grupoId: alcance === "Grupo" && grupoId ? Number(grupoId) : undefined,
                 periodo,
@@ -251,13 +254,21 @@ export const CapacidadPorPeriodo = () => {
                 <h3 className="font-semibold flex items-center gap-2">
                     <Plus className="w-4 h-4" /> Nueva capacidad
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-continental-gray-1">Aplica a</span>
                         <select className="h-9 rounded-md border px-2" value={alcance} onChange={(e) => setAlcance(e.target.value as AlcanceCapacidad)}>
                             <option value="Planta">Toda la planta</option>
                             <option value="Area">Un área (unidad organizativa)</option>
                             <option value="Grupo">Un grupo</option>
+                        </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-continental-gray-1">Para qué días</span>
+                        <select className="h-9 rounded-md border px-2" value={aplicaA} onChange={(e) => setAplicaA(e.target.value as AplicaCapacidad)}>
+                            <option value="Ambos">Días por la empresa y de los operadores</option>
+                            <option value="Empresa">Solo días asignados por la empresa</option>
+                            <option value="Operador">Solo días que programan los operadores</option>
                         </select>
                     </label>
                     {alcance !== "Planta" && (
@@ -351,7 +362,9 @@ export const CapacidadPorPeriodo = () => {
                     </Button>
                     {porcentaje && rangoElegido && (
                         <span className="text-sm text-continental-gray-1">
-                            Se guardará: <strong>{porcentaje}%</strong> {rangoElegido},{" "}
+                            Se guardará: <strong>{porcentaje}%</strong>{" "}
+                            {aplicaA === "Empresa" ? "solo para días por la empresa, " : aplicaA === "Operador" ? "solo para días de los operadores, " : ""}
+                            {rangoElegido},{" "}
                             {alcance === "Planta"
                                 ? "toda la planta"
                                 : alcance === "Area"
@@ -397,6 +410,7 @@ export const CapacidadPorPeriodo = () => {
                                     <th className="px-3 py-2 font-medium">Periodo</th>
                                     <th className="px-3 py-2 font-medium">Fechas</th>
                                     <th className="px-3 py-2 font-medium">Aplica a</th>
+                                    <th className="px-3 py-2 font-medium">Días</th>
                                     <th className="px-3 py-2 font-medium text-right">%</th>
                                     <th className="px-3 py-2 font-medium">Motivo</th>
                                     <th className="px-3 py-2 font-medium">Registro</th>
@@ -413,6 +427,9 @@ export const CapacidadPorPeriodo = () => {
                                                 : `${fechaLarga(c.fechaInicio)} – ${fechaLarga(c.fechaFin)}`}
                                         </td>
                                         <td className="px-3 py-1.5">{alcanceTexto(c)}</td>
+                                        <td className="px-3 py-1.5">
+                                            {c.aplicaA === "Empresa" ? "Por la empresa" : c.aplicaA === "Operador" ? "De los operadores" : "Ambos"}
+                                        </td>
                                         <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{c.porcentaje}%</td>
                                         <td className="px-3 py-1.5">{c.motivo || "—"}</td>
                                         <td className="px-3 py-1.5 text-xs">

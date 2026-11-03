@@ -224,7 +224,8 @@ namespace tiempo_libre.Services
                 {
                     foreach (var fecha in request.FechasVacaciones)
                     {
-                        var estado = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value, fecha);
+                        var estado = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value, fecha,
+                            request.TipoVacacion == "Automatica" ? ContextoLimite.Empresa : ContextoLimite.Operador);
                         if (estado == null) continue;
 
                         var conEsteDia = _validadorPorcentaje.EvaluarRegla(

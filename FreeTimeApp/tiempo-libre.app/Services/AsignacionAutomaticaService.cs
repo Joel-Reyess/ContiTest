@@ -19,6 +19,7 @@ namespace tiempo_libre.Services
         private readonly CalendarioGrupoService _calendarioService;
         private readonly AusenciaService _ausenciaService;
         private readonly ValidadorPorcentajeService _validadorPorcentaje;
+        private readonly LimitePorcentajeService? _limites;
         private readonly ILogger<AsignacionAutomaticaService> _logger;
 
         /// <summary>
@@ -39,8 +40,10 @@ namespace tiempo_libre.Services
             CalendarioGrupoService calendarioService,
             AusenciaService ausenciaService,
             ValidadorPorcentajeService validadorPorcentaje,
-            ILogger<AsignacionAutomaticaService> logger)
+            ILogger<AsignacionAutomaticaService> logger,
+            LimitePorcentajeService? limites = null)
         {
+            _limites = limites;
             _db = db;
             _vacacionesService = vacacionesService;
             _calendarioService = calendarioService;
@@ -115,6 +118,11 @@ namespace tiempo_libre.Services
                     _logger.LogError("Asignación automática {Anio} cancelada: {Motivo}", request.Anio, motivoSinSemanaSanta);
                     return new ApiResponse<AsignacionAutomaticaResponse>(false, response, motivoSinSemanaSanta);
                 }
+
+                // El % que se puso en las fechas de arranque/paro se guarda como
+                // capacidad por periodo (solo días por la empresa) antes de asignar.
+                if (!request.SoloSimulacion)
+                    await CrearCapacidadesDeVentanasAsync(request, response);
 
                 // Re-ejecutar no duplica: a cada empleado se le cuentan los días de
                 // empresa que ya tiene en el año y solo se le asigna lo que falte.
@@ -308,6 +316,64 @@ namespace tiempo_libre.Services
             return ctx;
         }
 
+        /// <summary>
+        /// Cada fecha de arranque/paro con % se vuelve una capacidad por periodo
+        /// del área, por día y solo para los días por la empresa (así la sección
+        /// de fechas del modal y la de capacidad coinciden). Si el área ya tiene
+        /// una capacidad para esos días se deja la que hay y se avisa.
+        /// </summary>
+        private async Task CrearCapacidadesDeVentanasAsync(AsignacionAutomaticaRequest request, AsignacionAutomaticaResponse response)
+        {
+            var conPorcentaje = (request.VentanasPreferentes ?? new List<VentanaAsignacion>())
+                .Where(v => v.Porcentaje is > 0m && v.AreaIds?.Count > 0)
+                .ToList();
+            if (conPorcentaje.Count == 0) return;
+            if (!await new LimitePorcentajeService(_db).TablaExisteAsync())
+            {
+                response.Advertencias.Add("No se guardó el % de las fechas de arranque/paro: falta correr Scripts/Migration_CapacidadesPorcentaje.sql.");
+                return;
+            }
+
+            var nombres = await _db.Areas.ToDictionaryAsync(a => a.AreaId, a => a.NombreGeneral);
+            foreach (var v in conPorcentaje)
+            {
+                var etiqueta = string.IsNullOrWhiteSpace(v.Nombre) ? $"{v.FechaInicio:dd/MM}–{v.FechaFin:dd/MM}" : v.Nombre!.Trim();
+                if (v.Porcentaje > 100 || v.FechaFin < v.FechaInicio || v.FechaFin.DayNumber - v.FechaInicio.DayNumber > 30)
+                {
+                    response.Advertencias.Add($"Fechas \"{etiqueta}\": el % no se guardó (hasta 31 días seguidos y máximo 100%).");
+                    continue;
+                }
+                foreach (var areaId in v.AreaIds.Distinct())
+                {
+                    var yaHay = await _db.CapacidadesPorcentaje.AnyAsync(c =>
+                        c.Activa && c.Alcance == "Area" && c.AreaId == areaId && c.Periodo == "Dia" &&
+                        (c.AplicaA == "Empresa" || c.AplicaA == "Ambos") &&
+                        c.FechaInicio <= v.FechaFin && c.FechaFin >= v.FechaInicio);
+                    if (yaHay)
+                    {
+                        response.Advertencias.Add($"{nombres.GetValueOrDefault(areaId)}: ya tenía capacidad en \"{etiqueta}\"; se dejó la que estaba.");
+                        continue;
+                    }
+                    _db.CapacidadesPorcentaje.Add(new CapacidadPorcentaje
+                    {
+                        Alcance = "Area",
+                        AreaId = areaId,
+                        AplicaA = "Empresa",
+                        Periodo = "Dia",
+                        FechaInicio = v.FechaInicio,
+                        FechaFin = v.FechaFin,
+                        Porcentaje = Math.Round(v.Porcentaje!.Value, 2),
+                        Motivo = $"Fechas de arranque/paro \"{etiqueta}\" (desde Programar días)",
+                        Activa = true,
+                        FechaCreacion = DateTime.Now
+                    });
+                }
+            }
+            await _db.SaveChangesAsync();
+            _db.ChangeTracker.Clear();
+            _limites?.OlvidarCapacidades();
+        }
+
         private static void Ocupar(ContextoAsignacion ctx, int empleadoId, DateOnly fecha)
         {
             if (!ctx.Ocupados.TryGetValue(empleadoId, out var set))
@@ -493,7 +559,7 @@ namespace tiempo_libre.Services
             foreach (var (fecha, turno) in elegidos)
             {
                 var validacion = await _ausenciaService.ValidarDisponibilidadDiaAsync(
-                    new ValidacionDisponibilidadRequest { EmpleadoId = empleado.Id, Fecha = fecha });
+                    new ValidacionDisponibilidadRequest { EmpleadoId = empleado.Id, Fecha = fecha, TipoVacacion = "Automatica" });
                 if (!validacion.Success || validacion.Data?.DiaDisponible != true) return null;
                 asignados.Add(new DiaVacacionAsignado
                 {
@@ -523,7 +589,8 @@ namespace tiempo_libre.Services
             if (_disponibilidadPorGrupoYFecha.TryGetValue(clave, out var cacheado))
                 return cacheado;
 
-            var disponible = await _validadorPorcentaje.PuedeGrupoTenerAusencias(grupoId, 1, null, fecha);
+            // Contra el límite de los días por la empresa (capacidad "Empresa" o "Ambos").
+            var disponible = await _validadorPorcentaje.PuedeGrupoTenerAusencias(grupoId, 1, null, fecha, ContextoLimite.Empresa);
 
             _disponibilidadPorGrupoYFecha[clave] = disponible;
             return disponible;

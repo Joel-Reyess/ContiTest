@@ -89,6 +89,19 @@ export const ProgramacionAnualWizard = ({
       bloques: { completado: false, detalle: "Sin verificar" },
     };
     let algunaFallo = false;
+    // Último cambio al rol (arranques) o a los domingos: si la asignación de días
+    // por la empresa es anterior, se hizo con otro rol y puede caer en descansos
+    // o en domingos no laborables (validación nov-2026).
+    let ultimoCambioRol: Date | null = null;
+    const comoFecha = (iso?: string | null, utc = false) => {
+      if (!iso) return null;
+      const conZona = utc && !/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? `${iso}Z` : iso;
+      const d = new Date(conZona);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const registrarCambio = (d: Date | null) => {
+      if (d && (!ultimoCambioRol || d > ultimoCambioRol)) ultimoCambioRol = d;
+    };
 
     // Cada verificación es independiente: si una falla, las demás siguen.
     try {
@@ -105,6 +118,7 @@ export const ProgramacionAnualWizard = ({
         .map((r) => `${r.codigoRegla} ${r.fechaEjecucion.slice(0, 10)}`)
         .join(" · ");
       const reglasConArranque = new Set(activas.map((r) => r.codigoRegla)).size;
+      activas.forEach((r) => registrarCambio(comoFecha(r.createdAt, true)));
       nuevo.arranques = {
         completado: activas.length > 0,
         detalle:
@@ -140,8 +154,12 @@ export const ProgramacionAnualWizard = ({
     }
 
     try {
-      const r = await reglasDomingoService.listar(anio);
-      const sinDomingo = r.reglas.filter((x) => x.tipo === "SinDomingo");
+      const r = await reglasDomingoService.listar(anio, true);
+      r.reglas.forEach((x) => {
+        registrarCambio(comoFecha(x.fechaCreacion));
+        registrarCambio(comoFecha(x.fechaDesactivacion));
+      });
+      const sinDomingo = r.reglas.filter((x) => x.activa && x.tipo === "SinDomingo");
       const unidades = new Set(sinDomingo.map((x) => x.areaId)).size;
       nuevo.domingos = {
         completado: sinDomingo.length > 0,
@@ -157,11 +175,16 @@ export const ProgramacionAnualWizard = ({
 
     try {
       const resumen = await AsignacionAutomaticaService.obtenerResumen(anio);
+      const asignada = comoFecha(resumen.fechaUltimaAsignacion);
+      const cambio = ultimoCambioRol as Date | null;
+      const quedoVieja = resumen.asignacionRealizada && asignada != null && cambio != null && cambio > asignada;
       nuevo.diasEmpresa = {
-        completado: resumen.asignacionRealizada,
-        detalle: resumen.asignacionRealizada
-          ? `${resumen.totalVacacionesAsignadas} día(s) asignado(s) a ${resumen.empleadosConAsignacion} empleado(s)`
-          : "Aún no se ejecuta la asignación de días por empresa",
+        completado: resumen.asignacionRealizada && !quedoVieja,
+        detalle: !resumen.asignacionRealizada
+          ? "Aún no se ejecuta la asignación de días por empresa"
+          : quedoVieja
+            ? `⚠ Se asignó el ${asignada!.toLocaleDateString()} y después cambió el rol o los domingos: puede haber días en descanso o en domingo no laborable. Revierte la asignación y vuelve a programar.`
+            : `${resumen.totalVacacionesAsignadas} día(s) asignado(s) a ${resumen.empleadosConAsignacion} empleado(s)`,
       };
     } catch (e) {
       algunaFallo = true;

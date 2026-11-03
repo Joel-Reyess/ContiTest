@@ -12,6 +12,13 @@ namespace tiempo_libre.Services
     public sealed record LimiteAplicable(decimal Porcentaje, string Origen, int? CapacidadId = null);
 
     /// <summary>
+    /// Para qué se pregunta el límite: la asignación de días por la empresa, o lo
+    /// que programan los operadores (captura, reprogramaciones, festivos). Una
+    /// capacidad por periodo puede aplicar solo a uno de los dos.
+    /// </summary>
+    public enum ContextoLimite { Operador, Empresa }
+
+    /// <summary>
     /// LA respuesta a "¿qué porcentaje máximo de ausencia rige para este grupo este
     /// día?" (oct-2026). Antes cada servicio lo resolvía a su manera (unos con la
     /// excepción del grupo, otros solo con el general, leyendo la configuración por
@@ -52,10 +59,10 @@ namespace tiempo_libre.Services
             _db = db;
         }
 
-        public async Task<decimal> LimiteAsync(int grupoId, DateOnly fecha) =>
-            (await DetalleAsync(grupoId, fecha)).Porcentaje;
+        public async Task<decimal> LimiteAsync(int grupoId, DateOnly fecha, ContextoLimite contexto = ContextoLimite.Operador) =>
+            (await DetalleAsync(grupoId, fecha, contexto)).Porcentaje;
 
-        public async Task<LimiteAplicable> DetalleAsync(int grupoId, DateOnly fecha)
+        public async Task<LimiteAplicable> DetalleAsync(int grupoId, DateOnly fecha, ContextoLimite contexto = ContextoLimite.Operador)
         {
             if (!_excepciones.ContainsKey((grupoId, fecha)))
             {
@@ -66,7 +73,7 @@ namespace tiempo_libre.Services
             }
             await CargarAreasAsync(new[] { grupoId });
             await CargarBaseAsync();
-            return Resolver(grupoId, fecha);
+            return Resolver(grupoId, fecha, contexto);
         }
 
         /// <summary>
@@ -108,16 +115,21 @@ namespace tiempo_libre.Services
             return _capacidades!.Where(c => c.FechaInicio <= hasta && c.FechaFin >= desde).ToList();
         }
 
-        internal LimiteAplicable Resolver(int grupoId, DateOnly fecha)
+        /// <summary>Vuelve a leer las capacidades (se acaban de crear algunas en la misma petición).</summary>
+        public void OlvidarCapacidades() => _capacidades = null;
+
+        internal LimiteAplicable Resolver(int grupoId, DateOnly fecha, ContextoLimite contexto)
         {
             if (_excepciones.TryGetValue((grupoId, fecha), out var excepcion) && excepcion.HasValue)
                 return new LimiteAplicable(excepcion.Value, "Excepción del grupo para ese día");
 
             var areaId = _areaDeGrupo.GetValueOrDefault(grupoId);
             var capacidad = (_capacidades ?? new List<CapacidadPorcentaje>())
-                .Where(c => c.FechaInicio <= fecha && fecha <= c.FechaFin && Aplica(c, grupoId, areaId))
+                .Where(c => c.FechaInicio <= fecha && fecha <= c.FechaFin && Aplica(c, grupoId, areaId) &&
+                            (c.AplicaA == "Ambos" || c.AplicaA == contexto.ToString()))
                 .OrderBy(c => RangoPeriodo(c.Periodo))
                 .ThenBy(c => RangoAlcance(c.Alcance))
+                .ThenBy(c => c.AplicaA == "Ambos" ? 1 : 0)
                 .ThenByDescending(c => c.FechaCreacion)
                 .ThenByDescending(c => c.Id)
                 .FirstOrDefault();
@@ -144,7 +156,13 @@ namespace tiempo_libre.Services
                 "Area" => "del área",
                 _ => "de la planta"
             };
-            return $"Capacidad por periodo ({periodo}, {alcance})";
+            var dias = c.AplicaA switch
+            {
+                "Empresa" => ", solo días por la empresa",
+                "Operador" => ", solo días de los operadores",
+                _ => ""
+            };
+            return $"Capacidad por periodo ({periodo}, {alcance}{dias})";
         }
 
         private static bool Aplica(CapacidadPorcentaje c, int grupoId, int? areaId) => c.Alcance switch
@@ -185,9 +203,18 @@ namespace tiempo_libre.Services
             }
             if (_capacidades == null)
             {
-                _capacidades = await TablaExisteAsync()
-                    ? await _db.CapacidadesPorcentaje.AsNoTracking().Where(c => c.Activa).ToListAsync()
-                    : new List<CapacidadPorcentaje>();
+                try
+                {
+                    _capacidades = await TablaExisteAsync()
+                        ? await _db.CapacidadesPorcentaje.AsNoTracking().Where(c => c.Activa).ToListAsync()
+                        : new List<CapacidadPorcentaje>();
+                }
+                catch
+                {
+                    // P. ej. falta la columna AplicaA (no se corrió el script de nuevo):
+                    // mejor el porcentaje general que tumbar la captura y los calendarios.
+                    _capacidades = new List<CapacidadPorcentaje>();
+                }
             }
         }
 
@@ -221,8 +248,14 @@ namespace tiempo_libre.Services
 
         internal TablaLimites(LimitePorcentajeService servicio) => _servicio = servicio;
 
-        public decimal Limite(int grupoId, DateOnly fecha) => _servicio.Resolver(grupoId, fecha).Porcentaje;
+        public decimal Limite(int grupoId, DateOnly fecha, ContextoLimite contexto = ContextoLimite.Operador) =>
+            _servicio.Resolver(grupoId, fecha, contexto).Porcentaje;
 
-        public LimiteAplicable Detalle(int grupoId, DateOnly fecha) => _servicio.Resolver(grupoId, fecha);
+        /// <summary>El mayor de los dos (para dashboards: lo autorizado para cualquiera de los dos no es rebase).</summary>
+        public decimal LimiteMayor(int grupoId, DateOnly fecha) =>
+            Math.Max(Limite(grupoId, fecha, ContextoLimite.Operador), Limite(grupoId, fecha, ContextoLimite.Empresa));
+
+        public LimiteAplicable Detalle(int grupoId, DateOnly fecha, ContextoLimite contexto = ContextoLimite.Operador) =>
+            _servicio.Resolver(grupoId, fecha, contexto);
     }
 }

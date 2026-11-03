@@ -26,6 +26,14 @@ namespace tiempo_libre.Models
 
         public int? GrupoId { get; set; }
 
+        /// <summary>
+        /// A qué días aplica: "Empresa" (solo la asignación de días por la
+        /// empresa), "Operador" (solo lo que programan los operadores: captura,
+        /// reprogramaciones, festivos) o "Ambos".
+        /// </summary>
+        [Required, MaxLength(10)]
+        public string AplicaA { get; set; } = "Ambos";
+
         /// <summary>"Dia", "Semana" (lunes a domingo) o "Mes".</summary>
         [Required, MaxLength(10)]
         public string Periodo { get; set; } = "Mes";

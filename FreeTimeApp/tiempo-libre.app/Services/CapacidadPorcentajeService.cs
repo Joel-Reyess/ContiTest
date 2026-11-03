@@ -18,6 +18,7 @@ namespace tiempo_libre.Services
     {
         private static readonly string[] Alcances = { "Planta", "Area", "Grupo" };
         private static readonly string[] Periodos = { "Dia", "Semana", "Mes" };
+        private static readonly string[] Aplicaciones = { "Ambos", "Empresa", "Operador" };
 
         private readonly FreeTimeDbContext _db;
         private readonly LimitePorcentajeService _limites;
@@ -73,6 +74,7 @@ namespace tiempo_libre.Services
             {
                 Id = f.Capacidad.Id,
                 Alcance = f.Capacidad.Alcance,
+                AplicaA = f.Capacidad.AplicaA,
                 AreaId = f.Capacidad.AreaId,
                 Area = f.Area,
                 GrupoId = f.Capacidad.GrupoId,
@@ -103,10 +105,14 @@ namespace tiempo_libre.Services
                 return new ApiResponse<int>(false, 0, "El periodo debe ser Dia, Semana o Mes.");
             if (req.Porcentaje <= 0 || req.Porcentaje > 100)
                 return new ApiResponse<int>(false, 0, "El porcentaje debe ser mayor a 0 y hasta 100.");
+            var aplicaA = string.IsNullOrWhiteSpace(req.AplicaA) ? "Ambos" : req.AplicaA;
+            if (!Aplicaciones.Contains(aplicaA))
+                return new ApiResponse<int>(false, 0, "Debe aplicar a Ambos, Empresa u Operador.");
 
             var capacidad = new CapacidadPorcentaje
             {
                 Alcance = req.Alcance,
+                AplicaA = aplicaA,
                 Periodo = req.Periodo,
                 Porcentaje = Math.Round(req.Porcentaje, 2),
                 Motivo = string.IsNullOrWhiteSpace(req.Motivo) ? null : req.Motivo.Trim(),
@@ -214,6 +220,8 @@ namespace tiempo_libre.Services
             var existente = await _db.CapacidadesPorcentaje
                 .Where(x => x.Activa && x.Id != c.Id && x.Periodo == c.Periodo && x.Alcance == c.Alcance &&
                             x.AreaId == c.AreaId && x.GrupoId == c.GrupoId &&
+                            // "Ambos" se encima con todo; "Empresa" y "Operador" no entre sí.
+                            (x.AplicaA == c.AplicaA || x.AplicaA == "Ambos" || c.AplicaA == "Ambos") &&
                             x.FechaInicio <= c.FechaFin && x.FechaFin >= c.FechaInicio)
                 .FirstOrDefaultAsync();
             return existente == null

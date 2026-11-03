@@ -241,7 +241,8 @@ namespace tiempo_libre.Services
 
                         if (plantillaGrupo == 0 || ausentesGrupo == 0) continue;
 
-                        var maximo = limites.Limite(grupo.GrupoId, fecha);
+                        // Lo autorizado para días por la empresa o para operadores no es rebase.
+                        var maximo = limites.LimiteMayor(grupo.GrupoId, fecha);
                         var regla = _validador.EvaluarRegla(plantillaGrupo, ausentesGrupo, 0, maximo);
 
                         if (!regla.Permitido)

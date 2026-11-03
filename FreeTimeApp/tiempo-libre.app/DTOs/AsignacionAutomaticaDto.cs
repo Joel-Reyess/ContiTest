@@ -40,6 +40,13 @@ namespace tiempo_libre.DTOs
         public DateOnly FechaFin { get; set; }
         public List<int> AreaIds { get; set; } = new();
         public string? Nombre { get; set; }
+
+        /// <summary>
+        /// Opcional: % de ausencia permitido en esas fechas para esas áreas, solo
+        /// para los días por la empresa. Se guarda como capacidad por periodo
+        /// (aparece en esa pestaña) para que las dos cosas coincidan.
+        /// </summary>
+        public decimal? Porcentaje { get; set; }
     }
 
     public class AsignacionAutomaticaResponse

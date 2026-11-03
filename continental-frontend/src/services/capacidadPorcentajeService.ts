@@ -5,11 +5,14 @@ const BASE = '/api/capacidad-porcentaje'
 
 export type AlcanceCapacidad = 'Planta' | 'Area' | 'Grupo'
 export type PeriodoCapacidad = 'Dia' | 'Semana' | 'Mes'
+/** A qué días aplica: solo los que asigna la empresa, solo los que programan los operadores, o ambos. */
+export type AplicaCapacidad = 'Ambos' | 'Empresa' | 'Operador'
 
 /** Porcentaje distinto al general durante un día, semana o mes (planta, área o grupo). */
 export interface CapacidadPorcentaje {
     id: number
     alcance: AlcanceCapacidad
+    aplicaA: AplicaCapacidad
     areaId?: number | null
     area?: string | null
     grupoId?: number | null
@@ -37,6 +40,7 @@ export interface CapacidadesPorcentajeResponse {
 
 export interface CrearCapacidadRequest {
     alcance: AlcanceCapacidad
+    aplicaA: AplicaCapacidad
     areaId?: number
     grupoId?: number
     periodo: PeriodoCapacidad

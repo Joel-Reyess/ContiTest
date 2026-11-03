@@ -44,7 +44,7 @@ export const ProgramacionAutomaticaModal = ({
   const [mesesExcluidos, setMesesExcluidos] = useState<number[]>([]);
   // Fechas de arranque/paro en las que se "cargan" días por la empresa, solo
   // para las áreas elegidas en cada una (requerimiento de planeación 2027).
-  type VentanaForm = { id: number; nombre: string; fechaInicio: string; fechaFin: string; areaIds: number[] };
+  type VentanaForm = { id: number; nombre: string; fechaInicio: string; fechaFin: string; areaIds: number[]; porcentaje: string };
   const [ventanas, setVentanas] = useState<VentanaForm[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   useEffect(() => {
@@ -135,7 +135,13 @@ export const ProgramacionAutomaticaModal = ({
       const response = await AsignacionAutomaticaService.ejecutarAsignacion(
         anio,
         semanasExcluidas,
-        ventanasValidas.map((v) => ({ nombre: v.nombre || undefined, fechaInicio: v.fechaInicio, fechaFin: v.fechaFin, areaIds: v.areaIds }))
+        ventanasValidas.map((v) => ({
+          nombre: v.nombre || undefined,
+          fechaInicio: v.fechaInicio,
+          fechaFin: v.fechaFin,
+          areaIds: v.areaIds,
+          porcentaje: v.porcentaje.trim() ? Number(v.porcentaje) : undefined,
+        }))
       );
       setResultados(response);
       setStep('results');
@@ -308,7 +314,9 @@ export const ProgramacionAutomaticaModal = ({
               </Label>
               <p className="text-xs text-gray-500 mt-1">
                 A los empleados de las áreas que elijas se les asignan primero sus días en estas fechas, aunque el mes
-                esté excluido. Para darles más cupo esos días, captura una capacidad por periodo para el área.
+                esté excluido. Cuántos caben por día lo decide el %: si pones uno aquí, se guarda como capacidad por
+                periodo de esas áreas en esas fechas, solo para días por la empresa (y aparece en la pestaña Capacidad
+                por periodo). Si lo dejas vacío rige el % que ya tengan.
               </p>
             </div>
             <Button
@@ -316,7 +324,7 @@ export const ProgramacionAutomaticaModal = ({
               variant="outline"
               size="sm"
               onClick={() =>
-                setVentanas((vs) => [...vs, { id: Date.now(), nombre: '', fechaInicio: '', fechaFin: '', areaIds: [] }])
+                setVentanas((vs) => [...vs, { id: Date.now(), nombre: '', fechaInicio: '', fechaFin: '', areaIds: [], porcentaje: '' }])
               }
               className="flex items-center gap-1"
             >
@@ -342,6 +350,19 @@ export const ProgramacionAutomaticaModal = ({
                 <label className="flex flex-col text-xs text-gray-600">
                   Hasta
                   <Input type="date" className="h-8" min={v.fechaInicio} value={v.fechaFin} onChange={(e) => actualizarVentana(v.id, { fechaFin: e.target.value })} />
+                </label>
+                <label className="flex flex-col text-xs text-gray-600">
+                  % esos días (opcional)
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="100"
+                    className="h-8 w-28"
+                    placeholder="Ej. 10"
+                    value={v.porcentaje}
+                    onChange={(e) => actualizarVentana(v.id, { porcentaje: e.target.value })}
+                  />
                 </label>
                 <Button
                   type="button"
