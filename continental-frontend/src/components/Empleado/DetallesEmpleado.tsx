@@ -34,6 +34,7 @@ import { RegistrarPermisoModal } from "@/components/Empleado/RegistrarPermisoMod
 import { ExtenderIncapacidadModal } from "@/components/Empleado/ExtenderIncapacidadModal";
 import { SolicitarReprogramacionDiaEmpresaModal } from "@/components/Dashboard-Empleados/SolicitarReprogramacionDiaEmpresaModal";
 import { SolicitarVacacionLaboradaModal } from "@/components/Dashboard-Empleados/SolicitarVacacionLaboradaModal";
+import { SolicitarReprogramacionPostIncapacidadModal } from "@/components/Dashboard-Empleados/SolicitarReprogramacionPostIncapacidadModal";
 export const DetallesEmpleado = ({
 }: {
   currentPeriod: Period;
@@ -110,6 +111,9 @@ export const DetallesEmpleado = ({
   const [showExtenderModal, setShowExtenderModal] = useState(false);
   const [showReprogDiaEmpresaModal, setShowReprogDiaEmpresaModal] = useState(false);
   const [showVacacionLaboradaModal, setShowVacacionLaboradaModal] = useState(false);
+  // Reprogramación post-incapacidad: el comité sindical la pide desde su vista;
+  // el superusuario no tenía dónde hacerlo (nov-2026).
+  const [showReprogPostIncModal, setShowReprogPostIncModal] = useState(false);
   // Se incrementa después de operaciones que afectan el calendario (extender,
   // reprogramar, solicitar) para forzar al CalendarComponent a refetchear.
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
@@ -1116,6 +1120,16 @@ const handleRemoveDay = async (fecha: string) => {
                 Vacación laborada
               </Button>
             )}
+            {isSuperUsuario && (
+              <Button
+                variant="outline"
+                onClick={() => setShowReprogPostIncModal(true)}
+                className="flex items-center gap-2 w-[225px] h-[45px] border-indigo-400 text-indigo-700 rounded-lg hover:bg-indigo-50"
+              >
+                <CalendarPlus2 size={16} />
+                Reprogramación post-incapacidad
+              </Button>
+            )}
                       {isLeader && (
                           <OvertimeCalendar
                               excepciones={excepcionesTiempoExtra}
@@ -1338,6 +1352,18 @@ const handleRemoveDay = async (fecha: string) => {
               <SolicitarReprogramacionDiaEmpresaModal
                   show={showReprogDiaEmpresaModal}
                   onClose={() => setShowReprogDiaEmpresaModal(false)}
+                  empleadoId={parseInt(id)}
+                  empleadoNombre={sindicalizado.nombre}
+                  onSolicitudCreada={() => {
+                      if (id) getEmployeeDetails(id);
+                      refreshCalendar();
+                  }}
+              />
+          )}
+          {showReprogPostIncModal && sindicalizado && id && (
+              <SolicitarReprogramacionPostIncapacidadModal
+                  show={showReprogPostIncModal}
+                  onClose={() => setShowReprogPostIncModal(false)}
                   empleadoId={parseInt(id)}
                   empleadoNombre={sindicalizado.nombre}
                   onSolicitudCreada={() => {

@@ -92,7 +92,7 @@ namespace tiempo_libre.Controllers
         // ─── Solicitar ────────────────────────────────────────────────────────
 
         [HttpPost("solicitar")]
-        [Authorize(Roles = "EmpleadoSindicalizado,Empleado Sindicalizado,DelegadoSindical,Delegado Sindical,JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "EmpleadoSindicalizado,Empleado Sindicalizado,DelegadoSindical,Delegado Sindical,JefeArea,Jefe De Area,SuperUsuario,Super Usuario")]
         public async Task<IActionResult> Solicitar([FromBody] SolicitarReprogramacionPostIncapacidadRequest request)
         {
             try
@@ -120,7 +120,7 @@ namespace tiempo_libre.Controllers
         // ─── Aprobar / rechazar ───────────────────────────────────────────────
 
         [HttpPost("aprobar")]
-        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,Super Usuario")]
         public async Task<IActionResult> AprobarRechazar([FromBody] AprobarReprogramacionPostIncapacidadRequest request)
         {
             try
