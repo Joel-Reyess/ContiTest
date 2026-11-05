@@ -142,6 +142,14 @@ export const CapacidadPorPeriodo = () => {
         }
     }, [periodo, mes, fecha, fechaFin]);
 
+    // El % que rige ese año sin capacidad: lo que el nuevo reemplaza.
+    const anioDelRango = Number((periodo === "Mes" ? mes : fecha).slice(0, 4));
+    const baseDelAnio = datos
+        ? datos.anioPreparacion === anioDelRango && datos.porcentajePreparacion
+            ? datos.porcentajePreparacion
+            : datos.porcentajeGeneral
+        : null;
+
     const guardar = async () => {
         const pct = Number(porcentaje);
         if (!pct || pct <= 0 || pct > 100) {
@@ -202,8 +210,9 @@ export const CapacidadPorPeriodo = () => {
                 </h2>
                 <p className="text-sm text-continental-gray-1 mt-1">
                     Con autorización de tiempo extra se puede permitir un porcentaje de ausencia distinto al general durante
-                    un día, una semana (lunes a domingo) o un mes, para toda la planta, un área o un grupo. Mientras está
-                    vigente manda sobre el general; al terminar el periodo vuelve el general. Se aplica en la captura, la
+                    un día, una semana (lunes a domingo) o un mes, para toda la planta, un área o un grupo. El % que
+                    captures <strong>reemplaza</strong> al general en esas fechas (no se suma): si el general es 8% y aquí
+                    pones 10%, esos días rige 10%. Al terminar el periodo vuelve el general. Se aplica en la captura, la
                     asignación de días por la empresa, la reprogramación, los calendarios y los dashboards.
                 </p>
                 {datos && (
@@ -270,6 +279,12 @@ export const CapacidadPorPeriodo = () => {
                             <option value="Empresa">Solo días asignados por la empresa</option>
                             <option value="Operador">Solo días que programan los operadores</option>
                         </select>
+                        {aplicaA === "Empresa" && (
+                            <span className="text-xs text-blue-700">
+                                Estas fechas también se usan como prioridad al programar los días por la empresa de esa área o
+                                grupo (igual que las fechas de arranque).
+                            </span>
+                        )}
                     </label>
                     {alcance !== "Planta" && (
                         <label className="flex flex-col gap-1">
@@ -339,7 +354,7 @@ export const CapacidadPorPeriodo = () => {
                         </label>
                     )}
                     <label className="flex flex-col gap-1">
-                        <span className="text-xs font-medium text-continental-gray-1">% de ausencia permitido</span>
+                        <span className="text-xs font-medium text-continental-gray-1">% de ausencia permitido (reemplaza al general)</span>
                         <input
                             type="number"
                             step="0.1"
@@ -362,7 +377,8 @@ export const CapacidadPorPeriodo = () => {
                     </Button>
                     {porcentaje && rangoElegido && (
                         <span className="text-sm text-continental-gray-1">
-                            Se guardará: <strong>{porcentaje}%</strong>{" "}
+                            Se guardará: <strong>{porcentaje}%</strong>
+                            {baseDelAnio != null ? ` en lugar del ${baseDelAnio}%` : ""}{" "}
                             {aplicaA === "Empresa" ? "solo para días por la empresa, " : aplicaA === "Operador" ? "solo para días de los operadores, " : ""}
                             {rangoElegido},{" "}
                             {alcance === "Planta"

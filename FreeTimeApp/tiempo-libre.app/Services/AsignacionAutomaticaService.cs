@@ -275,10 +275,44 @@ namespace tiempo_libre.Services
                 Inhabiles = diasInhabiles.ToHashSet(),
                 SemanaSanta = semanaSanta,
                 Ventanas = (ventanas ?? new List<VentanaAsignacion>())
-                    .Where(v => v.AreaIds?.Count > 0 && v.FechaFin >= v.FechaInicio)
-                    .OrderBy(v => v.FechaInicio)
+                    .Where(v => (v.AreaIds?.Count > 0 || v.GrupoIds?.Count > 0 || v.TodaLaPlanta) && v.FechaFin >= v.FechaInicio)
                     .ToList()
             };
+
+            // Las capacidades "solo días asignados por la empresa" también marcan
+            // prioridad: si Ingeniería subió el % de un área en ciertas fechas para
+            // los días por la empresa, ahí es donde se cargan primero (nov-2026: el
+            // cliente pidió que las dos secciones queden ligadas).
+            try
+            {
+                if (await new LimitePorcentajeService(_db).TablaExisteAsync())
+                {
+                    var capacidades = await _db.CapacidadesPorcentaje.AsNoTracking()
+                        .Where(c => c.Activa && c.AplicaA == "Empresa" && c.FechaInicio <= fin && c.FechaFin >= ini)
+                        .ToListAsync(ct);
+                    foreach (var c in capacidades)
+                        ctx.Ventanas.Add(new VentanaAsignacion
+                        {
+                            FechaInicio = c.FechaInicio,
+                            FechaFin = c.FechaFin,
+                            AreaIds = c.Alcance == "Area" && c.AreaId.HasValue ? new List<int> { c.AreaId.Value } : new List<int>(),
+                            GrupoIds = c.Alcance == "Grupo" && c.GrupoId.HasValue ? new List<int> { c.GrupoId.Value } : new List<int>(),
+                            TodaLaPlanta = c.Alcance == "Planta",
+                            Nombre = c.Motivo
+                        });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No se pudieron leer las capacidades de empresa como prioridad; se sigue sin ellas");
+            }
+            ctx.Ventanas = ctx.Ventanas
+                .GroupBy(v => (v.FechaInicio, v.FechaFin, v.TodaLaPlanta,
+                               string.Join(",", (v.AreaIds ?? new()).OrderBy(x => x)),
+                               string.Join(",", (v.GrupoIds ?? new()).OrderBy(x => x))))
+                .Select(g => g.First())
+                .OrderBy(v => v.FechaInicio)
+                .ToList();
 
             var grupoIds = empleados.Where(e => e.GrupoId.HasValue).Select(e => e.GrupoId!.Value).Distinct().ToList();
             ctx.NoLaborables = await new CalendarioLaboralService(_db).PrecargarAsync(grupoIds);
@@ -502,7 +536,9 @@ namespace tiempo_libre.Services
             var areaId = empleado.Grupo?.AreaId;
 
             var opciones = new List<(DateOnly Desde, DateOnly Hasta, VentanaAsignacion? Ventana)>();
-            foreach (var v in ctx.Ventanas.Where(v => areaId.HasValue && v.AreaIds.Contains(areaId.Value)))
+            foreach (var v in ctx.Ventanas.Where(v => v.TodaLaPlanta ||
+                                                      (areaId.HasValue && v.AreaIds.Contains(areaId.Value)) ||
+                                                      v.GrupoIds.Contains(grupoId)))
             {
                 var desde = v.FechaInicio < inicioAnio ? inicioAnio : v.FechaInicio;
                 var hasta = v.FechaFin > finAnio ? finAnio : v.FechaFin;

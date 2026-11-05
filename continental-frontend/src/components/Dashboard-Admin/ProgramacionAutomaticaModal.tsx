@@ -10,6 +10,7 @@ import { Loader2, AlertTriangle, CheckCircle, XCircle, Clock, X, Plus, Trash2 } 
 import { areasService } from '@/services/areasService';
 import type { Area } from '@/interfaces/Areas.interface';
 import { AsignacionAutomaticaService } from '@/services/asignacionAutomaticaService';
+import { capacidadPorcentajeService, type CapacidadPorcentaje } from '@/services/capacidadPorcentajeService';
 import type { AsignacionAutomaticaResponse } from '@/interfaces/Api.interface';
 import { format, getWeek, startOfMonth, endOfMonth, eachWeekOfInterval, endOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -54,6 +55,16 @@ export const ProgramacionAutomaticaModal = ({
       .then((a) => setAreas([...a].sort((x, y) => x.nombreGeneral.localeCompare(y.nombreGeneral, 'es'))))
       .catch(() => setAreas([]));
   }, [isOpen, areas.length]);
+  // Capacidades "solo días por la empresa" del año: también son fechas con
+  // prioridad al asignar (se muestran para que se vea que las dos secciones coinciden).
+  const [prioridadesCapacidad, setPrioridadesCapacidad] = useState<CapacidadPorcentaje[]>([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    capacidadPorcentajeService
+      .listar(anio)
+      .then((r) => setPrioridadesCapacidad(r.capacidades.filter((c) => c.activa && c.aplicaA === 'Empresa')))
+      .catch(() => setPrioridadesCapacidad([]));
+  }, [isOpen, anio]);
   const actualizarVentana = (id: number, cambios: Partial<VentanaForm>) =>
     setVentanas((vs) => vs.map((v) => (v.id === id ? { ...v, ...cambios } : v)));
   const ventanasValidas = ventanas.filter((v) => v.fechaInicio && v.fechaFin && v.fechaFin >= v.fechaInicio && v.areaIds.length > 0);
@@ -331,6 +342,19 @@ export const ProgramacionAutomaticaModal = ({
               <Plus className="w-4 h-4" /> Agregar fechas
             </Button>
           </div>
+          {prioridadesCapacidad.length > 0 && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+              <p className="font-medium">Ya marcadas como prioridad desde Capacidad por periodo (solo días por la empresa):</p>
+              <ul className="mt-1 space-y-0.5">
+                {prioridadesCapacidad.map((c) => (
+                  <li key={c.id}>
+                    {c.alcance === 'Planta' ? 'Toda la planta' : c.alcance === 'Area' ? c.area : `Grupo ${c.grupo} (${c.area ?? ''})`} ·{' '}
+                    {c.fechaInicio.slice(0, 10)} al {c.fechaFin.slice(0, 10)} · {c.porcentaje}%
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {ventanas.map((v) => (
             <div key={v.id} className="rounded-md bg-gray-50 p-3 space-y-2">
               <div className="flex flex-wrap items-end gap-2">

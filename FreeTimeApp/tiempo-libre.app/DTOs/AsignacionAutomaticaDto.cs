@@ -39,6 +39,10 @@ namespace tiempo_libre.DTOs
         public DateOnly FechaInicio { get; set; }
         public DateOnly FechaFin { get; set; }
         public List<int> AreaIds { get; set; } = new();
+        /// <summary>Grupos a los que aplica (las que salen de una capacidad por grupo).</summary>
+        public List<int> GrupoIds { get; set; } = new();
+        /// <summary>Aplica a toda la planta (capacidad de planta).</summary>
+        public bool TodaLaPlanta { get; set; }
         public string? Nombre { get; set; }
 
         /// <summary>
