@@ -16,6 +16,7 @@ import { fechaLocalISO } from '@/utils/fechaLocal';
 import { vacacionesService } from '@/services/vacacionesService';
 import { obtenerMovimientosDiasEmpresa, marcarDiaAsignado, type DiaAsignado } from '@/utils/diasEmpresaMovimientos';
 import { MiTurnoBanner } from './MiTurnoBanner';
+import { AvisoDomingosNoLaborables } from '@/components/Calendar/AvisoDomingosNoLaborables';
 
 // Datos de respaldo para ocupación por mes (fallback)
 const fallbackOccupationData = [
@@ -456,6 +457,7 @@ const RequestVacations = () => {
                     <MiTurnoBanner empleadoId={user.id} anio={anioCaptura} onBloqueAbierto={setBloqueAbierto} />
                 </div>
             )}
+            <AvisoDomingosNoLaborables empleadoId={user?.id} anio={anioCaptura} />
             {turnoCaptura && !turnoCaptura.permitido && (
                 <div className="mx-2 mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
                     Todavía no puedes elegir días de {anioCaptura}: {turnoCaptura.motivo}

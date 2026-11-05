@@ -47,6 +47,7 @@ namespace tiempo_libre.Services
 
             // Generar el calendario
             var calendario = await GenerarCalendarioAsync(fechaInicio, fechaFin, reglaInfo.Value.Regla, reglaInfo.Value.NumeroGrupo);
+            await AplicarNoLaborablesAsync(calendario, grupoId, marcarIncidencia: false);
 
             var response = new CalendarioGrupoResponse
             {
@@ -61,6 +62,30 @@ namespace tiempo_libre.Services
             return new ApiResponse<CalendarioGrupoResponse>(true, response, null);
         }
 
+
+        /// <summary>
+        /// Domingos (o sábados) que una regla de la unidad organizativa deja no
+        /// laborables: nadie trabaja, así que el turno queda en descanso. En el
+        /// calendario del empleado además se marcan "NL" (sombreado y con aviso en
+        /// la captura) cuando el día no trae ya otra incidencia (una vacación
+        /// programada antes de la regla se sigue viendo).
+        /// </summary>
+        private async Task AplicarNoLaborablesAsync(List<CalendarioGrupoDiaDto> calendario, int grupoId, bool marcarIncidencia)
+        {
+            var tabla = await new CalendarioLaboralService(_db).PrecargarAsync(new[] { grupoId });
+            foreach (var dia in calendario)
+            {
+                var motivo = tabla.Motivo(grupoId, DateOnly.FromDateTime(dia.Fecha));
+                if (motivo == null) continue;
+                dia.Turno = "D";
+                dia.Tipo = TipoCalendarioExtensions.FromShortString("D").ToDescription();
+                if (marcarIncidencia && string.IsNullOrEmpty(dia.Incidencia))
+                {
+                    dia.Incidencia = "NL";
+                    dia.TipoIncidencia = motivo;
+                }
+            }
+        }
 
         private async Task<List<CalendarioGrupoDiaDto>> GenerarCalendarioAsync(DateTime fechaInicio, DateTime fechaFin, string regla, int numeroGrupo)
         {
@@ -147,6 +172,7 @@ namespace tiempo_libre.Services
 
             // Generar el calendario base con incidencias
             var calendario = await GenerarCalendarioConIncidenciasAsync(usuarioId, fechaInicio, fechaFin, reglaInfo.Value.Regla, reglaInfo.Value.NumeroGrupo);
+            await AplicarNoLaborablesAsync(calendario, usuario.GrupoId.Value, marcarIncidencia: true);
 
             var response = new CalendarioUsuarioResponse
             {

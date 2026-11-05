@@ -147,8 +147,8 @@ namespace tiempo_libre.Services
         /// periodo, porcentaje del año), el mismo que usan el calendario, el
         /// dashboard y los festivos: así la vista y el candado no se contradicen.
         /// </summary>
-        private Task<decimal> ObtenerPorcentajeMaximoAsync(int grupoId, DateOnly fecha) =>
-            _limites.LimiteAsync(grupoId, fecha);
+        private Task<decimal> ObtenerPorcentajeMaximoAsync(int grupoId, DateOnly fecha, ContextoLimite contexto) =>
+            _limites.LimiteAsync(grupoId, fecha, contexto);
 
         /// <summary>
         /// LA regla del porcentaje, sin base de datos, para que el candado (aquí),
@@ -209,7 +209,8 @@ namespace tiempo_libre.Services
             int grupoId,
             int ausenciasSolicitadas = 1,
             int? ausenciasActuales = null,
-            DateOnly? fecha = null)
+            DateOnly? fecha = null,
+            ContextoLimite contexto = ContextoLimite.Operador)
         {
             try
             {
@@ -251,7 +252,7 @@ namespace tiempo_libre.Services
                     _totalEmpleadosCache[grupoId] = totalEmpleados;
                 }
 
-                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada);
+                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada, contexto);
 
                 // Ausencias ya programadas para el día que se evalúa
                 ausenciasActuales ??= await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
@@ -318,7 +319,8 @@ namespace tiempo_libre.Services
         /// <summary>
         /// Obtiene información detallada sobre el estado de ausencias de un grupo
         /// </summary>
-        public async Task<EstadoAusenciasGrupo> ObtenerEstadoAusenciasGrupo(int grupoId, DateOnly? fecha = null)
+        public async Task<EstadoAusenciasGrupo> ObtenerEstadoAusenciasGrupo(int grupoId, DateOnly? fecha = null,
+            ContextoLimite contexto = ContextoLimite.Operador)
         {
             var config = await _db.ConfiguracionVacaciones
                 .OrderByDescending(c => c.CreatedAt)
@@ -336,7 +338,7 @@ namespace tiempo_libre.Services
 
             var dia = fecha ?? DateOnly.FromDateTime(DateTime.Today);
             var ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, dia);
-            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia);
+            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia, contexto);
             var estado = EvaluarRegla(totalEmpleados, ausenciasActuales, 0, porcentajeMaximo);
 
             var manningAreaEstado = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, dia);
@@ -352,7 +354,7 @@ namespace tiempo_libre.Services
                 PorcentajeMaximoPermitido = porcentajeMaximo,
                 EsGrupoPequeno = estado.EsGrupoPequeno,
                 MinimoEmpleadosParaPorcentaje = estado.MinimoEmpleados,
-                PuedeAgregarAusencia = await PuedeGrupoTenerAusencias(grupoId, 1, ausenciasActuales, dia),
+                PuedeAgregarAusencia = await PuedeGrupoTenerAusencias(grupoId, 1, ausenciasActuales, dia, contexto),
                 MensajeEstado = estado.Motivo
             };
         }

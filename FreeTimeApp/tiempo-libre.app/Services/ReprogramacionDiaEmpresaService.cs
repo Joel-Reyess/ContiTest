@@ -41,7 +41,8 @@ namespace tiempo_libre.Services
         /// Se incluyen los días YA TRANSCURRIDOS del año en curso: los motivos de
         /// catálogo (incapacidad, defunción, maternidad, paternidad) casi siempre
         /// se conocen después de que el día pasó, y es justo cuando hay que
-        /// devolverlo. La fecha nueva sí sigue obligada a ser hoy o posterior.
+        /// devolverlo. La fecha nueva también puede ser un día que ya pasó (nov-2026),
+        /// siempre dentro del mismo año del día original.
         /// </summary>
         public async Task<List<VacacionDisponibleDto>> ObtenerVacacionesAsignadasReprogramablesAsync(int empleadoId)
         {
@@ -118,6 +119,11 @@ namespace tiempo_libre.Services
                     "Formato de fecha inválido (yyyy-MM-dd).");
             }
 
+            // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
+            var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, fechaNueva);
+            if (motivoNoLaborable != null)
+                return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null, motivoNoLaborable);
+
             if (!MotivosReprogramacionDiaEmpresa.EsValido(request.MotivoTipo))
             {
                 return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,
@@ -171,10 +177,13 @@ namespace tiempo_libre.Services
                     "No puede reprogramarse una segunda vez desde aquí.");
             }
 
-            var hoy = DateOnly.FromDateTime(DateTime.Today);
-            if (fechaNueva < hoy)
+            // El superusuario puede reprogramar también a un día que ya pasó (el
+            // cliente lo pidió en nov-2026: los motivos se conocen después). Lo único
+            // que se cuida es no cruzar de año: los días por la empresa son del
+            // programa anual de ese año.
+            if (fechaNueva.Year != vacacion.FechaVacacion.Year)
                 return new ApiResponse<SolicitudReprogramacionDiaEmpresaDto>(false, null,
-                    "La fecha nueva debe ser hoy o posterior.");
+                    $"La fecha nueva debe ser del mismo año que el día original ({vacacion.FechaVacacion.Year}).");
 
             // No permitir solicitudes pendientes duplicadas para la misma vacación
             var pendiente = await _db.SolicitudesReprogramacionDiaEmpresa.AnyAsync(s =>

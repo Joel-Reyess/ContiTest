@@ -24,6 +24,33 @@ namespace tiempo_libre.DTOs
         /// Si es true, solo simula la asignación sin guardar en base de datos
         /// </summary>
         public bool SoloSimulacion { get; set; } = false;
+
+        /// <summary>
+        /// Fechas de arranque o paro de planta en las que se "cargan" días por la
+        /// empresa, solo para las áreas elegidas en cada una. A esos empleados se
+        /// les intenta asignar primero ahí (aunque caigan en semanas excluidas);
+        /// si no caben, siguen con el resto del año.
+        /// </summary>
+        public List<VentanaAsignacion>? VentanasPreferentes { get; set; }
+    }
+
+    public class VentanaAsignacion
+    {
+        public DateOnly FechaInicio { get; set; }
+        public DateOnly FechaFin { get; set; }
+        public List<int> AreaIds { get; set; } = new();
+        /// <summary>Grupos a los que aplica (las que salen de una capacidad por grupo).</summary>
+        public List<int> GrupoIds { get; set; } = new();
+        /// <summary>Aplica a toda la planta (capacidad de planta).</summary>
+        public bool TodaLaPlanta { get; set; }
+        public string? Nombre { get; set; }
+
+        /// <summary>
+        /// Opcional: % de ausencia permitido en esas fechas para esas áreas, solo
+        /// para los días por la empresa. Se guarda como capacidad por periodo
+        /// (aparece en esa pestaña) para que las dos cosas coincidan.
+        /// </summary>
+        public decimal? Porcentaje { get; set; }
     }
 
     public class AsignacionAutomaticaResponse
@@ -50,6 +77,10 @@ namespace tiempo_libre.DTOs
         public List<DiaVacacionAsignado> DiasVacaciones { get; set; } = new();
         public bool AsignacionExitosa { get; set; }
         public string? MotivoFallo { get; set; }
+        /// <summary>Ya tenía todos sus días por la empresa del año: no se le asignó nada.</summary>
+        public bool YaTeniaTodos { get; set; }
+        /// <summary>Tenía días a medias y se le completaron los que faltaban.</summary>
+        public bool CompletaFaltantes { get; set; }
     }
 
     public class DiaVacacionAsignado

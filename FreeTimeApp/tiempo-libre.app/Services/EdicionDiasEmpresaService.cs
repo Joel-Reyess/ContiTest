@@ -107,6 +107,11 @@ namespace tiempo_libre.Services
                     return new ApiResponse<SolicitudEdicionDiaEmpresaDto>(false, null,
                         $"La fecha seleccionada debe estar entre {config.FechaInicioPeriodo:dd/MM/yyyy} y {config.FechaFinPeriodo:dd/MM/yyyy}.");
 
+                // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
+                var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, request.FechaNueva);
+                if (motivoNoLaborable != null)
+                    return new ApiResponse<SolicitudEdicionDiaEmpresaDto>(false, null, motivoNoLaborable);
+
                 // Obtener el empleado
                 var empleado = await _db.Users
                     .Include(u => u.Area)

@@ -303,7 +303,17 @@ namespace tiempo_libre.Helpers
             if (rol.Length == 0)
                 return "1";
 
-            var fechaAjustada = AjustarFechaPorSemanaSanta(fechaDateTime, semanaSantaFechaFinal);
+            // La pausa de una semana por Semana Santa solo aplica a un patrón que
+            // arrancó ANTES de Semana Santa. Si el rol se volvió a arrancar después
+            // (el arranque de abril), ese arranque ya dice dónde sigue el rol: restarle
+            // además la semana lo dejaba corrido siete días en el calendario y la
+            // asignación, mientras el rol semanal y el calendario anual lo mostraban
+            // bien (nov-2026).
+            var arrancoDespuesDeSemanaSanta = semanaSantaFechaFinal.HasValue &&
+                DateOnly.FromDateTime(ancla) > semanaSantaFechaFinal.Value;
+            var fechaAjustada = arrancoDespuesDeSemanaSanta
+                ? fechaDateTime
+                : AjustarFechaPorSemanaSanta(fechaDateTime, semanaSantaFechaFinal);
             var diasDiferencia = (fechaAjustada.Date - ancla.Date).Days;
 
             // Módulo real y no Math.Abs: para fechas anteriores al ancla, el valor

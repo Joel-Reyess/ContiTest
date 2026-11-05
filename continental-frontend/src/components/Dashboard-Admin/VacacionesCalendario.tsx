@@ -687,7 +687,7 @@ export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({
         </div>
 
         {/* Días inhábiles */}
-        <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-white">
+        <div id="seccion-inhabiles" className="space-y-3 border border-gray-200 rounded-lg p-4 bg-white">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-medium text-continental-black">Días inhábiles</h3>
             <Select 
@@ -803,7 +803,9 @@ export const VacacionesCalendario: React.FC<VacacionesCalendarioProps> = ({
       </div>
 
       {/* Rotaciones programadas de reglas — feature independiente de la pestaña Reglas de turnos */}
-      <RotacionesProgramadasPanel anioInicial={anioArranques ?? undefined} />
+      <div id="seccion-arranques">
+        <RotacionesProgramadasPanel anioInicial={anioArranques ?? undefined} />
+      </div>
     </div>
   );
 };

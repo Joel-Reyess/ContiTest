@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Calendar, BarChart3, CheckCircle, Info, X, CalendarDays } from "lucide-react";
 import { DiasDeMasPorAntiguedad } from "./DiasDeMasPorAntiguedad";
 import { CapacidadPorPeriodo } from "./CapacidadPorPeriodo";
+import { ReglasDomingoPanel } from "./ReglasDomingoPanel";
 import { DiasEmpresaEnDescanso } from "./DiasEmpresaEnDescanso";
 import { VacacionesGeneral } from "./VacacionesGeneral";
 import { VacacionesCalendario } from "./VacacionesCalendario";
@@ -37,7 +38,7 @@ const editableDesde = (cfg: VacacionesConfig) => ({
 });
 
 export const Vacaciones = () => {
-  const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias' | 'empresa-descanso' | 'dias-de-mas' | 'capacidad'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias' | 'empresa-descanso' | 'dias-de-mas' | 'capacidad' | 'domingos'>('general');
   const [config, setConfig] = useState<VacacionesConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -329,10 +330,10 @@ export const Vacaciones = () => {
 
         {/* Tab Buttons */}
         <div className="bg-continental-gray-3 p-1 rounded-md w-full">
-          <div className="flex w-full">
+          <div className="flex flex-wrap w-full gap-1">
             <button
               onClick={() => setActiveTab('general')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/6 ${activeTab === 'general'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'general'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -342,7 +343,7 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('calendario')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/6 ${activeTab === 'calendario'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'calendario'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -352,7 +353,7 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('edicion-dias')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/6 ${activeTab === 'edicion-dias'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'edicion-dias'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -362,7 +363,7 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('empresa-descanso')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/6 ${activeTab === 'empresa-descanso'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'empresa-descanso'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -372,7 +373,7 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('dias-de-mas')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/6 ${activeTab === 'dias-de-mas'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'dias-de-mas'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
@@ -382,13 +383,23 @@ export const Vacaciones = () => {
             </button>
             <button
               onClick={() => setActiveTab('capacidad')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors w-1/6 ${activeTab === 'capacidad'
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'capacidad'
                 ? 'bg-white text-continental-black shadow-sm'
                 : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
                 }`}
             >
               <BarChart3 size={16} />
               <span>Capacidad por periodo</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('domingos')}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'domingos'
+                ? 'bg-white text-continental-black shadow-sm'
+                : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
+                }`}
+            >
+              <CalendarDays size={16} />
+              <span>Domingos por unidad organizativa</span>
             </button>
           </div>
         </div>
@@ -397,6 +408,7 @@ export const Vacaciones = () => {
         {activeTab === 'empresa-descanso' && <DiasEmpresaEnDescanso />}
         {activeTab === 'dias-de-mas' && <DiasDeMasPorAntiguedad />}
         {activeTab === 'capacidad' && <CapacidadPorPeriodo />}
+        {activeTab === 'domingos' && <ReglasDomingoPanel />}
         {activeTab === 'edicion-dias' && (
           <div className="p-4 bg-white border border-continental-gray-3 rounded-lg">
             <ConfigEdicionDias />
@@ -408,6 +420,15 @@ export const Vacaciones = () => {
             onNotification={showNotification}
             anioVigente={config?.anioVigente || new Date().getFullYear() + 1}
             onIrACalendario={() => setActiveTab('calendario')}
+            onIrAPestana={(pestana, seccion) => {
+              // El checklist lleva a la pestaña y, si se indica, a la sección dentro de ella.
+              setActiveTab(pestana);
+              if (seccion) {
+                window.setTimeout(() => document.getElementById(seccion)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+              } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
             onConfigUpdate={(updatedConfig) => {
               setConfig(updatedConfig);
               setEditableConfig(editableDesde(updatedConfig));

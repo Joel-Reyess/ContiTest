@@ -8,6 +8,7 @@ namespace tiempo_libre.DTOs
     {
         public int Id { get; set; }
         public string Alcance { get; set; } = string.Empty;
+        public string AplicaA { get; set; } = "Ambos";
         public int? AreaId { get; set; }
         public string? Area { get; set; }
         public int? GrupoId { get; set; }
@@ -40,6 +41,9 @@ namespace tiempo_libre.DTOs
         /// <summary>"Planta", "Area" o "Grupo".</summary>
         [Required]
         public string Alcance { get; set; } = "Planta";
+
+        /// <summary>"Ambos", "Empresa" (solo días por la empresa) u "Operador" (solo lo que programan los operadores).</summary>
+        public string AplicaA { get; set; } = "Ambos";
         public int? AreaId { get; set; }
         public int? GrupoId { get; set; }
 

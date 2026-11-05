@@ -148,6 +148,11 @@ namespace tiempo_libre.Services
             if (!empleado.Nomina.HasValue)
                 return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null, "El empleado no tiene nómina asignada.");
 
+            // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
+            var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, fechaNueva);
+            if (motivoNoLaborable != null)
+                return new ApiResponse<SolicitudReprogramacionPostIncapacidadDto>(false, null, motivoNoLaborable);
+
             var permiso = await _db.PermisosEIncapacidadesSAP
                 .FirstOrDefaultAsync(p => p.Id == request.PermisoIncapacidadId &&
                                           p.Nomina == empleado.Nomina.Value);

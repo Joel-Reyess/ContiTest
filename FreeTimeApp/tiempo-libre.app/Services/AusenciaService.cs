@@ -337,22 +337,26 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ValidacionDisponibilidadResponse>(false, null, "Empleado sin grupo asignado.");
 
                 // Calcular ausencia actual del grupo
-                var ausenciaActual = await CalcularAusenciaPorGrupoAsync(request.Fecha, empleado.GrupoId.Value);
+                // Días por la empresa contra el límite de la empresa; lo demás contra
+                // el de los operadores (una capacidad por periodo puede ser de uno solo).
+                var contexto = request.TipoVacacion == "Automatica" ? ContextoLimite.Empresa : ContextoLimite.Operador;
+
+                var ausenciaActual = await CalcularAusenciaPorGrupoAsync(request.Fecha, empleado.GrupoId.Value, null, contexto);
 
                 // Usar el nuevo validador de porcentaje que considera grupos pequeños.
                 // La fecha es obligatoria aquí: sin ella el validador contestaba lo
                 // mismo para los 365 días del año que se está programando (la foto de
                 // hoy), y la asignación de días por empresa se quedaba sin semanas.
                 var puedeAusentarse = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
-                    empleado.GrupoId.Value, 1, null, request.Fecha);
+                    empleado.GrupoId.Value, 1, null, request.Fecha, contexto);
 
                 // Obtener el estado detallado del grupo para información adicional
                 // Del día que se pide (antes salía el de hoy: el límite y el
                 // mensaje no correspondían a la fecha validada).
-                var estadoGrupo = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value, request.Fecha);
+                var estadoGrupo = await _validadorPorcentaje.ObtenerEstadoAusenciasGrupo(empleado.GrupoId.Value, request.Fecha, contexto);
 
                 // Simular la ausencia incluyendo al empleado para obtener el porcentaje
-                var ausenciaConEmpleado = await CalcularAusenciaPorGrupoAsync(request.Fecha, empleado.GrupoId.Value, request.EmpleadoId);
+                var ausenciaConEmpleado = await CalcularAusenciaPorGrupoAsync(request.Fecha, empleado.GrupoId.Value, request.EmpleadoId, contexto);
 
                 var response = new ValidacionDisponibilidadResponse
                 {
@@ -396,7 +400,8 @@ namespace tiempo_libre.Services
             return resultados;
         }
 
-        private async Task<AusenciaPorGrupoDto> CalcularAusenciaPorGrupoAsync(DateOnly fecha, int grupoId, int? empleadoAdicionalId = null)
+        private async Task<AusenciaPorGrupoDto> CalcularAusenciaPorGrupoAsync(DateOnly fecha, int grupoId, int? empleadoAdicionalId = null,
+            ContextoLimite contexto = ContextoLimite.Operador)
         {
             // 1) Grupo + Area
             var grupo = await _db.Grupos
@@ -492,14 +497,14 @@ namespace tiempo_libre.Services
             // Nota: NO calculamos ausencia como (100 - cobertura) porque son métricas distintas.
 
             // 7) Límite permitido y grupos pequeños
-            var porcentajeMaximo = await ObtenerPorcentajeMaximoPermitidoAsync(grupoId, fecha);
+            var porcentajeMaximo = await _limites.LimiteAsync(grupoId, fecha, contexto);
             // 8) Excede límite: la misma regla del candado (grupo pequeño = 1 ausencia;
             //    grupo grande = ausentes / plantilla del grupo contra el porcentaje).
             bool excedeLimite = !_validadorPorcentaje.EvaluarRegla(personalTotal, personalNoDisponible, 0, porcentajeMaximo).Permitido;
 
             // 9) Puede reservar: usa el validador considerando el estado actual
             bool puedeReservar = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
-                grupoId, 1, personalNoDisponible, fecha);
+                grupoId, 1, personalNoDisponible, fecha, contexto);
 
             // 10) DTO de salida
             return new AusenciaPorGrupoDto
@@ -627,8 +632,6 @@ namespace tiempo_libre.Services
             return todosAusentes;
         }
 
-        private Task<decimal> ObtenerPorcentajeMaximoPermitidoAsync(int grupoId, DateOnly fecha) =>
-            _limites.LimiteAsync(grupoId, fecha);
 
         /// <summary>
         /// Calcular si el grupo puede permitir una reserva adicional sin exceder los límites

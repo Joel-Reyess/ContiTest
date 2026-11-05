@@ -6,10 +6,12 @@ import { Gauge, Plus, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { areasService } from "@/services/areasService";
+import { vacacionesService } from "@/services/vacacionesService";
 import type { Area } from "@/interfaces/Areas.interface";
 import {
     capacidadPorcentajeService,
     type AlcanceCapacidad,
+    type AplicaCapacidad,
     type CapacidadesPorcentajeResponse,
     type PeriodoCapacidad,
 } from "@/services/capacidadPorcentajeService";
@@ -41,6 +43,7 @@ export const CapacidadPorPeriodo = () => {
 
     // Formulario
     const [alcance, setAlcance] = useState<AlcanceCapacidad>("Planta");
+    const [aplicaA, setAplicaA] = useState<AplicaCapacidad>("Ambos");
     const [areaId, setAreaId] = useState<number | "">("");
     const [grupoId, setGrupoId] = useState<number | "">("");
     const [periodo, setPeriodo] = useState<PeriodoCapacidad>("Mes");
@@ -50,6 +53,13 @@ export const CapacidadPorPeriodo = () => {
     const [porcentaje, setPorcentaje] = useState<string>("");
     const [motivo, setMotivo] = useState("");
     const [guardando, setGuardando] = useState(false);
+
+    // "General": el porcentaje de siempre (y el del año en preparación), aquí
+    // mismo para que Ingeniería Industrial no dependa de la configuración del
+    // periodo, que solo ve el superusuario.
+    const [general, setGeneral] = useState("");
+    const [prep, setPrep] = useState("");
+    const [guardandoGeneral, setGuardandoGeneral] = useState(false);
 
     const cargar = useCallback(async () => {
         setCargando(true);
@@ -65,6 +75,39 @@ export const CapacidadPorPeriodo = () => {
     useEffect(() => {
         cargar();
     }, [cargar]);
+
+    useEffect(() => {
+        if (!datos) return;
+        setGeneral(String(datos.porcentajeGeneral));
+        setPrep(datos.porcentajePreparacion != null ? String(datos.porcentajePreparacion) : "");
+    }, [datos]);
+
+    const guardarGeneral = async () => {
+        const g = Number(general);
+        const p = prep.trim() === "" ? null : Number(prep);
+        if (!(g > 0 && g <= 100) || (p != null && !(p > 0 && p <= 100))) {
+            toast.error("Los porcentajes deben ser mayores a 0 y hasta 100");
+            return;
+        }
+        setGuardandoGeneral(true);
+        try {
+            // Se releen periodo y años justo antes: el backend guarda la fila completa.
+            const actual = await vacacionesService.getConfig();
+            await vacacionesService.updateConfig({
+                porcentajeAusenciaMaximo: g,
+                periodoActual: actual.periodoActual,
+                anioVigente: actual.anioVigente,
+                anioProgramacionAnual: actual.anioProgramacionAnual ?? null,
+                porcentajeAusenciaPreparacion: actual.anioProgramacionAnual == null ? null : p,
+            });
+            toast.success("Porcentaje general guardado");
+            await cargar();
+        } catch (e) {
+            toast.error("No se pudo guardar", { description: (e as { message?: string })?.message, duration: 10000 });
+        } finally {
+            setGuardandoGeneral(false);
+        }
+    };
 
     useEffect(() => {
         areasService
@@ -99,6 +142,14 @@ export const CapacidadPorPeriodo = () => {
         }
     }, [periodo, mes, fecha, fechaFin]);
 
+    // El % que rige ese año sin capacidad: lo que el nuevo reemplaza.
+    const anioDelRango = Number((periodo === "Mes" ? mes : fecha).slice(0, 4));
+    const baseDelAnio = datos
+        ? datos.anioPreparacion === anioDelRango && datos.porcentajePreparacion
+            ? datos.porcentajePreparacion
+            : datos.porcentajeGeneral
+        : null;
+
     const guardar = async () => {
         const pct = Number(porcentaje);
         if (!pct || pct <= 0 || pct > 100) {
@@ -117,6 +168,7 @@ export const CapacidadPorPeriodo = () => {
         try {
             await capacidadPorcentajeService.crear({
                 alcance,
+                aplicaA,
                 areaId: alcance === "Area" && areaId ? Number(areaId) : undefined,
                 grupoId: alcance === "Grupo" && grupoId ? Number(grupoId) : undefined,
                 periodo,
@@ -158,20 +210,39 @@ export const CapacidadPorPeriodo = () => {
                 </h2>
                 <p className="text-sm text-continental-gray-1 mt-1">
                     Con autorización de tiempo extra se puede permitir un porcentaje de ausencia distinto al general durante
-                    un día, una semana (lunes a domingo) o un mes, para toda la planta, un área o un grupo. Mientras está
-                    vigente manda sobre el general; al terminar el periodo vuelve el general. Se aplica en la captura, la
+                    un día, una semana (lunes a domingo) o un mes, para toda la planta, un área o un grupo. El % que
+                    captures <strong>reemplaza</strong> al general en esas fechas (no se suma): si el general es 8% y aquí
+                    pones 10%, esos días rige 10%. Al terminar el periodo vuelve el general. Se aplica en la captura, la
                     asignación de días por la empresa, la reprogramación, los calendarios y los dashboards.
                 </p>
                 {datos && (
-                    <p className="text-sm mt-2">
-                        Porcentaje general: <strong>{datos.porcentajeGeneral}%</strong>
-                        {datos.anioPreparacion && datos.porcentajePreparacion ? (
-                            <>
-                                {" "}· {datos.anioPreparacion} (en preparación): <strong>{datos.porcentajePreparacion}%</strong>
-                            </>
+                    <div className="mt-3 flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
+                        <span className="font-semibold self-center mr-2">General</span>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs text-continental-gray-1">% de ausencia general</span>
+                            <input
+                                type="number" step="0.1" min="0.1" max="100"
+                                className="h-9 w-28 rounded-md border px-2"
+                                value={general}
+                                onChange={(e) => setGeneral(e.target.value)}
+                            />
+                        </label>
+                        {datos.anioPreparacion ? (
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs text-continental-gray-1">% del año {datos.anioPreparacion} (en preparación; vacío = el general)</span>
+                                <input
+                                    type="number" step="0.1" min="0.1" max="100"
+                                    className="h-9 w-28 rounded-md border px-2"
+                                    value={prep}
+                                    onChange={(e) => setPrep(e.target.value)}
+                                />
+                            </label>
                         ) : null}
-                        <span className="text-continental-gray-1"> (se cambian arriba, en la configuración del periodo)</span>
-                    </p>
+                        <Button variant="outline" onClick={guardarGeneral} disabled={guardandoGeneral}>
+                            {guardandoGeneral ? "Guardando…" : "Guardar general"}
+                        </Button>
+                        <span className="text-xs text-continental-gray-1">Rige todo el año fuera de los periodos de abajo.</span>
+                    </div>
                 )}
                 <p className="text-xs text-continental-gray-1 mt-1">
                     Si en un mismo día aplican varias, manda la más específica: primero la de día, luego la de semana y luego
@@ -192,7 +263,7 @@ export const CapacidadPorPeriodo = () => {
                 <h3 className="font-semibold flex items-center gap-2">
                     <Plus className="w-4 h-4" /> Nueva capacidad
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-continental-gray-1">Aplica a</span>
                         <select className="h-9 rounded-md border px-2" value={alcance} onChange={(e) => setAlcance(e.target.value as AlcanceCapacidad)}>
@@ -200,6 +271,20 @@ export const CapacidadPorPeriodo = () => {
                             <option value="Area">Un área (unidad organizativa)</option>
                             <option value="Grupo">Un grupo</option>
                         </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-continental-gray-1">Para qué días</span>
+                        <select className="h-9 rounded-md border px-2" value={aplicaA} onChange={(e) => setAplicaA(e.target.value as AplicaCapacidad)}>
+                            <option value="Ambos">Días por la empresa y de los operadores</option>
+                            <option value="Empresa">Solo días asignados por la empresa</option>
+                            <option value="Operador">Solo días que programan los operadores</option>
+                        </select>
+                        {aplicaA === "Empresa" && (
+                            <span className="text-xs text-blue-700">
+                                Estas fechas también se usan como prioridad al programar los días por la empresa de esa área o
+                                grupo (igual que las fechas de arranque).
+                            </span>
+                        )}
                     </label>
                     {alcance !== "Planta" && (
                         <label className="flex flex-col gap-1">
@@ -269,7 +354,7 @@ export const CapacidadPorPeriodo = () => {
                         </label>
                     )}
                     <label className="flex flex-col gap-1">
-                        <span className="text-xs font-medium text-continental-gray-1">% de ausencia permitido</span>
+                        <span className="text-xs font-medium text-continental-gray-1">% de ausencia permitido (reemplaza al general)</span>
                         <input
                             type="number"
                             step="0.1"
@@ -292,7 +377,10 @@ export const CapacidadPorPeriodo = () => {
                     </Button>
                     {porcentaje && rangoElegido && (
                         <span className="text-sm text-continental-gray-1">
-                            Se guardará: <strong>{porcentaje}%</strong> {rangoElegido},{" "}
+                            Se guardará: <strong>{porcentaje}%</strong>
+                            {baseDelAnio != null ? ` en lugar del ${baseDelAnio}%` : ""}{" "}
+                            {aplicaA === "Empresa" ? "solo para días por la empresa, " : aplicaA === "Operador" ? "solo para días de los operadores, " : ""}
+                            {rangoElegido},{" "}
                             {alcance === "Planta"
                                 ? "toda la planta"
                                 : alcance === "Area"
@@ -338,6 +426,7 @@ export const CapacidadPorPeriodo = () => {
                                     <th className="px-3 py-2 font-medium">Periodo</th>
                                     <th className="px-3 py-2 font-medium">Fechas</th>
                                     <th className="px-3 py-2 font-medium">Aplica a</th>
+                                    <th className="px-3 py-2 font-medium">Días</th>
                                     <th className="px-3 py-2 font-medium text-right">%</th>
                                     <th className="px-3 py-2 font-medium">Motivo</th>
                                     <th className="px-3 py-2 font-medium">Registro</th>
@@ -354,6 +443,9 @@ export const CapacidadPorPeriodo = () => {
                                                 : `${fechaLarga(c.fechaInicio)} – ${fechaLarga(c.fechaFin)}`}
                                         </td>
                                         <td className="px-3 py-1.5">{alcanceTexto(c)}</td>
+                                        <td className="px-3 py-1.5">
+                                            {c.aplicaA === "Empresa" ? "Por la empresa" : c.aplicaA === "Operador" ? "De los operadores" : "Ambos"}
+                                        </td>
                                         <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{c.porcentaje}%</td>
                                         <td className="px-3 py-1.5">{c.motivo || "—"}</td>
                                         <td className="px-3 py-1.5 text-xs">
