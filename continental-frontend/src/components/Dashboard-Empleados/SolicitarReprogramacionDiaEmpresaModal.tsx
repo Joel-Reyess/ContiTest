@@ -179,8 +179,8 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                     {vacacionSel && yaTranscurrio(vacacionSel.fecha) && (
                                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
                                             Este día ya transcurrió. Se puede reprogramar (el motivo suele
-                                            conocerse después), pero la <span className="font-semibold">fecha nueva</span> debe
-                                            ser hoy o posterior.
+                                            conocerse después); la <span className="font-semibold">fecha nueva</span> puede ser
+                                            un día anterior o posterior, del mismo año.
                                         </p>
                                     )}
                                 </div>
@@ -231,7 +231,8 @@ export function SolicitarReprogramacionDiaEmpresaModal({
                                         type="date"
                                         value={fechaNueva}
                                         onChange={e => setFechaNueva(e.target.value)}
-                                        min={format(new Date(), 'yyyy-MM-dd')}
+                                        min={vacacionSel ? `${vacacionSel.fecha.slice(0, 4)}-01-01` : undefined}
+                                        max={vacacionSel ? `${vacacionSel.fecha.slice(0, 4)}-12-31` : undefined}
                                         className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
                                         disabled={!vacacionSel}
                                     />
