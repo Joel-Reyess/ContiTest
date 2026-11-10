@@ -15,6 +15,7 @@ import {
     type CapacidadesPorcentajeResponse,
     type PeriodoCapacidad,
 } from "@/services/capacidadPorcentajeService";
+import { ReglasDomingoPanel } from "./ReglasDomingoPanel";
 
 const hoyIso = () => format(new Date(), "yyyy-MM-dd");
 
@@ -244,6 +245,16 @@ export const CapacidadPorPeriodo = () => {
                         <span className="text-xs text-continental-gray-1">Rige todo el año fuera de los periodos de abajo.</span>
                     </div>
                 )}
+                <p className="text-xs mt-2">
+                    En esta pestaña:{" "}
+                    <button type="button" className="underline text-blue-700" onClick={() => document.getElementById("seccion-capacidad")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                        capacidad (%)
+                    </button>{" "}
+                    ·{" "}
+                    <button type="button" className="underline text-blue-700" onClick={() => document.getElementById("seccion-domingos")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                        domingos en base a rol / no laborables
+                    </button>
+                </p>
                 <p className="text-xs text-continental-gray-1 mt-1">
                     Si en un mismo día aplican varias, manda la más específica: primero la de día, luego la de semana y luego
                     la de mes; con el mismo periodo, la de grupo, luego la de área y luego la de planta. Una excepción de un
@@ -259,7 +270,7 @@ export const CapacidadPorPeriodo = () => {
             )}
 
             {/* Alta */}
-            <section className="rounded-lg border p-4 space-y-3">
+            <section id="seccion-capacidad" className="rounded-lg border p-4 space-y-3 scroll-mt-4">
                 <h3 className="font-semibold flex items-center gap-2">
                     <Plus className="w-4 h-4" /> Nueva capacidad
                 </h3>
@@ -482,6 +493,11 @@ export const CapacidadPorPeriodo = () => {
                         </table>
                     </div>
                 )}
+            </section>
+
+            {/* Domingos (nov-2026: antes en su propia pestaña) */}
+            <section id="seccion-domingos" className="border-t-2 border-continental-gray-3 pt-6 scroll-mt-4">
+                <ReglasDomingoPanel />
             </section>
         </div>
     );

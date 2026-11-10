@@ -10,8 +10,11 @@ namespace tiempo_libre.Models
     /// área (o un grupo de ella) trabaja sin domingos —y si se marca, tampoco
     /// sábados—: ese día nadie labora, no se programan vacaciones ni días por la
     /// empresa, y el rol semanal y los calendarios lo muestran como descanso. El
-    /// tipo "RolNormal" sirve de excepción: un grupo del área que sigue con el rol
-    /// a siete días. Sin reglas, todo es rol normal, como antes.
+    /// tipo "RolNormal" (en pantalla "en base a rol") deja esos días como diga el
+    /// rol de cada quien: un grupo del área que sigue con el rol a siete días, o un
+    /// domingo que se habilita a toda la planta. Pueden encimarse: manda la de
+    /// periodo más corto (ver CalendarioLaboralService). Sin reglas, todo es rol
+    /// normal, como antes.
     /// No se borra: se desactiva y se puede reactivar (queda quién y cuándo).
     /// </summary>
     [Table("ReglasDomingo")]
@@ -26,7 +29,7 @@ namespace tiempo_libre.Models
         /// <summary>Opcional: solo este grupo del área.</summary>
         public int? GrupoId { get; set; }
 
-        /// <summary>"SinDomingo" (no laborable) o "RolNormal" (siete días, excepción).</summary>
+        /// <summary>"SinDomingo" (no laborable) o "RolNormal" (en base a rol).</summary>
         [Required, MaxLength(12)]
         public string Tipo { get; set; } = "SinDomingo";
 

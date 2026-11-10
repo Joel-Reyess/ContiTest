@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Calendar, BarChart3, CheckCircle, Info, X, CalendarDays } from "lucide-react";
 import { DiasDeMasPorAntiguedad } from "./DiasDeMasPorAntiguedad";
 import { CapacidadPorPeriodo } from "./CapacidadPorPeriodo";
-import { ReglasDomingoPanel } from "./ReglasDomingoPanel";
 import { DiasEmpresaEnDescanso } from "./DiasEmpresaEnDescanso";
 import { VacacionesGeneral } from "./VacacionesGeneral";
 import { VacacionesCalendario } from "./VacacionesCalendario";
@@ -38,7 +37,7 @@ const editableDesde = (cfg: VacacionesConfig) => ({
 });
 
 export const Vacaciones = () => {
-  const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias' | 'empresa-descanso' | 'dias-de-mas' | 'capacidad' | 'domingos'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'calendario' | 'edicion-dias' | 'empresa-descanso' | 'dias-de-mas' | 'capacidad'>('general');
   const [config, setConfig] = useState<VacacionesConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -391,16 +390,6 @@ export const Vacaciones = () => {
               <BarChart3 size={16} />
               <span>Capacidad por periodo</span>
             </button>
-            <button
-              onClick={() => setActiveTab('domingos')}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-colors flex-1 min-w-[170px] ${activeTab === 'domingos'
-                ? 'bg-white text-continental-black shadow-sm'
-                : 'bg-transparent text-continental-gray-1 hover:text-continental-black'
-                }`}
-            >
-              <CalendarDays size={16} />
-              <span>Domingos por unidad organizativa</span>
-            </button>
           </div>
         </div>
 
@@ -408,7 +397,6 @@ export const Vacaciones = () => {
         {activeTab === 'empresa-descanso' && <DiasEmpresaEnDescanso />}
         {activeTab === 'dias-de-mas' && <DiasDeMasPorAntiguedad />}
         {activeTab === 'capacidad' && <CapacidadPorPeriodo />}
-        {activeTab === 'domingos' && <ReglasDomingoPanel />}
         {activeTab === 'edicion-dias' && (
           <div className="p-4 bg-white border border-continental-gray-3 rounded-lg">
             <ConfigEdicionDias />
@@ -422,9 +410,12 @@ export const Vacaciones = () => {
             onIrACalendario={() => setActiveTab('calendario')}
             onIrAPestana={(pestana, seccion) => {
               // El checklist lleva a la pestaña y, si se indica, a la sección dentro de ella.
-              setActiveTab(pestana);
-              if (seccion) {
-                window.setTimeout(() => document.getElementById(seccion)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+              // Los domingos viven dentro de Capacidad por periodo (nov-2026).
+              const destino = pestana === 'domingos' ? 'capacidad' : pestana;
+              const ancla = pestana === 'domingos' ? seccion ?? 'seccion-domingos' : seccion;
+              setActiveTab(destino);
+              if (ancla) {
+                window.setTimeout(() => document.getElementById(ancla)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
               } else {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }

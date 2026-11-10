@@ -4,7 +4,8 @@
 -- Reglas dominicales por unidad organizativa y periodo: en el periodo elegido
 -- el área (o un grupo) trabaja sin domingos (y opcionalmente sin sábados), o
 -- sigue con el rol normal a siete días como excepción. Se configuran en
--- Superusuario -> Vacaciones -> "Domingos por unidad organizativa".
+-- Vacaciones -> "Capacidad por periodo" -> sección Domingos (nov-2026; antes
+-- tenían su propia pestaña). Sin cambios de esquema desde la primera versión.
 --
 -- CORRER ANTES de publicar el backend que la usa. Sin esta tabla todo sigue
 -- con el rol normal a siete días, como antes, y la pantalla avisa que falta la

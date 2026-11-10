@@ -23,7 +23,7 @@ import { BloquesReservacionService } from "@/services/bloquesReservacionService"
  * Verifica y guía la secuencia acordada con el cliente:
  *   1. Cargar el rol (arranques de reglas del año, ej. enero y abril)
  *   2. Cargar festivos / días inhábiles del año
- *   3. Domingos por unidad organizativa y capacidad por periodo (si aplican)
+ *   3. Domingos y capacidad por periodo (si aplican; ambos en la pestaña Capacidad por periodo)
  *   4. Asignar los días por empresa (según tabla de antigüedades)
  *   5. Generar los bloques de captura
  * Cada acción lleva a la pestaña (y sección) donde se hace (reunión oct-2026).
@@ -167,7 +167,7 @@ export const ProgramacionAnualWizard = ({
           ? "Falta correr Scripts/Migration_ReglasDomingo.sql"
           : sinDomingo.length > 0
             ? `${unidades} unidad(es) organizativa(s) con domingos no laborables en ${anio}`
-            : `Sin reglas: todas las unidades con rol normal a siete días (opcional)`,
+            : `Sin domingos no laborables: todos en base a rol (opcional)`,
       };
     } catch {
       nuevo.domingos = { completado: false, detalle: "Opcional; no se pudo verificar" };
@@ -256,11 +256,11 @@ export const ProgramacionAnualWizard = ({
           numero: 3,
           titulo: "Domingos y capacidad por periodo (si aplican)",
           descripcion:
-            `Antes de asignar días: define qué unidades organizativas no trabajan domingos (o sábados) y en qué periodo, y si alguna área tendrá más capacidad (tiempo extra) en ciertas fechas, por ejemplo en los arranques. La asignación respeta las dos cosas.`,
+            `Antes de asignar días: en Capacidad por periodo define en qué periodos los domingos (o sábados) son no laborables o en base a rol —para toda la planta, unidades organizativas o un grupo— y si alguna área tendrá más capacidad (tiempo extra) en ciertas fechas, por ejemplo en los arranques. La asignación respeta las dos cosas.`,
           estado: estado.domingos,
           acciones: onIrAPestana
             ? [
-                { etiqueta: "Ir a Domingos por unidad organizativa", onClick: () => onIrAPestana("domingos") },
+                { etiqueta: "Ir a Domingos (en Capacidad por periodo)", onClick: () => onIrAPestana("domingos") },
                 { etiqueta: "Ir a Capacidad por periodo", onClick: () => onIrAPestana("capacidad") },
               ]
             : [],

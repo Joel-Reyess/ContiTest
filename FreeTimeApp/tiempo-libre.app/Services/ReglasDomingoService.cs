@@ -67,64 +67,129 @@ namespace tiempo_libre.Services
             return new ApiResponse<ReglasDomingoResponse>(true, new ReglasDomingoResponse { Reglas = reglas }, null);
         }
 
-        public async Task<ApiResponse<int>> CrearAsync(CrearReglaDomingoRequest req, int usuarioId)
+        public async Task<ApiResponse<ResultadoReglasDomingoDto>> CrearAsync(CrearReglaDomingoRequest req, int usuarioId)
         {
+            ApiResponse<ResultadoReglasDomingoDto> Error(string msg) => new(false, null, msg);
+
             if (!await new CalendarioLaboralService(_db).TablaExisteAsync())
-                return new ApiResponse<int>(false, 0, "Falta crear la tabla: corre Scripts/Migration_ReglasDomingo.sql.");
-            var areaIds = (req.AreaIds ?? new List<int>()).Distinct().ToList();
-            if (areaIds.Count == 0)
-                return new ApiResponse<int>(false, 0, "Selecciona al menos una unidad organizativa.");
+                return Error("Falta crear la tabla: corre Scripts/Migration_ReglasDomingo.sql.");
             if (!Tipos.Contains(req.Tipo))
-                return new ApiResponse<int>(false, 0, "El tipo debe ser SinDomingo o RolNormal.");
+                return Error("El tipo debe ser SinDomingo (no laborable) o RolNormal (en base a rol).");
             if (req.FechaFin < req.FechaInicio)
-                return new ApiResponse<int>(false, 0, "La fecha final no puede ser antes de la inicial.");
+                return Error("La fecha final no puede ser antes de la inicial.");
             if (req.FechaFin.DayNumber - req.FechaInicio.DayNumber > 366)
-                return new ApiResponse<int>(false, 0, "El periodo no puede pasar de un año.");
+                return Error("El periodo no puede pasar de un año.");
+            var tieneFinDeSemana = false;
+            for (var f = req.FechaInicio; f <= req.FechaFin && !tieneFinDeSemana; f = f.AddDays(1))
+                tieneFinDeSemana = f.DayOfWeek is DayOfWeek.Sunday or DayOfWeek.Saturday;
+            if (!tieneFinDeSemana)
+                return Error("El periodo elegido no tiene ningún sábado ni domingo.");
 
-            var areas = await _db.Areas.Where(a => areaIds.Contains(a.AreaId))
-                .Select(a => new { a.AreaId, a.NombreGeneral }).ToListAsync();
+            var areas = req.TodaLaPlanta
+                ? await _db.Areas.Select(a => new { a.AreaId, a.NombreGeneral }).ToListAsync()
+                : await _db.Areas.Where(a => req.AreaIds.Contains(a.AreaId)).Select(a => new { a.AreaId, a.NombreGeneral }).ToListAsync();
+            var areaIds = req.TodaLaPlanta ? areas.Select(a => a.AreaId).ToList() : (req.AreaIds ?? new List<int>()).Distinct().ToList();
+            if (areaIds.Count == 0)
+                return Error("Selecciona al menos una unidad organizativa.");
             if (areas.Count != areaIds.Count)
-                return new ApiResponse<int>(false, 0, "Alguna unidad organizativa no existe.");
+                return Error("Alguna unidad organizativa no existe.");
 
-            if (req.GrupoId.HasValue)
+            var grupoId = req.TodaLaPlanta ? null : req.GrupoId;
+            if (grupoId.HasValue)
             {
                 if (areaIds.Count != 1)
-                    return new ApiResponse<int>(false, 0, "Para elegir un grupo selecciona una sola unidad organizativa.");
-                var grupo = await _db.Grupos.FirstOrDefaultAsync(g => g.GrupoId == req.GrupoId.Value);
+                    return Error("Para elegir un grupo selecciona una sola unidad organizativa.");
+                var grupo = await _db.Grupos.FirstOrDefaultAsync(g => g.GrupoId == grupoId.Value);
                 if (grupo == null || grupo.AreaId != areaIds[0])
-                    return new ApiResponse<int>(false, 0, "El grupo no pertenece a esa unidad organizativa.");
+                    return Error("El grupo no pertenece a esa unidad organizativa.");
             }
 
-            var nuevas = areas.Select(a => new ReglaDomingo
-            {
-                AreaId = a.AreaId,
-                GrupoId = req.GrupoId,
-                Tipo = req.Tipo,
-                IncluyeSabado = req.Tipo == "SinDomingo" && req.IncluyeSabado,
-                FechaInicio = req.FechaInicio,
-                FechaFin = req.FechaFin,
-                Motivo = string.IsNullOrWhiteSpace(req.Motivo) ? null : req.Motivo.Trim(),
-                Activa = true,
-                CreadoPorId = usuarioId > 0 ? usuarioId : null,
-                FechaCreacion = DateTime.Now
-            }).ToList();
+            // Todas con la misma hora: así la pantalla las muestra como un solo renglón
+            // (p. ej. "Toda la planta") y se desactivan juntas.
+            var ahora = DateTime.Now;
+            var incluyeSabado = req.Tipo == "SinDomingo" && req.IncluyeSabado;
+            var motivo = string.IsNullOrWhiteSpace(req.Motivo) ? null : req.Motivo.Trim();
+            var creadoPor = usuarioId > 0 ? usuarioId : (int?)null;
 
-            foreach (var r in nuevas)
+            // Las reglas pueden encimarse (manda la de periodo más corto, ver
+            // CalendarioLaboralService). Solo una de la MISMA unidad/grupo y las MISMAS
+            // fechas no tendría sentido: si dice lo mismo se deja, si dice otra cosa la
+            // nueva la reemplaza (la anterior queda desactivada con quién y cuándo).
+            var mismas = await _db.ReglasDomingo
+                .Where(r => r.Activa && areaIds.Contains(r.AreaId) && r.GrupoId == grupoId &&
+                            r.FechaInicio == req.FechaInicio && r.FechaFin == req.FechaFin)
+                .ToListAsync();
+
+            var resultado = new ResultadoReglasDomingoDto();
+            var nuevas = new List<ReglaDomingo>();
+            foreach (var areaId in areaIds)
             {
-                var choque = await ChoqueAsync(r);
-                if (choque != null)
+                var previas = mismas.Where(r => r.AreaId == areaId).ToList();
+                if (previas.Any(r => r.Tipo == req.Tipo && r.IncluyeSabado == incluyeSabado))
                 {
-                    var nombre = areas.First(a => a.AreaId == r.AreaId).NombreGeneral;
-                    return new ApiResponse<int>(false, 0, $"{nombre}: {choque} No se guardó ninguna.");
+                    resultado.YaExistian++;
+                    continue;
                 }
+                foreach (var previa in previas)
+                {
+                    previa.Activa = false;
+                    previa.DesactivadoPorId = creadoPor;
+                    previa.FechaDesactivacion = ahora;
+                }
+                if (previas.Count > 0) resultado.Reemplazadas++;
+                nuevas.Add(new ReglaDomingo
+                {
+                    AreaId = areaId,
+                    GrupoId = grupoId,
+                    Tipo = req.Tipo,
+                    IncluyeSabado = incluyeSabado,
+                    FechaInicio = req.FechaInicio,
+                    FechaFin = req.FechaFin,
+                    Motivo = motivo,
+                    Activa = true,
+                    CreadoPorId = creadoPor,
+                    FechaCreacion = ahora
+                });
             }
+            resultado.Creadas = nuevas.Count;
 
             _db.ReglasDomingo.AddRange(nuevas);
             await _db.SaveChangesAsync();
-            _logger.LogWarning("Reglas dominicales creadas por usuario {Usuario}: {Tipo} {Inicio:yyyy-MM-dd}..{Fin:yyyy-MM-dd} sábado={Sabado} áreas {Areas} grupo {Grupo}",
-                usuarioId, req.Tipo, req.FechaInicio, req.FechaFin, req.IncluyeSabado,
-                string.Join(",", areas.Select(a => a.NombreGeneral)), req.GrupoId);
-            return new ApiResponse<int>(true, nuevas.Count, null);
+            _logger.LogWarning("Reglas dominicales creadas por usuario {Usuario}: {Tipo} {Inicio:yyyy-MM-dd}..{Fin:yyyy-MM-dd} sábado={Sabado} planta={Planta} áreas {Areas} grupo {Grupo}; nuevas {Nuevas}, reemplazadas {Reemplazadas}, ya estaban {Ya}",
+                usuarioId, req.Tipo, req.FechaInicio, req.FechaFin, incluyeSabado, req.TodaLaPlanta,
+                req.TodaLaPlanta ? "todas" : string.Join(",", areas.Select(a => a.NombreGeneral)), grupoId,
+                resultado.Creadas, resultado.Reemplazadas, resultado.YaExistian);
+            return new ApiResponse<ResultadoReglasDomingoDto>(true, resultado, null);
+        }
+
+        /// <summary>Desactiva o reactiva de una vez varias reglas (las que se guardaron juntas).</summary>
+        public async Task<ApiResponse<int>> CambiarEstadoAsync(CambiarEstadoReglasDomingoRequest req, int usuarioId)
+        {
+            var ids = (req.Ids ?? new List<int>()).Distinct().ToList();
+            if (ids.Count == 0) return new ApiResponse<int>(false, 0, "No se indicó ninguna regla.");
+            var reglas = await _db.ReglasDomingo.Where(r => ids.Contains(r.Id)).ToListAsync();
+            if (reglas.Count != ids.Count) return new ApiResponse<int>(false, 0, "Alguna regla no existe.");
+
+            var cambian = reglas.Where(r => r.Activa != req.Activa).ToList();
+            if (req.Activa)
+            {
+                foreach (var r in cambian)
+                {
+                    var choque = await ChoqueAsync(r);
+                    if (choque != null) return new ApiResponse<int>(false, 0, choque + " No se reactivó ninguna.");
+                }
+            }
+            var ahora = DateTime.Now;
+            foreach (var r in cambian)
+            {
+                r.Activa = req.Activa;
+                r.DesactivadoPorId = req.Activa ? null : (usuarioId > 0 ? usuarioId : null);
+                r.FechaDesactivacion = req.Activa ? null : ahora;
+            }
+            await _db.SaveChangesAsync();
+            _logger.LogWarning("Reglas dominicales {Ids} {Accion} por usuario {Usuario}",
+                string.Join(",", cambian.Select(r => r.Id)), req.Activa ? "reactivadas" : "desactivadas", usuarioId);
+            return new ApiResponse<int>(true, cambian.Count, null);
         }
 
         public async Task<ApiResponse<object>> DesactivarAsync(int id, int usuarioId)
@@ -137,7 +202,7 @@ namespace tiempo_libre.Services
             r.FechaDesactivacion = DateTime.Now;
             await _db.SaveChangesAsync();
             _logger.LogWarning("Regla dominical {Id} desactivada por usuario {Usuario}", id, usuarioId);
-            return new ApiResponse<object>(true, null, "Desactivada: en esas fechas vuelve el rol normal.");
+            return new ApiResponse<object>(true, null, "Desactivada: en esas fechas vuelve a mandar la regla que siga (o el rol normal).");
         }
 
         public async Task<ApiResponse<object>> ReactivarAsync(int id, int usuarioId)
@@ -238,18 +303,19 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Dos reglas activas para lo mismo (la misma unidad, o el mismo grupo) no se
-        /// pueden encimar: no habría cómo saber cuál manda.
+        /// Las reglas pueden encimarse (manda la de periodo más corto); solo no puede
+        /// haber dos activas para la misma unidad (o el mismo grupo) con las mismas
+        /// fechas exactas: no habría cómo saber cuál manda.
         /// </summary>
         private async Task<string?> ChoqueAsync(ReglaDomingo r)
         {
             var existente = await _db.ReglasDomingo
                 .Where(x => x.Activa && x.Id != r.Id && x.AreaId == r.AreaId && x.GrupoId == r.GrupoId &&
-                            x.FechaInicio <= r.FechaFin && x.FechaFin >= r.FechaInicio)
+                            x.FechaInicio == r.FechaInicio && x.FechaFin == r.FechaFin)
                 .FirstOrDefaultAsync();
             return existente == null
                 ? null
-                : $"Ya hay una regla activa que se encima ({(existente.Tipo == "SinDomingo" ? "sin domingos" : "rol normal")} del " +
+                : $"Ya hay una regla activa con esas mismas fechas ({(existente.Tipo == "SinDomingo" ? "no laborable" : "en base a rol")} del " +
                   $"{existente.FechaInicio:dd/MM/yyyy} al {existente.FechaFin:dd/MM/yyyy}). Desactívala primero.";
         }
     }

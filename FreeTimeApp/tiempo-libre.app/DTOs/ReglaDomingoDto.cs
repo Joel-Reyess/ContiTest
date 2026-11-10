@@ -33,6 +33,8 @@ namespace tiempo_libre.DTOs
     {
         /// <summary>Una o varias unidades organizativas: se crea una regla por cada una.</summary>
         public List<int> AreaIds { get; set; } = new();
+        /// <summary>Todas las unidades organizativas (se ignora AreaIds y GrupoId).</summary>
+        public bool TodaLaPlanta { get; set; }
         /// <summary>Opcional, solo con una unidad: la regla aplica a ese grupo.</summary>
         public int? GrupoId { get; set; }
         /// <summary>"SinDomingo" o "RolNormal".</summary>
@@ -41,6 +43,21 @@ namespace tiempo_libre.DTOs
         public DateOnly FechaInicio { get; set; }
         public DateOnly FechaFin { get; set; }
         public string? Motivo { get; set; }
+    }
+
+    /// <summary>Qué pasó al guardar: nuevas, las que reemplazaron a una de las mismas fechas y las que ya estaban.</summary>
+    public class ResultadoReglasDomingoDto
+    {
+        public int Creadas { get; set; }
+        public int Reemplazadas { get; set; }
+        public int YaExistian { get; set; }
+    }
+
+    /// <summary>Desactivar o reactivar de una vez las reglas que se guardaron juntas (p. ej. toda la planta).</summary>
+    public class CambiarEstadoReglasDomingoRequest
+    {
+        public List<int> Ids { get; set; } = new();
+        public bool Activa { get; set; }
     }
 
     /// <summary>Vacación activa que cae en un día que una regla dejó no laborable.</summary>
