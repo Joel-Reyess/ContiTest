@@ -17,10 +17,13 @@ namespace tiempo_libre.Services
     /// Solo dice si la REGLA cierra el día; el descanso del rol, los días
     /// inhábiles y el porcentaje se siguen revisando donde ya se revisaban.
     ///
-    /// Qué regla manda en un día: la del grupo antes que la del área; con el mismo
-    /// alcance, la más reciente. "RolNormal" deja el día laborable (excepción de un
-    /// grupo dentro de un área sin domingos). Sin reglas, o sin la tabla, todo es
-    /// laborable, como antes.
+    /// Qué regla manda en un día (nov-2026, igual que en las capacidades por
+    /// periodo): la de periodo más corto —un domingo suelto manda sobre un periodo
+    /// largo—; si duran lo mismo, la del grupo antes que la del área; si aun así
+    /// empatan, la más reciente. "RolNormal" (en base a rol) deja el día como diga
+    /// el rol de cada quien: sirve para un grupo dentro de un área sin domingos o
+    /// para habilitar un domingo a toda la planta. Sin reglas, o sin la tabla, todo
+    /// es laborable, como antes.
     ///
     /// Se puede construir solo con el contexto (lo usan servicios que se crean a
     /// mano en pruebas); lo que lee se recuerda lo que vive la instancia.
@@ -95,7 +98,8 @@ namespace tiempo_libre.Services
             var regla = _reglas
                 .Where(r => r.FechaInicio <= fecha && fecha <= r.FechaFin &&
                             (r.GrupoId == grupoId || (r.GrupoId == null && area.HasValue && r.AreaId == area.Value)))
-                .OrderBy(r => r.GrupoId.HasValue ? 0 : 1)
+                .OrderBy(r => r.FechaFin.DayNumber - r.FechaInicio.DayNumber)
+                .ThenBy(r => r.GrupoId.HasValue ? 0 : 1)
                 .ThenByDescending(r => r.FechaCreacion)
                 .ThenByDescending(r => r.Id)
                 .FirstOrDefault();

@@ -11,6 +11,7 @@ import { SAP_NOMENCLATURA, type SAPCodigo } from "@/utils/sapNomenclatura";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
 import type { ReglaTurno, RotacionProgramada } from "@/interfaces/Api.interface";
 import { reglasDomingoService, type ReglaDomingo } from "@/services/reglasDomingoService";
+import { noLaborablesDelAnio } from "@/utils/reglasDomingo";
 
 const MESES = [
     "Ene", "Feb", "Mar", "Abr", "May", "Jun",
@@ -160,17 +161,12 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
         () => Array.from(new Map(reglasDomingo.map((r) => [r.areaId, r.area])).entries()).sort((a, b) => a[1].localeCompare(b[1], "es")),
         [reglasDomingo]
     );
-    const noLaborables = useMemo(() => {
-        const dias = new Set<string>();
-        if (!areaDomingos) return dias;
-        for (const r of reglasDomingo.filter((x) => x.areaId === areaDomingos && x.tipo === "SinDomingo")) {
-            const fin = new Date(`${r.fechaFin.slice(0, 10)}T00:00:00`);
-            for (let d = new Date(`${r.fechaInicio.slice(0, 10)}T00:00:00`); d <= fin; d.setDate(d.getDate() + 1)) {
-                if (d.getDay() === 0 || (r.incluyeSabado && d.getDay() === 6)) dias.add(toIsoDate(d));
-            }
-        }
-        return dias;
-    }, [reglasDomingo, areaDomingos]);
+    // Mismo orden que el backend: un domingo "en base a rol" (o no laborable)
+    // suelto manda sobre el periodo largo que lo contiene.
+    const noLaborables = useMemo(
+        () => (areaDomingos ? noLaborablesDelAnio(reglasDomingo.filter((x) => x.areaId === areaDomingos), anio) : new Set<string>()),
+        [reglasDomingo, areaDomingos, anio]
+    );
 
     const cargar = async () => {
         setLoading(true);

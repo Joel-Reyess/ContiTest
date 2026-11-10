@@ -11,16 +11,18 @@ using tiempo_libre.Services;
 namespace tiempo_libre.Controllers
 {
     /// <summary>
-    /// Reglas dominicales por unidad organizativa y periodo. Las configura el
-    /// superusuario; el aviso del calendario lo ve cualquiera.
+    /// Reglas dominicales por unidad organizativa y periodo. Las configuran el
+    /// superusuario e Ingeniería Industrial; el aviso del calendario lo ve cualquiera.
     /// </summary>
     [ApiController]
     [Route("api/reglas-domingo")]
     [Authorize]
     public class ReglasDomingoController : ControllerBase
     {
-        private const string RolesEdicion = "SuperUsuario,Super Usuario";
-        private const string RolesConsulta = RolesEdicion + ",Ingeniero Industrial,IngenieroIndustrial,JefeArea,Jefe De Area,JefeDeArea,Gerente BT,GerenteBT,RH";
+        // Desde nov-2026 los domingos se configuran en "Capacidad por periodo", que
+        // también usa Ingeniería Industrial.
+        private const string RolesEdicion = "SuperUsuario,Super Usuario,Ingeniero Industrial,IngenieroIndustrial";
+        private const string RolesConsulta = RolesEdicion + ",JefeArea,Jefe De Area,JefeDeArea,Gerente BT,GerenteBT,RH";
 
         private readonly ReglasDomingoService _service;
         private readonly ILogger<ReglasDomingoController> _logger;
@@ -57,6 +59,12 @@ namespace tiempo_libre.Controllers
         [Authorize(Roles = RolesEdicion)]
         public Task<IActionResult> Crear([FromBody] CrearReglaDomingoRequest request) =>
             Ejecutar(() => _service.CrearAsync(request, UsuarioId()), "crear regla dominical");
+
+        /// <summary>Desactivar o reactivar de una vez las reglas que se guardaron juntas.</summary>
+        [HttpPost("estado")]
+        [Authorize(Roles = RolesEdicion)]
+        public Task<IActionResult> CambiarEstado([FromBody] CambiarEstadoReglasDomingoRequest request) =>
+            Ejecutar(() => _service.CambiarEstadoAsync(request, UsuarioId()), "cambiar estado de reglas dominicales");
 
         [HttpPost("{id:int}/desactivar")]
         [Authorize(Roles = RolesEdicion)]

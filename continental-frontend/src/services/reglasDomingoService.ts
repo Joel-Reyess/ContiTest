@@ -31,12 +31,22 @@ export interface ReglasDomingoResponse {
 
 export interface CrearReglaDomingoRequest {
     areaIds: number[]
+    /** Todas las unidades organizativas (se ignoran areaIds y grupoId). */
+    todaLaPlanta?: boolean
     grupoId?: number
     tipo: TipoReglaDomingo
     incluyeSabado: boolean
     fechaInicio: string
     fechaFin: string
     motivo?: string
+}
+
+export interface ResultadoReglasDomingo {
+    creadas: number
+    /** Había una de la misma unidad y mismas fechas con otro tipo: quedó desactivada. */
+    reemplazadas: number
+    /** Ya había una igual: no se duplicó. */
+    yaExistian: number
 }
 
 export interface VacacionEnNoLaborable {
@@ -68,7 +78,9 @@ export const reglasDomingoService = {
         unwrap<ReglasDomingoResponse>(
             httpClient.get(`${BASE}?incluirInactivas=${incluirInactivas}${anio ? `&anio=${anio}` : ''}`)
         ),
-    crear: (req: CrearReglaDomingoRequest) => unwrap<number>(httpClient.post(BASE, req)),
+    crear: (req: CrearReglaDomingoRequest) => unwrap<ResultadoReglasDomingo>(httpClient.post(BASE, req)),
+    /** Desactiva o reactiva de una vez las reglas que se guardaron juntas. */
+    cambiarEstado: (ids: number[], activa: boolean) => unwrap<number>(httpClient.post(`${BASE}/estado`, { ids, activa })),
     desactivar: (id: number) => unwrap<unknown>(httpClient.post(`${BASE}/${id}/desactivar`, {})),
     reactivar: (id: number) => unwrap<unknown>(httpClient.post(`${BASE}/${id}/reactivar`, {})),
     delEmpleado: (empleadoId: number, anio: number) =>
