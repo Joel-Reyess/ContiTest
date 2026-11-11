@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { areasService } from "@/services/areasService";
 import type { Area } from "@/interfaces/Areas.interface";
+import { UserRole } from "@/interfaces/User.interface";
+import useAuth from "@/hooks/useAuth";
+import { MovimientoMasivoDiasEmpresa } from "./MovimientoMasivoDiasEmpresa";
 import {
     reglasDomingoService,
     type ReglaDomingo,
@@ -43,6 +46,8 @@ export const ReglasDomingoPanel = () => {
     // Ingeniería Industrial lo ve en /area/capacidad; el superusuario en /admin.
     const baseEmpleado = location.pathname.startsWith("/area") ? "/area/plantilla" : "/admin/plantilla";
     const { config } = useVacationConfig();
+    const { hasRole } = useAuth();
+    const esSuperUsuario = hasRole(UserRole.SUPER_ADMIN);
     const anios = [config?.anioVigente, config?.anioProgramacionAnual]
         .filter((a): a is number => typeof a === "number")
         .filter((a, i, arr) => arr.indexOf(a) === i)
@@ -552,7 +557,8 @@ export const ReglasDomingoPanel = () => {
                         <h3 className="font-semibold">Vacaciones ya programadas en días no laborables</h3>
                         <p className="text-xs text-continental-gray-1">
                             Días que se programaron antes de la regla (p. ej. días por la empresa en un domingo que después se
-                            declaró no laborable). No se mueven solos: se reprograman desde el calendario del empleado.
+                            declaró no laborable). No se mueven solos: se reprograman desde el calendario del empleado o,
+                            si son muchos, con el machote de abajo.
                         </p>
                     </div>
                     <Button variant="outline" onClick={revisarAfectadas} disabled={buscandoAfectadas}>
@@ -597,6 +603,10 @@ export const ReglasDomingoPanel = () => {
                         </div>
                     ))}
             </section>
+
+            {esSuperUsuario && (
+                <MovimientoMasivoDiasEmpresa anio={anioElegido} onAplicado={() => afectadas && revisarAfectadas()} />
+            )}
         </div>
     );
 };
