@@ -13,6 +13,7 @@ import {
   Gauge,
 } from "lucide-react";
 import { reglasDomingoService } from "@/services/reglasDomingoService";
+import { capacidadPorcentajeService } from "@/services/capacidadPorcentajeService";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
 import { diasInhabilesService } from "@/services/diasInhabilesService";
 import { AsignacionAutomaticaService } from "@/services/asignacionAutomaticaService";
@@ -23,7 +24,10 @@ import { BloquesReservacionService } from "@/services/bloquesReservacionService"
  * Verifica y guía la secuencia acordada con el cliente:
  *   1. Cargar el rol (arranques de reglas del año, ej. enero y abril)
  *   2. Cargar festivos / días inhábiles del año
- *   3. Domingos y capacidad por periodo (si aplican; ambos en la pestaña Capacidad por periodo)
+ *   3. Domingos y capacidad por periodo (opcional; ambos en la pestaña Capacidad por periodo).
+ *      Se marca listo aunque no se configure nada: sin reglas los domingos van en
+ *      base a rol y rige el % general / del año (nov-2026, antes solo se marcaba
+ *      con domingos no laborables y parecía que no dejaba seguir).
  *   4. Asignar los días por empresa (según tabla de antigüedades)
  *   5. Generar los bloques de captura
  * Cada acción lleva a la pestaña (y sección) donde se hace (reunión oct-2026).
@@ -153,24 +157,60 @@ export const ProgramacionAnualWizard = ({
       };
     }
 
-    try {
-      const r = await reglasDomingoService.listar(anio, true);
-      r.reglas.forEach((x) => {
-        registrarCambio(comoFecha(x.fechaCreacion));
-        registrarCambio(comoFecha(x.fechaDesactivacion));
-      });
-      const sinDomingo = r.reglas.filter((x) => x.activa && x.tipo === "SinDomingo");
-      const unidades = new Set(sinDomingo.map((x) => x.areaId)).size;
+    // Paso 3 (opcional): dice lo que hay configurado y queda listo aunque no haya nada.
+    {
+      const partes: string[] = [];
+      let tablaDomingosFalta = false;
+      try {
+        const r = await reglasDomingoService.listar(anio, true);
+        tablaDomingosFalta = !r.tablaExiste;
+        // Solo cuentan los cambios que pueden cerrar un domingo ya asignado: una
+        // regla "no laborables" nueva, o quitar una "en base a rol" (que podía estar
+        // abriendo un domingo). Agregar "en base a rol" o quitar un no laborable
+        // solo abre días y no deja vieja la asignación.
+        r.reglas.forEach((x) => {
+          if (x.tipo === "SinDomingo") {
+            if (x.activa) registrarCambio(comoFecha(x.fechaCreacion));
+          } else {
+            registrarCambio(comoFecha(x.fechaDesactivacion));
+          }
+        });
+        const activas = r.reglas.filter((x) => x.activa);
+        const sinDomingo = activas.filter((x) => x.tipo === "SinDomingo");
+        const enBaseARol = activas.length - sinDomingo.length;
+        const unidades = new Set(sinDomingo.map((x) => x.areaId)).size;
+        if (tablaDomingosFalta) partes.push("Falta correr Scripts/Migration_ReglasDomingo.sql");
+        else if (activas.length === 0) partes.push("Domingos: sin reglas, todos en base a rol");
+        else
+          partes.push(
+            "Domingos: " +
+              [
+                sinDomingo.length > 0 ? `${unidades} unidad(es) con no laborables` : "sin no laborables",
+                enBaseARol > 0 ? `${enBaseARol} regla(s) en base a rol` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+          );
+      } catch {
+        partes.push("Domingos: no se pudo verificar");
+      }
+      try {
+        const c = await capacidadPorcentajeService.listar(anio);
+        const activas = c.capacidades.filter((x) => x.activa);
+        const pctAnio =
+          c.anioPreparacion === anio && c.porcentajePreparacion != null ? c.porcentajePreparacion : c.porcentajeGeneral;
+        partes.push(
+          activas.length > 0
+            ? `Capacidad: ${activas.length} periodo(s) con % distinto; el resto del año ${pctAnio}%`
+            : `Capacidad: sin periodos, todo ${anio} con ${pctAnio}%`
+        );
+      } catch {
+        partes.push("Capacidad: no se pudo verificar");
+      }
       nuevo.domingos = {
-        completado: sinDomingo.length > 0,
-        detalle: !r.tablaExiste
-          ? "Falta correr Scripts/Migration_ReglasDomingo.sql"
-          : sinDomingo.length > 0
-            ? `${unidades} unidad(es) organizativa(s) con domingos no laborables en ${anio}`
-            : `Sin domingos no laborables: todos en base a rol (opcional)`,
+        completado: !tablaDomingosFalta,
+        detalle: `Opcional — ${partes.join(". ")}. Puedes seguir con el paso 4.`,
       };
-    } catch {
-      nuevo.domingos = { completado: false, detalle: "Opcional; no se pudo verificar" };
     }
 
     try {
@@ -183,7 +223,7 @@ export const ProgramacionAnualWizard = ({
         detalle: !resumen.asignacionRealizada
           ? "Aún no se ejecuta la asignación de días por empresa"
           : quedoVieja
-            ? `⚠ Se asignó el ${asignada!.toLocaleDateString()} y después cambió el rol o los domingos: puede haber días en descanso o en domingo no laborable. Revierte la asignación y vuelve a programar.`
+            ? `⚠ Se asignó el ${asignada!.toLocaleDateString("es-MX")} y después cambió el rol o los domingos: puede haber días en descanso o en domingo no laborable. Revierte la asignación y vuelve a programar.`
             : `${resumen.totalVacacionesAsignadas} día(s) asignado(s) a ${resumen.empleadosConAsignacion} empleado(s)`,
       };
     } catch (e) {
@@ -315,7 +355,7 @@ export const ProgramacionAnualWizard = ({
   };
 
   return (
-    <div className="bg-white border border-continental-gray-3 rounded-lg p-4 space-y-3">
+    <div id="secuencia-programacion" className="bg-white border border-continental-gray-3 rounded-lg p-4 space-y-3 scroll-mt-4">
       <div className="flex items-center justify-between">
         <h3 className="font-medium text-continental-blue-light">
           Secuencia de programación anual {anio}

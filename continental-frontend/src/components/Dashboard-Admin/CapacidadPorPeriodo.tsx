@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
-import { Gauge, Plus, RotateCcw, XCircle } from "lucide-react";
+import { ArrowLeft, Gauge, Plus, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { areasService } from "@/services/areasService";
@@ -28,7 +28,12 @@ const hoyIso = () => format(new Date(), "yyyy-MM-dd");
  * la captura, la asignación de días por la empresa, la reprogramación, los
  * calendarios y los dashboards (todos preguntan el límite al mismo lugar).
  */
-export const CapacidadPorPeriodo = () => {
+interface CapacidadPorPeriodoProps {
+    /** Regresa a la secuencia de programación anual (pestaña General). */
+    onRegresarSecuencia?: () => void;
+}
+
+export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodoProps = {}) => {
     const { config } = useVacationConfig();
     const anios = [config?.anioVigente, config?.anioProgramacionAnual]
         .filter((a): a is number => typeof a === "number")
@@ -255,6 +260,19 @@ export const CapacidadPorPeriodo = () => {
                         domingos en base a rol / no laborables
                     </button>
                 </p>
+                {onRegresarSecuencia && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                        <span>
+                            Las dos cosas son opcionales. Si te quedas con el % general
+                            {datos?.anioPreparacion ? ` y el del año ${datos.anioPreparacion}` : ""} y los domingos en base a
+                            rol, aquí no hay que guardar nada: regresa a la secuencia y sigue con el paso 4 (Asignar días
+                            por empresa).
+                        </span>
+                        <Button variant="outline" size="sm" onClick={onRegresarSecuencia} className="flex items-center gap-1">
+                            <ArrowLeft className="w-4 h-4" /> Regresar a la secuencia
+                        </Button>
+                    </div>
+                )}
                 <p className="text-xs text-continental-gray-1 mt-1">
                     Si en un mismo día aplican varias, manda la más específica: primero la de día, luego la de semana y luego
                     la de mes; con el mismo periodo, la de grupo, luego la de área y luego la de planta. Una excepción de un
@@ -499,6 +517,14 @@ export const CapacidadPorPeriodo = () => {
             <section id="seccion-domingos" className="border-t-2 border-continental-gray-3 pt-6 scroll-mt-4">
                 <ReglasDomingoPanel />
             </section>
+
+            {onRegresarSecuencia && (
+                <div className="flex justify-end">
+                    <Button variant="outline" onClick={onRegresarSecuencia} className="flex items-center gap-1">
+                        <ArrowLeft className="w-4 h-4" /> Regresar a la secuencia (paso 4: asignar días)
+                    </Button>
+                </div>
+            )}
         </div>
     );
 };
