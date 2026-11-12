@@ -396,7 +396,18 @@ export const Vacaciones = () => {
         {/* Content based on active tab */}
         {activeTab === 'empresa-descanso' && <DiasEmpresaEnDescanso />}
         {activeTab === 'dias-de-mas' && <DiasDeMasPorAntiguedad />}
-        {activeTab === 'capacidad' && <CapacidadPorPeriodo />}
+        {activeTab === 'capacidad' && (
+          <CapacidadPorPeriodo
+            onRegresarSecuencia={() => {
+              setActiveTab('general');
+              window.setTimeout(() => {
+                const sec = document.getElementById('secuencia-programacion');
+                if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                else window.scrollTo({ top: 0, behavior: 'smooth' });
+              }, 300);
+            }}
+          />
+        )}
         {activeTab === 'edicion-dias' && (
           <div className="p-4 bg-white border border-continental-gray-3 rounded-lg">
             <ConfigEdicionDias />
