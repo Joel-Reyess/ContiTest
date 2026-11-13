@@ -61,6 +61,68 @@ namespace tiempo_libre.Services
                 d[clave] = cuando;
         }
 
+        /// <summary>
+        /// Días en que la app PUSO una vacación por una solicitud aprobada: reprogramación
+        /// de vacación, festivo trabajado, vacación laborada, post-incapacidad, edición o
+        /// reprogramación de día empresa.
+        ///
+        /// Si el Excel trae ese día en 0 días NO es que SAP lo haya dejado sin efecto:
+        /// la app lo aprobó y SAP lo tiene registrado (la fila existe); el 0 es lo que
+        /// SAP le cobra según su propio calendario. Caso 32813144 (nov-2026): le
+        /// aprobaron en la app 07/11 → 12/11, 09/11 → 13/11 y 10/11 → 17/11; el Excel
+        /// trajo 12/11 y 17/11 en 0 días y la sincronización los canceló, así que el
+        /// calendario dejó de mostrarlos aunque estaban autorizados.
+        ///
+        /// Cada tabla va con su propio try/catch: si una todavía no existe en la base,
+        /// las demás cuentan igual.
+        /// </summary>
+        public static async Task<HashSet<(int EmpleadoId, DateOnly Fecha)>> DiasAprobadosEnAppAsync(
+            FreeTimeDbContext db, IReadOnlyCollection<int> empleadoIds, DateOnly inicio, DateOnly fin)
+        {
+            var r = new HashSet<(int, DateOnly)>();
+            if (empleadoIds.Count == 0) return r;
+            var ids = empleadoIds.ToList();
+
+            async Task Sumar(Func<Task<List<(int, DateOnly)>>> leer)
+            {
+                try { foreach (var d in await leer()) r.Add(d); }
+                catch { /* tabla que aún no existe: no cuenta */ }
+            }
+
+            await Sumar(async () => (await db.SolicitudesReprogramacion
+                .Where(s => s.EstadoSolicitud == "Aprobada" && ids.Contains(s.EmpleadoId) &&
+                            s.FechaNuevaSolicitada >= inicio && s.FechaNuevaSolicitada <= fin)
+                .Select(s => new { s.EmpleadoId, s.FechaNuevaSolicitada }).ToListAsync())
+                .Select(s => (s.EmpleadoId, s.FechaNuevaSolicitada)).ToList());
+            await Sumar(async () => (await db.SolicitudesFestivosTrabajados
+                .Where(s => s.EstadoSolicitud == "Aprobada" && ids.Contains(s.EmpleadoId) &&
+                            s.FechaNuevaSolicitada >= inicio && s.FechaNuevaSolicitada <= fin)
+                .Select(s => new { s.EmpleadoId, s.FechaNuevaSolicitada }).ToListAsync())
+                .Select(s => (s.EmpleadoId, s.FechaNuevaSolicitada)).ToList());
+            await Sumar(async () => (await db.SolicitudesVacacionLaborada
+                .Where(s => s.EstadoSolicitud == "Aprobada" && ids.Contains(s.EmpleadoId) &&
+                            s.FechaNueva >= inicio && s.FechaNueva <= fin)
+                .Select(s => new { s.EmpleadoId, s.FechaNueva }).ToListAsync())
+                .Select(s => (s.EmpleadoId, s.FechaNueva)).ToList());
+            await Sumar(async () => (await db.SolicitudesReprogramacionPostIncapacidad
+                .Where(s => s.EstadoSolicitud == "Aprobada" && ids.Contains(s.EmpleadoId) &&
+                            s.FechaNueva >= inicio && s.FechaNueva <= fin)
+                .Select(s => new { s.EmpleadoId, s.FechaNueva }).ToListAsync())
+                .Select(s => (s.EmpleadoId, s.FechaNueva)).ToList());
+            await Sumar(async () => (await db.SolicitudesEdicionDiasEmpresa
+                .Where(s => s.EstadoSolicitud == "Aprobada" && ids.Contains(s.EmpleadoId) &&
+                            s.FechaNueva >= inicio && s.FechaNueva <= fin)
+                .Select(s => new { s.EmpleadoId, s.FechaNueva }).ToListAsync())
+                .Select(s => (s.EmpleadoId, s.FechaNueva)).ToList());
+            await Sumar(async () => (await db.SolicitudesReprogramacionDiaEmpresa
+                .Where(s => s.EstadoSolicitud == "Aprobada" && ids.Contains(s.EmpleadoId) &&
+                            s.FechaNueva >= inicio && s.FechaNueva <= fin)
+                .Select(s => new { s.EmpleadoId, s.FechaNueva }).ToListAsync())
+                .Select(s => (s.EmpleadoId, s.FechaNueva)).ToList());
+
+            return r;
+        }
+
         public static async Task<Cambios> ObtenerAsync(
             FreeTimeDbContext db, IReadOnlyCollection<int> empleadoIds, DateOnly inicio, DateOnly fin)
         {

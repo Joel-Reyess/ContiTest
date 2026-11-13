@@ -201,6 +201,9 @@ namespace tiempo_libre.Services
             // Días del Excel retenidos por pasarse de la antigüedad: no se pintan.
             var retenidosSap = await RetencionesSap.NoCuentanAsync(_db, inicio, fin);
 
+            // Días que la app puso por una solicitud aprobada (ver abajo, 1100 en 0 días).
+            var aprobadosEnApp = await CambiosAppVsExcel.DiasAprobadosEnAppAsync(_db, empleadosIds, inicio, fin);
+
             var permisosPorEmpleadoYFecha = new Dictionary<string, Dictionary<int, string>>();
             foreach (var permiso in permisosIncapacidades)
             {
@@ -232,8 +235,15 @@ namespace tiempo_libre.Services
                                             cambiosApp != null &&
                                             cambiosApp.AppQuitoDespuesDe(empDelPermiso.Id, fechaActual, permiso.FechaRegistro);
 
+                        // Un 1100 en 0 días sí se pinta si la app tiene ese día activo
+                        // por una solicitud aprobada: SAP lo registró y la app lo
+                        // autorizó (caso 32813144, nov-2026).
+                        var ceroPeroAprobado = permiso.ClAbPre == 1100 && permiso.Dias == 0 &&
+                                               empDelPermiso != null &&
+                                               appTieneVacacionActiva.Contains((empDelPermiso.Id, fechaActual)) &&
+                                               aprobadosEnApp.Contains((empDelPermiso.Id, fechaActual));
                         if ((!esDelExcel && !appDespuesDeLaCarga) ||
-                            (permiso.ClAbPre == 1100 && permiso.Dias == 0) ||
+                            (permiso.ClAbPre == 1100 && permiso.Dias == 0 && !ceroPeroAprobado) ||
                             appQuitoElDia)
                         {
                             fechaActual = fechaActual.AddDays(1);
