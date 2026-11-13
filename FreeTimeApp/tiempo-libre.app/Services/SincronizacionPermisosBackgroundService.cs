@@ -482,6 +482,9 @@ namespace tiempo_libre.Services
         /// - Dias = 0  → SAP dejó esa vacación sin efecto: se cancela el día Activo
         ///   de la app dentro del rango (es como llega una reprogramación capturada
         ///   directo en SAP: el día viejo se reporta en 0 y el nuevo con 1).
+        ///   Salvo un día que la app puso por una solicitud aprobada: SAP lo tiene
+        ///   registrado y la app lo autorizó, se queda (nov-2026, caso 32813144;
+        ///   ver <see cref="CambiosAppVsExcel.DiasAprobadosEnAppAsync"/>).
         /// - Dias &gt; 0 → por cada día del rango que la app no tenga como vacación:
         ///     · si hay una vacación activa a ±31 días que SAP no confirme, se
         ///       mueve la más cercana a la fecha del Excel (cancelar + crear);
@@ -523,8 +526,19 @@ namespace tiempo_libre.Services
                     }
                 }
 
+                var aprobadosEnApp = sinEfecto.Count == 0
+                    ? new HashSet<(int EmpleadoId, DateOnly Fecha)>()
+                    : await CambiosAppVsExcel.DiasAprobadosEnAppAsync(context, new[] { empleadoId.Value }, desde, hasta);
+
                 foreach (var v in sinEfecto)
                 {
+                    if (aprobadosEnApp.Contains((empleadoId.Value, v.FechaVacacion)))
+                    {
+                        _logger.LogInformation(
+                            "Excel manda: vacación {Fecha:yyyy-MM-dd} de nómina {Nomina} viene en 0 días pero se aprobó en la app: se conserva",
+                            v.FechaVacacion, nomina);
+                        continue;
+                    }
                     v.EstadoVacacion = "Cancelada";
                     v.UpdatedAt = DateTime.Now;
                     v.Observaciones = "Cancelada por sincronización SAP (Excel la reporta con 0 días)";
@@ -551,6 +565,16 @@ namespace tiempo_libre.Services
                 // candidato a moverse: SAP y la app ya están de acuerdo en él.
                 var confirmadasSap = await VacacionesSapVigentesAsync(context, nomina, ventanaIni, ventanaFin);
 
+                // Tampoco el que la app aprobó por solicitud y SAP tiene registrado,
+                // aunque sea en 0 días: antes se "movía" al día nuevo del Excel y el
+                // día autorizado desaparecía del calendario (caso 32813144).
+                var registradasSap = await VacacionesSapVigentesAsync(context, nomina, ventanaIni, ventanaFin, incluirEnCero: true);
+                var aprobadasEnApp = await CambiosAppVsExcel.DiasAprobadosEnAppAsync(
+                    context, new[] { empleadoId.Value }, ventanaIni, ventanaFin);
+                bool SapLaTieneYLaAppLaAprobo(VacacionesProgramadas v) =>
+                    aprobadasEnApp.Contains((empleadoId.Value, v.FechaVacacion)) &&
+                    registradasSap.Any(p => v.FechaVacacion >= p.Desde && v.FechaVacacion <= p.Hasta);
+
                 // Se ordenan por cercanía a la fecha que manda el Excel: cuando
                 // hay varias candidatas la más cercana es la que el encargado
                 // recorrió. Antes, con más de una, no se tocaba ninguna y el día
@@ -558,6 +582,7 @@ namespace tiempo_libre.Services
                 // solo día). El Excel manda, así que se resuelve siempre.
                 var sinConfirmar = candidatas
                     .Where(v => !confirmadasSap.Any(p => v.FechaVacacion >= p.Desde && v.FechaVacacion <= p.Hasta))
+                    .Where(v => !SapLaTieneYLaAppLaAprobo(v))
                     .OrderBy(v => Math.Abs(v.FechaVacacion.DayNumber - f.DayNumber))
                     .ThenBy(v => v.FechaVacacion)
                     .ToList();
@@ -701,8 +726,9 @@ namespace tiempo_libre.Services
                 .ToList();
         }
 
+        /// <param name="incluirEnCero">También las filas en 0 días (SAP tiene el día registrado aunque no lo cobre).</param>
         private static async Task<List<(DateOnly Desde, DateOnly Hasta)>> VacacionesSapVigentesAsync(
-            FreeTimeDbContext context, int nomina, DateOnly ini, DateOnly fin)
+            FreeTimeDbContext context, int nomina, DateOnly ini, DateOnly fin, bool incluirEnCero = false)
         {
             // Sin filtrar Dias en la base: una fila del lote pudo cambiarlo en memoria.
             await context.PermisosEIncapacidadesSAP
@@ -712,7 +738,7 @@ namespace tiempo_libre.Services
 
             return context.PermisosEIncapacidadesSAP.Local
                 .Where(p => p.Nomina == nomina && p.ClAbPre == 1100 &&
-                            (p.Dias == null || p.Dias > 0) &&
+                            (incluirEnCero || p.Dias == null || p.Dias > 0) &&
                             p.Desde <= fin && p.Hasta >= ini)
                 .Select(p => (p.Desde, p.Hasta))
                 .ToList();
