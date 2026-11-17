@@ -10,6 +10,18 @@
   </PropertyGroup>
 
   <!--
+    En Debug (dotnet run / Visual Studio) no se genera tiempo-libre.exe: se
+    arranca con "dotnet tiempo-libre.dll". Cada commit cambia la version del
+    .exe (lleva el commit, ver abajo), Windows lo ve como un programa nuevo sin
+    firma y Control de aplicaciones / Smart App Control lo bloquea al abrirlo
+    ("Una directiva de Control de aplicaciones bloqueo este archivo"). dotnet.exe
+    si esta firmado. El publish en Release no cambia: sigue llevando el .exe.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <!--
     Los appsettings de ambiente NO viajan en el paquete que se envia al
     servidor. El de cada servidor tiene su propia cadena de conexion; cuando el
     publish se llevo el local (Server=ALEX\SQLEXPRESS, la maquina de
