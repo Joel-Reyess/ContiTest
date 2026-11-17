@@ -62,6 +62,13 @@ export const VacacionesGeneral = ({
     useState<ResumenAsignacionAutomaticaResponse | null>(null);
   const [loadingResumen, setLoadingResumen] = useState(false);
   const [showRevertirModal, setShowRevertirModal] = useState(false);
+  // Año (y su resumen) que se va a revertir: el vigente desde el panel principal
+  // o el que se está preparando desde la secuencia. Antes siempre era el vigente,
+  // así que la preparación de 2027 no tenía cómo revertir su asignación.
+  const [reversion, setReversion] = useState<{
+    anio: number;
+    resumen: ResumenAsignacionAutomaticaResponse | null;
+  } | null>(null);
   const [isReverting, setIsReverting] = useState(false);
   const [showGenerarBloquesModal, setShowGenerarBloquesModal] = useState(false);
   const [estadisticasBloques, setEstadisticasBloques] =
@@ -376,15 +383,25 @@ export const VacacionesGeneral = ({
   };
 
   const handleRevertirAsignacion = () => {
+    setReversion({ anio: anioVigente, resumen: resumenAsignacion });
+    setShowRevertirModal(true);
+  };
+
+  const abrirReversionDesdeSecuencia = (
+    anio: number,
+    resumen: ResumenAsignacionAutomaticaResponse
+  ) => {
+    setReversion({ anio, resumen });
     setShowRevertirModal(true);
   };
 
   const handleConfirmarReversion = async () => {
+    const anioARevertir = reversion?.anio ?? anioVigente;
     try {
       setIsReverting(true);
 
       const response = await AsignacionAutomaticaService.revertirAsignacion(
-        anioVigente
+        anioARevertir
       );
 
       onNotification(
@@ -394,8 +411,10 @@ export const VacacionesGeneral = ({
       );
 
       // Actualizar el estado para mostrar que no hay asignación
-      setResumenAsignacion(null);
+      if (anioARevertir === anioVigente) setResumenAsignacion(null);
       setShowRevertirModal(false);
+      setReversion(null);
+      setWizardVersion((v) => v + 1);
     } catch (error) {
       console.error("Error al revertir asignación:", error);
 
@@ -428,6 +447,7 @@ export const VacacionesGeneral = ({
 
   const handleCancelarReversion = () => {
     setShowRevertirModal(false);
+    setReversion(null);
   };
 
   const handleGenerarTurnosSuccess = () => {
@@ -836,6 +856,9 @@ export const VacacionesGeneral = ({
                     setModalesEnPreparacion(true);
                     setShowProgramacionModal(true);
                   }}
+                  onRevertirAsignacion={(resumen) =>
+                    abrirReversionDesdeSecuencia(anioPreparacion, resumen)
+                  }
                   onAbrirGenerarBloques={() => {
                     if (!prepFechaInicioBloques) {
                       onNotification(
@@ -1017,6 +1040,9 @@ export const VacacionesGeneral = ({
               setModalesEnPreparacion(false);
               setShowProgramacionModal(true);
             }}
+            onRevertirAsignacion={(resumen) =>
+              abrirReversionDesdeSecuencia(anioVigente, resumen)
+            }
             onAbrirGenerarBloques={() => {
               if (!fechaInicio) {
                 onNotification(
@@ -1411,8 +1437,8 @@ export const VacacionesGeneral = ({
       <RevertirAsignacionModal
         isOpen={showRevertirModal}
         isReverting={isReverting}
-        anioVigente={anioVigente}
-        resumenAsignacion={resumenAsignacion}
+        anioVigente={reversion?.anio ?? anioVigente}
+        resumenAsignacion={reversion ? reversion.resumen : resumenAsignacion}
         onConfirmar={handleConfirmarReversion}
         onCancelar={handleCancelarReversion}
       />

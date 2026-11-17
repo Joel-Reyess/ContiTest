@@ -18,6 +18,7 @@ import { reglasTurnoService } from "@/services/reglasTurnoService";
 import { diasInhabilesService } from "@/services/diasInhabilesService";
 import { AsignacionAutomaticaService } from "@/services/asignacionAutomaticaService";
 import { BloquesReservacionService } from "@/services/bloquesReservacionService";
+import type { ResumenAsignacionAutomaticaResponse } from "@/interfaces/Api.interface";
 
 /**
  * Wizard de estado de la programación anual de un año.
@@ -41,11 +42,17 @@ interface PasoEstado {
   detalle: string;
 }
 
+interface Accion {
+  etiqueta: string;
+  onClick: () => void;
+  peligro?: boolean;
+}
+
 interface EstadoWizard {
   arranques: PasoEstado;
   festivos: PasoEstado;
   domingos: PasoEstado;
-  diasEmpresa: PasoEstado;
+  diasEmpresa: PasoEstado & { resumen?: ResumenAsignacionAutomaticaResponse };
   bloques: PasoEstado;
 }
 
@@ -58,6 +65,12 @@ interface ProgramacionAnualWizardProps {
   ) => void;
   /** Abre el modal de asignación automática de días por empresa. */
   onAbrirProgramarDias: () => void;
+  /**
+   * Abre la confirmación para revertir la asignación de días por empresa de `anio`.
+   * Sin esto, en la preparación del siguiente año el aviso decía "revierte la
+   * asignación" y no había botón para hacerlo (validación nov-2026).
+   */
+  onRevertirAsignacion?: (resumen: ResumenAsignacionAutomaticaResponse) => void;
   /** Abre el modal de generación de bloques (ya parametrizado con `anio`). */
   onAbrirGenerarBloques: () => void;
   /** Se invoca cuando el usuario pide ir a la pestaña Calendario (pasos 1 y 2). */
@@ -72,6 +85,7 @@ export const ProgramacionAnualWizard = ({
   anio,
   onNotification,
   onAbrirProgramarDias,
+  onRevertirAsignacion,
   onAbrirGenerarBloques,
   onIrACalendario,
   onIrAPestana,
@@ -97,14 +111,18 @@ export const ProgramacionAnualWizard = ({
     // por la empresa es anterior, se hizo con otro rol y puede caer en descansos
     // o en domingos no laborables (validación nov-2026).
     let ultimoCambioRol: Date | null = null;
+    let queCambio = "";
     const comoFecha = (iso?: string | null, utc = false) => {
       if (!iso) return null;
       const conZona = utc && !/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? `${iso}Z` : iso;
       const d = new Date(conZona);
       return isNaN(d.getTime()) ? null : d;
     };
-    const registrarCambio = (d: Date | null) => {
-      if (d && (!ultimoCambioRol || d > ultimoCambioRol)) ultimoCambioRol = d;
+    const registrarCambio = (d: Date | null, que: string) => {
+      if (d && (!ultimoCambioRol || d > ultimoCambioRol)) {
+        ultimoCambioRol = d;
+        queCambio = que;
+      }
     };
 
     // Cada verificación es independiente: si una falla, las demás siguen.
@@ -122,7 +140,12 @@ export const ProgramacionAnualWizard = ({
         .map((r) => `${r.codigoRegla} ${r.fechaEjecucion.slice(0, 10)}`)
         .join(" · ");
       const reglasConArranque = new Set(activas.map((r) => r.codigoRegla)).size;
-      activas.forEach((r) => registrarCambio(comoFecha(r.createdAt, true)));
+      activas.forEach((r) =>
+        registrarCambio(
+          comoFecha(r.createdAt, true),
+          `se agendó el arranque ${r.codigoRegla} del ${r.fechaEjecucion.slice(0, 10)}`
+        )
+      );
       nuevo.arranques = {
         completado: activas.length > 0,
         detalle:
@@ -165,14 +188,19 @@ export const ProgramacionAnualWizard = ({
         const r = await reglasDomingoService.listar(anio, true);
         tablaDomingosFalta = !r.tablaExiste;
         // Solo cuentan los cambios que pueden cerrar un domingo ya asignado: una
-        // regla "no laborables" nueva, o quitar una "en base a rol" (que podía estar
-        // abriendo un domingo). Agregar "en base a rol" o quitar un no laborable
-        // solo abre días y no deja vieja la asignación.
+        // regla "no laborables" nueva, o quitar una "en base a rol" mientras haya
+        // no laborables vigentes (era la excepción que abría ese domingo). Sin
+        // ningún no laborable, quitar "en base a rol" no cambia nada: sin reglas
+        // los domingos ya van en base a rol (antes contaba igual y el aviso salía
+        // sin motivo). Agregar "en base a rol" o quitar un no laborable solo abre
+        // días y no deja vieja la asignación.
+        const hayNoLaborables = r.reglas.some((x) => x.tipo === "SinDomingo" && x.activa);
+        const donde = (x: (typeof r.reglas)[number]) => (x.grupo ? `${x.area} ${x.grupo}` : x.area);
         r.reglas.forEach((x) => {
           if (x.tipo === "SinDomingo") {
-            if (x.activa) registrarCambio(comoFecha(x.fechaCreacion));
-          } else {
-            registrarCambio(comoFecha(x.fechaDesactivacion));
+            if (x.activa) registrarCambio(comoFecha(x.fechaCreacion), `domingos no laborables en ${donde(x)}`);
+          } else if (hayNoLaborables) {
+            registrarCambio(comoFecha(x.fechaDesactivacion), `se quitó "en base a rol" en ${donde(x)}`);
           }
         });
         const activas = r.reglas.filter((x) => x.activa);
@@ -220,10 +248,11 @@ export const ProgramacionAnualWizard = ({
       const quedoVieja = resumen.asignacionRealizada && asignada != null && cambio != null && cambio > asignada;
       nuevo.diasEmpresa = {
         completado: resumen.asignacionRealizada && !quedoVieja,
+        resumen: resumen.asignacionRealizada ? resumen : undefined,
         detalle: !resumen.asignacionRealizada
           ? "Aún no se ejecuta la asignación de días por empresa"
           : quedoVieja
-            ? `⚠ Se asignó el ${asignada!.toLocaleDateString("es-MX")} y después cambió el rol o los domingos: puede haber días en descanso o en domingo no laborable. Revierte la asignación y vuelve a programar.`
+            ? `⚠ Se asignó el ${asignada!.toLocaleDateString("es-MX")} y el ${cambio!.toLocaleDateString("es-MX")} cambió el rol o los domingos (${queCambio}): puede haber días en descanso o en domingo no laborable. Para rehacerla: "Revertir asignación" y luego "Programar días". Volver a programar sin revertir no la rehace: solo completa a quien le falten días.`
             : `${resumen.totalVacacionesAsignadas} día(s) asignado(s) a ${resumen.empleadosConAsignacion} empleado(s)`,
       };
     } catch (e) {
@@ -311,7 +340,18 @@ export const ProgramacionAnualWizard = ({
           descripcion:
             "Ejecuta la asignación automática según la tabla de antigüedades (4 años → 3 días, 5 → 4, 6 o más → 5). Los días van seguidos según el rol de cada quien; si no caben en una semana siguen en la siguiente. En el modal eliges el año, los meses a excluir y, si quieres, las fechas de arranque/paro por área.",
           estado: estado.diasEmpresa,
-          acciones: [{ etiqueta: "Programar días", onClick: onAbrirProgramarDias }],
+          acciones: [
+            { etiqueta: "Programar días", onClick: onAbrirProgramarDias },
+            ...(estado.diasEmpresa.resumen && onRevertirAsignacion
+              ? [
+                  {
+                    etiqueta: "Revertir asignación",
+                    onClick: () => onRevertirAsignacion(estado.diasEmpresa.resumen!),
+                    peligro: true,
+                  },
+                ]
+              : []),
+          ] as Accion[],
         },
         {
           numero: 5,
@@ -420,12 +460,13 @@ export const ProgramacionAnualWizard = ({
                 </p>
               </div>
               <div className="flex flex-col gap-1 shrink-0">
-                {paso.acciones.map((accion) => (
+                {(paso.acciones as Accion[]).map((accion) => (
                   <Button
                     key={accion.etiqueta}
                     variant="outline"
                     size="sm"
                     onClick={accion.onClick}
+                    className={accion.peligro ? "border-red-300 text-red-600 hover:bg-red-50" : undefined}
                   >
                     {accion.etiqueta}
                   </Button>

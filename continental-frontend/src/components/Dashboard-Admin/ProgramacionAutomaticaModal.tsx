@@ -39,6 +39,14 @@ export const ProgramacionAutomaticaModal = ({
   const anioPorDefecto = anioObjetivo ?? new Date().getFullYear() + 1;
   const [step, setStep] = useState<ModalStep>('confirmation');
   const [anio, setAnio] = useState<number>(anioPorDefecto);
+  // El modal vive montado todo el tiempo: el estado inicial se toma la primera
+  // vez que se pinta la vista (año vigente) y al abrirlo desde la preparación del
+  // siguiente año seguía diciendo 2026 aunque abajo dijera "se está programando
+  // 2027" (validación nov-2026). Al abrir se toma siempre el año que se programa.
+  useEffect(() => {
+    if (isOpen) setAnio(anioPorDefecto);
+  }, [isOpen, anioPorDefecto]);
+  const anioDistinto = Number.isFinite(anio) && anio !== anioPorDefecto;
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultados, setResultados] = useState<AsignacionAutomaticaResponse | null>(null);
   const [isReverting, setIsReverting] = useState(false);
@@ -255,6 +263,14 @@ export const ProgramacionAutomaticaModal = ({
           <p className="text-xs text-gray-500">
             Año que se está programando ({anioPorDefecto}); puedes cambiarlo si necesitas otro.
           </p>
+          {anioDistinto && (
+            <p className="text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              Ojo: vas a asignar días por la empresa de {anio}, no de {anioPorDefecto}.
+              {anio < anioPorDefecto
+                ? ` ${anio} ya tiene su programación; solo se completaría a quien le falten días, y nunca en fechas que ya pasaron.`
+                : ''}
+            </p>
+          )}
         </div>
 
         <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -451,8 +467,9 @@ export const ProgramacionAutomaticaModal = ({
           onClick={handleConfirmarProgramacion}
           variant="continental"
           className="px-6"
+          disabled={!Number.isFinite(anio)}
         >
-          Confirmar Programación
+          {anioDistinto ? `Confirmar programación ${anio}` : 'Confirmar Programación'}
         </Button>
       </div>
     </div>
