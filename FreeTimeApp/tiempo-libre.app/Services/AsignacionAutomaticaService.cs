@@ -65,6 +65,16 @@ namespace tiempo_libre.Services
                     AnioAsignacion = request.Anio
                 };
 
+                // Un año que ya terminó no se programa: todas sus fechas ya pasaron.
+                // (Validación nov-2026: el modal abría con el año vigente en vez del
+                // que se preparaba y se podía correr la asignación del año en curso.)
+                var hoy = DateOnly.FromDateTime(DateTime.Today);
+                if (request.Anio < hoy.Year)
+                {
+                    return new ApiResponse<AsignacionAutomaticaResponse>(false, response,
+                        $"{request.Anio} ya terminó: no se pueden asignar días por la empresa en fechas que ya pasaron.");
+                }
+
                 // Obtener empleados sindicalizados (con nómina)
                 var empleados = await ObtenerEmpleadosSindicalizadosAsync(request.GrupoIds, ct);
                 response.TotalEmpleadosProcesados = empleados.Count;
@@ -258,6 +268,12 @@ namespace tiempo_libre.Services
             public Dictionary<(int GrupoId, int Semana), int> CargaPorGrupoSemana = new();
             public List<VentanaAsignacion> Ventanas = new();
             public Random Azar = new();
+            /// <summary>
+            /// Nunca se asigna un día de hoy o anterior: si se corre el año en curso
+            /// (por error o para completar a alguien) los días caerían en fechas que
+            /// ya pasaron y quedarían como vacaciones gozadas que nadie tomó.
+            /// </summary>
+            public DateOnly Hoy = DateOnly.FromDateTime(DateTime.Today);
         }
 
         private static readonly string[] TiposEmpresa = { "Automatica", "AsignadaAutomaticamente", "DiaEmpresaReprogramado" };
@@ -541,6 +557,7 @@ namespace tiempo_libre.Services
                                                       v.GrupoIds.Contains(grupoId)))
             {
                 var desde = v.FechaInicio < inicioAnio ? inicioAnio : v.FechaInicio;
+                if (desde <= ctx.Hoy) desde = ctx.Hoy.AddDays(1);
                 var hasta = v.FechaFin > finAnio ? finAnio : v.FechaFin;
                 if (desde <= hasta) opciones.Add((desde, hasta, v));
             }
@@ -551,6 +568,7 @@ namespace tiempo_libre.Services
                 .Select(s => (s.NumeroSemana,
                     Desde: s.FechaInicio < inicioAnio ? inicioAnio : s.FechaInicio,
                     Hasta: s.FechaFin > finAnio ? finAnio : s.FechaFin))
+                .Select(s => (s.NumeroSemana, Desde: s.Desde <= ctx.Hoy ? ctx.Hoy.AddDays(1) : s.Desde, s.Hasta))
                 .Where(s => s.Desde <= s.Hasta && s.Desde.Year == anio)
                 .OrderBy(s => ctx.CargaPorGrupoSemana.GetValueOrDefault((grupoId, s.NumeroSemana)))
                 .ThenBy(_ => ctx.Azar.Next())
@@ -577,6 +595,7 @@ namespace tiempo_libre.Services
             for (var d = inicio; d <= limite && elegidos.Count < dias; d = d.AddDays(1))
             {
                 if (d.Year != ctx.Anio) return null;
+                if (d <= ctx.Hoy) return null;
                 if (!EsDiaLaborable(empleado, d, ctx, out var turno)) continue;
 
                 // Un día que cae en semana excluida corta la opción, salvo que esté
