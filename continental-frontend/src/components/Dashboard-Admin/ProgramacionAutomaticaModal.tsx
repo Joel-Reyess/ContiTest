@@ -299,7 +299,10 @@ export const ProgramacionAutomaticaModal = ({
             Meses a excluir de la programación automática
           </Label>
           <p className="text-xs text-gray-500 mt-1">
-            Seleccione los meses cuyas semanas desea excluir de la asignación automática
+            Seleccione los meses cuyas semanas desea excluir de la asignación automática. Aplican a
+            todos los empleados de todas las áreas, no solo a una. Si quieres que ciertas áreas tomen sus
+            días en ciertas fechas (por ejemplo producción de enero a Semana Santa), usa abajo "Fechas de
+            arranque o paro de planta".
           </p>
         </div>
         
