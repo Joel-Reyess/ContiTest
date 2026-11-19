@@ -41,8 +41,9 @@ namespace tiempo_libre.DTOs
         public int? GrupoId { get; set; }
         /// <summary>
         /// "SinDomingo" (paro sin asignaciones: descanso para todos) o "RolNormal"
-        /// (excepción: se trabaja según el rol). "ParoEmpresa" (paro con días por la
-        /// empresa) todavía no se acepta.
+        /// (excepción: se trabaja según el rol) o "ParoEmpresa" (paro con días por la
+        /// empresa: los operadores no programan y la asignación pone ahí los días por la
+        /// empresa de quien lo trabajaba según su rol).
         /// </summary>
         public string Tipo { get; set; } = "SinDomingo";
         /// <summary>Solo si no viene DiaAplicacion (pantallas anteriores): true = sábado y domingo.</summary>

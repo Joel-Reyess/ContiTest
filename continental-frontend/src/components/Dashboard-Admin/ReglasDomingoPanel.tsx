@@ -43,8 +43,11 @@ const iso = (d: Date) => format(d, "yyyy-MM-dd");
  *  - Paro sin asignaciones (SinDomingo): descanso para todos; no se programan
  *    vacaciones ni días por la empresa, el rol semanal y los calendarios lo
  *    muestran como descanso.
- *  - Paro con días por la empresa (ParoEmpresa): aún no se puede guardar; se
- *    está confirmando con planeación cómo se reparten esos días.
+ *  - Paro con días por la empresa (ParoEmpresa): tampoco se programan vacaciones,
+ *    y la asignación pone ahí los días por la empresa de quien trabajaba ese día
+ *    según su rol (del primero del periodo en adelante, sin %); lo que no alcanza
+ *    queda descanso y los días que sobran se asignan normal (pendiente de que
+ *    planeación confirme esos dos casos, nov-2026).
  *  - Rol normal (RolNormal), como excepción: se trabaja según el rol, p. ej.
  *    para habilitar un domingo dentro de un paro.
  * Las reglas se pueden encimar: manda la de periodo más corto.
@@ -166,7 +169,7 @@ export const ReglasDomingoPanel = () => {
 
     const guardar = async () => {
         if (!tipo) {
-            toast.error("Elige qué pasa esos días: paro sin asignaciones o rol normal");
+            toast.error("Elige qué pasa esos días: paro sin asignaciones, paro con días por la empresa o rol normal");
             return;
         }
         if (alcance === "Areas" && areaIds.length === 0) {
@@ -200,7 +203,7 @@ export const ReglasDomingoPanel = () => {
                 r.yaExistian ? `${r.yaExistian} ya estaban igual` : "",
             ].filter(Boolean);
             toast.success(`${nombreTipoRegla(tipo)} · ${nombreDiaAplicacion(diaAplicacion)}`, {
-                description: `${partes.join(", ")}.${tipo === "SinDomingo" ? " Revisa abajo si hay vacaciones ya programadas en esos días." : ""}`,
+                description: `${partes.join(", ")}.${tipo !== "RolNormal" ? " Revisa abajo si hay vacaciones ya programadas en esos días." : ""}${tipo === "ParoEmpresa" ? " Los días por la empresa se ponen ahí al dar \"Programar días\" (paso 4)." : ""}`,
                 duration: 8000,
             });
             setMotivo("");
@@ -330,11 +333,15 @@ export const ReglasDomingoPanel = () => {
                             incluido en la regla; no se programan vacaciones ni días por la empresa.
                         </span>
                     </label>
-                    <label className="flex items-start gap-2 text-continental-gray-1 cursor-not-allowed" title="Se está confirmando con planeación cómo se reparten esos días">
-                        <input type="radio" className="mt-1" name="tipoRegla" disabled checked={false} onChange={() => undefined} />
+                    <label className="flex items-start gap-2">
+                        <input type="radio" className="mt-1" name="tipoRegla" checked={tipo === "ParoEmpresa"} onChange={() => setTipo("ParoEmpresa")} />
                         <span>
                             <strong>Paro con días por la empresa</strong> — se pueden asignar días por la empresa en base a su
-                            rol. <em className="text-xs">(Próximamente)</em>
+                            rol. Nadie programa vacaciones esos días. Al dar "Programar días", a quien según su rol le tocaba
+                            trabajar ese día (primero, segundo o tercero) se le pone ahí uno de sus días por la empresa, del
+                            primero del periodo en adelante y sin % de ausencia, hasta completar sus días. Si por rol
+                            descansaba, o ya no le alcanzan los días, ese día queda como descanso. Si le sobran días, se le
+                            asignan de forma normal.
                         </span>
                     </label>
                     <div className="pt-1 border-t">

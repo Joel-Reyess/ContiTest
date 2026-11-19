@@ -81,6 +81,8 @@ namespace tiempo_libre.DTOs
         public bool YaTeniaTodos { get; set; }
         /// <summary>Tenía días a medias y se le completaron los que faltaban.</summary>
         public bool CompletaFaltantes { get; set; }
+        /// <summary>Aviso para el resultado aunque la asignación haya sido exitosa (p. ej. quedaron días por completar).</summary>
+        public string? Nota { get; set; }
     }
 
     public class DiaVacacionAsignado
@@ -89,6 +91,8 @@ namespace tiempo_libre.DTOs
         public string TurnoOriginal { get; set; } = string.Empty;
         public string TipoVacacion { get; set; } = "Automatica";
         public decimal PorcentajeAusenciaCalculado { get; set; }
+        /// <summary>Puesto en un día de "paro con días por la empresa" (sin % de ausencia).</summary>
+        public bool EnParo { get; set; }
     }
 
     public class SemanaCalendario
