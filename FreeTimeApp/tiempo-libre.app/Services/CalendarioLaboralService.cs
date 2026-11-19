@@ -95,37 +95,67 @@ namespace tiempo_libre.Services
             if (_reglas == null || _reglas.Count == 0) return null;
 
             var area = _areaDeGrupo.GetValueOrDefault(grupoId);
-            // Solo compiten las reglas que hablan de ese día (sábado o domingo, según
-            // su "día de aplicación"): una regla de un domingo suelto ya no le gana a
-            // un periodo de sábado y domingo en el sábado de esa semana.
-            return _reglas
-                .Where(r => r.FechaInicio <= fecha && fecha <= r.FechaFin && r.AplicaEnDia(fecha.DayOfWeek) &&
-                            (r.GrupoId == grupoId || (r.GrupoId == null && area.HasValue && r.AreaId == area.Value)))
+            return QueManda(_reglas.Where(r =>
+                r.GrupoId == grupoId || (r.GrupoId == null && area.HasValue && r.AreaId == area.Value)), fecha);
+        }
+
+        /// <summary>
+        /// De las reglas que tocan a un grupo (o a un área), la que manda ese día.
+        /// Solo compiten las que hablan de ese día (sábado o domingo, según su "día de
+        /// aplicación"): una regla de un domingo suelto ya no le gana a un periodo de
+        /// sábado y domingo en el sábado de esa semana. Luego, la de periodo más
+        /// corto; la del grupo antes que la del área; la más reciente.
+        /// </summary>
+        public static ReglaDomingo? QueManda(IEnumerable<ReglaDomingo> candidatas, DateOnly fecha) =>
+            candidatas
+                .Where(r => r.FechaInicio <= fecha && fecha <= r.FechaFin && r.AplicaEnDia(fecha.DayOfWeek))
                 .OrderBy(r => r.FechaFin.DayNumber - r.FechaInicio.DayNumber)
                 .ThenBy(r => r.GrupoId.HasValue ? 0 : 1)
                 .ThenByDescending(r => r.FechaCreacion)
                 .ThenByDescending(r => r.Id)
                 .FirstOrDefault();
-        }
+
+        /// <summary>Los tres paros: ese día no se trabaja (el rol semanal lo pone en descanso).</summary>
+        public static bool EsTipoParo(string? tipo) => tipo is "SinDomingo" or "ParoEmpresa" or "ParoOperador";
 
         /// <summary>
-        /// Motivo si el día es de paro (null si se trabaja según el rol). Los dos paros
-        /// cierran el día para lo que programan los operadores; en el "paro con días por
-        /// la empresa" la asignación automática sí pone ahí los días por la empresa de
-        /// quien lo trabajaba según su rol (ver AsignacionAutomaticaService).
+        /// Motivo si el operador NO puede programar ese día (null si puede). Cierran el
+        /// día el "paro sin asignaciones" y el "paro con días por la empresa" (ahí la
+        /// asignación automática pone los días por la empresa de quien lo trabajaba
+        /// según su rol, ver AsignacionAutomaticaService). El "paro, el operador elige"
+        /// (nov-2026) no se cierra: el operador puede poner ahí sus vacaciones.
         /// </summary>
         internal string? Resolver(int grupoId, DateOnly fecha)
         {
             var regla = ReglaQueManda(grupoId, fecha);
             if (regla == null || (regla.Tipo != "SinDomingo" && regla.Tipo != "ParoEmpresa")) return null;
+            return Describir(regla, fecha);
+        }
 
+        /// <summary>
+        /// Motivo si el día es de paro (cualquiera de los tres), null si se trabaja según
+        /// el rol. Para la asignación automática, el machote y el rol semanal: en
+        /// ningún paro se ponen días por la empresa seguidos ni se mueven ahí.
+        /// </summary>
+        internal string? ResolverParo(int grupoId, DateOnly fecha)
+        {
+            var regla = ReglaQueManda(grupoId, fecha);
+            return regla != null && EsTipoParo(regla.Tipo) ? Describir(regla, fecha) : null;
+        }
+
+        private string Describir(ReglaDomingo regla, DateOnly fecha)
+        {
             var dia = fecha.DayOfWeek == DayOfWeek.Sunday ? "Domingo" : "Sábado";
             var donde = _nombreArea.TryGetValue(regla.AreaId, out var n) ? n : "la unidad organizativa";
             var periodo = $"(regla del {regla.FechaInicio:dd/MM/yyyy} al {regla.FechaFin:dd/MM/yyyy})";
-            return regla.Tipo == "ParoEmpresa"
-                ? $"{dia} de paro para {donde} {periodo}: no se programan vacaciones; a quien le tocaba trabajarlo " +
-                  "según su rol se le asignan ahí sus días por la empresa."
-                : $"{dia} de paro para {donde} {periodo}: se registra como descanso y no se programan vacaciones ni días por la empresa.";
+            return regla.Tipo switch
+            {
+                "ParoEmpresa" => $"{dia} de paro para {donde} {periodo}: no se programan vacaciones; a quien le tocaba trabajarlo " +
+                                 "según su rol se le asignan ahí sus días por la empresa.",
+                "ParoOperador" => $"{dia} de paro para {donde} {periodo}: no se asignan días por la empresa; el operador " +
+                                  "puede programar ahí sus vacaciones si quiere.",
+                _ => $"{dia} de paro para {donde} {periodo}: se registra como descanso y no se programan vacaciones ni días por la empresa."
+            };
         }
 
         private async Task CargarAsync(IEnumerable<int> grupoIds)
@@ -212,6 +242,14 @@ namespace tiempo_libre.Services
         public bool EsNoLaborable(int grupoId, DateOnly fecha) => _servicio.Resolver(grupoId, fecha) != null;
 
         public string? Motivo(int grupoId, DateOnly fecha) => _servicio.Resolver(grupoId, fecha);
+
+        /// <summary>Cualquiera de los tres paros (incluye "el operador elige").</summary>
+        public bool EsParo(int grupoId, DateOnly fecha) => _servicio.ResolverParo(grupoId, fecha) != null;
+
+        public string? MotivoParo(int grupoId, DateOnly fecha) => _servicio.ResolverParo(grupoId, fecha);
+
+        /// <summary>La regla que manda ese día para el grupo (o null).</summary>
+        public ReglaDomingo? ReglaQueManda(int grupoId, DateOnly fecha) => _servicio.ReglaQueManda(grupoId, fecha);
 
         /// <summary>Paro con días por la empresa: ahí se asignan los días por la empresa según el rol.</summary>
         public bool EsParoConDiasEmpresa(int grupoId, DateOnly fecha) =>

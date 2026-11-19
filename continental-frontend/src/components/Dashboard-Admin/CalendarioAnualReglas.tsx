@@ -10,8 +10,8 @@ import { NomenclaturaLegend } from "@/components/Calendar/NomenclaturaLegend";
 import { SAP_NOMENCLATURA, type SAPCodigo } from "@/utils/sapNomenclatura";
 import { reglasTurnoService } from "@/services/reglasTurnoService";
 import type { ReglaTurno, RotacionProgramada } from "@/interfaces/Api.interface";
-import { reglasDomingoService, type ReglaDomingo } from "@/services/reglasDomingoService";
-import { noLaborablesDelAnio } from "@/utils/reglasDomingo";
+import { nombreTipoRegla, reglasDomingoService, type ReglaDomingo, type TipoReglaDomingo } from "@/services/reglasDomingoService";
+import { diasDeParoDelAnio } from "@/utils/reglasDomingo";
 
 const MESES = [
     "Ene", "Feb", "Mar", "Abr", "May", "Jun",
@@ -163,8 +163,12 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
     );
     // Mismo orden que el backend: un domingo "en base a rol" (o no laborable)
     // suelto manda sobre el periodo largo que lo contiene.
+    // Los tres paros (también "el operador elige": ese día no se trabaja).
     const noLaborables = useMemo(
-        () => (areaDomingos ? noLaborablesDelAnio(reglasDomingo.filter((x) => x.areaId === areaDomingos), anio) : new Set<string>()),
+        () =>
+            areaDomingos
+                ? diasDeParoDelAnio(reglasDomingo.filter((x) => x.areaId === areaDomingos), anio)
+                : new Map<string, TipoReglaDomingo>(),
         [reglasDomingo, areaDomingos, anio]
     );
 
@@ -493,8 +497,8 @@ interface MesTablaProps {
     filas: FilaSubGrupo[];
     arranques: RotacionProgramada[];
     hoyIso: string;
-    /** Días (yyyy-MM-dd) no laborables para la unidad organizativa elegida. */
-    noLaborables: Set<string>;
+    /** Días (yyyy-MM-dd) de paro para la unidad organizativa elegida, con el tipo de paro. */
+    noLaborables: ReadonlyMap<string, TipoReglaDomingo>;
 }
 
 const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso, noLaborables }: MesTablaProps) => {
@@ -553,7 +557,7 @@ const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso, noLaborables
                                         key={i}
                                         className={`border-r border-b text-center px-0 py-1 h-6 w-[30px] min-w-[30px] font-semibold ${ring}`}
                                         style={entry ? { backgroundColor: entry.bg, color: entry.fg } : undefined}
-                                        title={`${fila.nombre} — ${toIsoDate(f)}: ${entry?.label ?? codigo ?? "(sin dato)"}${isArranque ? " · Día de arranque" : ""}`}
+                                        title={`${fila.nombre} — ${toIsoDate(f)}: ${codigo === "NL" && noLaborables.get(toIsoDate(f)) ? nombreTipoRegla(noLaborables.get(toIsoDate(f))!) : entry?.label ?? codigo ?? "(sin dato)"}${isArranque ? " · Día de arranque" : ""}`}
                                     >
                                         {codigo}
                                     </td>

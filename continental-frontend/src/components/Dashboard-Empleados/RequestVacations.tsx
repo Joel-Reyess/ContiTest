@@ -699,6 +699,7 @@ export const Summary = ({
                                                 {format(new Date(day.fechaAnterior + 'T00:00:00'), 'dd/MM/yyyy')}
                                             </>
                                         )}
+                                        {day.motivo && ` (${day.motivo})`}
                                     </span>
                                 )}
                             </div>

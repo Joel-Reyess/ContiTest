@@ -9,6 +9,8 @@ export interface RenglonMovimientoDiaEmpresa {
     nomina?: number | null
     fechaActual?: string | null
     fechaNueva?: string | null
+    /** Opcional: motivo de este renglón (vacío = el general). El operador lo ve entre paréntesis. */
+    motivo?: string | null
 }
 
 export type EstadoRenglonMovimiento = 'Listo' | 'Advertencia' | 'Error' | 'Aplicado' | 'Omitido'
@@ -23,6 +25,7 @@ export interface ResultadoRenglonMovimiento {
     fechaNueva?: string | null
     estado: EstadoRenglonMovimiento
     mensaje?: string | null
+    motivo?: string | null
 }
 
 export interface ResultadoMovimientoMasivo {

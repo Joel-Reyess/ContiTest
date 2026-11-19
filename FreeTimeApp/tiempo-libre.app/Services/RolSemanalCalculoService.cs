@@ -458,7 +458,9 @@ namespace tiempo_libre.Services
             var noLaborables = await new CalendarioLaboralService(_db).PrecargarAsync(new[] { grupoId });
             foreach (var key in resultado.Keys.ToList())
             {
-                if (resultado[key] is "1" or "2" or "3" && noLaborables.EsNoLaborable(grupoId, key.Item2))
+                // Los tres paros: ese día no se trabaja (en "el operador elige", quien programó
+                // vacación ahí se sigue viendo con V porque las V se pintan después).
+                if (resultado[key] is "1" or "2" or "3" && noLaborables.EsParo(grupoId, key.Item2))
                     resultado[key] = "D";
             }
 

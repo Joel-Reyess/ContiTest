@@ -43,7 +43,7 @@ export const Summary = ({
     // origen/fechaAnterior vienen llenos solo cuando el día ya cambió de fecha
     // por edición de días empresa o por el superusuario. Sirven para dejar
     // constancia visible de que ese día fue alterado.
-    assignedDays: { date: string; origen?: string; fechaAnterior?: string }[];
+    assignedDays: { date: string; origen?: string; fechaAnterior?: string; motivo?: string }[];
     availableDays: number;
     workedHoliday?: { date: string }[];
     vacaciones?: any[];
@@ -98,6 +98,7 @@ export const Summary = ({
                                                 {format(parseDateToLocal(day.fechaAnterior), 'dd/MM/yyyy')}
                                             </>
                                         )}
+                                        {day.motivo && ` (${day.motivo})`}
                                     </span>
                                 )}
                             </div>

@@ -392,10 +392,20 @@ export const ProgramacionAutomaticaModal = ({
                   const r = reglas[0];
                   const dias = diaDeRegla(r) === 'Ambos' ? 'sábados y domingos' : diaDeRegla(r) === 'Sabado' ? 'sábados' : 'domingos';
                   const nombres = reglas.map((x) => (x.grupo ? `${x.area} (${x.grupo})` : x.area)).sort((a, b) => a.localeCompare(b, 'es'));
+                  // Otra regla (más corta o de grupo) le gana algunos días: ahí no se ponen días por la empresa.
+                  const parciales = reglas.filter(
+                    (x) => x.diasDelPeriodo != null && x.diasQueManda != null && x.diasQueManda < x.diasDelPeriodo
+                  );
                   return (
                     <li key={clave} title={nombres.join(', ')}>
                       {nombres.length <= 3 ? nombres.join(', ') : `${nombres.length} unidades organizativas`} · {dias} del{' '}
                       {r.fechaInicio.slice(0, 10)} al {r.fechaFin.slice(0, 10)}
+                      {parciales.map((x) => (
+                        <div key={x.id} className="ml-3 text-red-700">
+                          ⚠ {x.area}: solo manda en {x.diasQueManda} de {x.diasDelPeriodo} días; los otros los gana{' '}
+                          {(x.ganadaPor ?? []).join('; ')}. Ahí no se pondrán días por la empresa (revisa Reglas de trabajo).
+                        </div>
+                      ))}
                     </li>
                   );
                 })}

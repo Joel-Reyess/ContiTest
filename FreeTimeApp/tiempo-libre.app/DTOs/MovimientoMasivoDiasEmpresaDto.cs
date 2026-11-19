@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace tiempo_libre.DTOs
@@ -12,6 +13,11 @@ namespace tiempo_libre.DTOs
         public string? FechaActual { get; set; }
         /// <summary>yyyy-MM-dd o dd/MM/yyyy.</summary>
         public string? FechaNueva { get; set; }
+        /// <summary>
+        /// Opcional: el motivo de ESTE renglón (nov-2026). Vacío = el motivo general.
+        /// Es el que ve el operador entre paréntesis junto a su día por la empresa.
+        /// </summary>
+        public string? Motivo { get; set; }
     }
 
     public class MovimientoMasivoDiasEmpresaRequest
@@ -36,6 +42,8 @@ namespace tiempo_libre.DTOs
         /// <summary>"Listo", "Advertencia", "Error"; después de aplicar: "Aplicado" u "Omitido".</summary>
         public string Estado { get; set; } = "Listo";
         public string? Mensaje { get; set; }
+        /// <summary>El motivo propio del renglón, si traía.</summary>
+        public string? Motivo { get; set; }
     }
 
     public class ResultadoMovimientoMasivoDto
@@ -46,5 +54,29 @@ namespace tiempo_libre.DTOs
         public int Errores { get; set; }
         /// <summary>Solo al aplicar.</summary>
         public int Aplicados { get; set; }
+    }
+
+    /// <summary>
+    /// Un día por la empresa que ya se movió (machote o reprogramación del
+    /// superusuario/jefe): fecha anterior, fecha nueva, motivo y quién. Para la tabla
+    /// de movimientos de "Reglas de trabajo" (nov-2026, caso de Román: domingos de
+    /// paro que después se trabajaron).
+    /// </summary>
+    public class MovimientoDiaEmpresaDto
+    {
+        public int Id { get; set; }
+        public int EmpleadoId { get; set; }
+        public int? Nomina { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public int? AreaId { get; set; }
+        public string Area { get; set; } = string.Empty;
+        public string Grupo { get; set; } = string.Empty;
+        public DateOnly FechaAnterior { get; set; }
+        public DateOnly FechaNueva { get; set; }
+        public string Motivo { get; set; } = string.Empty;
+        /// <summary>"Machote" o "Reprogramación".</summary>
+        public string Como { get; set; } = string.Empty;
+        public string? Quien { get; set; }
+        public DateTime Cuando { get; set; }
     }
 }

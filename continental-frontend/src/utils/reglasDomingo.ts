@@ -1,4 +1,4 @@
-import { diaDeRegla, type ReglaDomingo } from "@/services/reglasDomingoService";
+import { diaDeRegla, esTipoParo, type ReglaDomingo, type TipoReglaDomingo } from "@/services/reglasDomingoService";
 
 /**
  * Qué regla dominical manda en un día, igual que CalendarioLaboralService en el
@@ -35,13 +35,29 @@ export function reglaQueManda(reglas: ReglaDomingo[], iso: string): ReglaDomingo
         )[0];
 }
 
-/** El día queda no laborable (NL) por una regla dominical. */
+/**
+ * El día queda no laborable (NL) para el operador: rayado y sin poder programar.
+ * Solo "paro sin asignaciones" y "paro con días por la empresa"; en "paro, el
+ * operador elige" (nov-2026) sí puede programar, así que no se raya.
+ */
 export function esNoLaborable(reglas: ReglaDomingo[], fecha: Date): boolean {
     const dow = fecha.getDay();
     if (dow !== 0 && dow !== 6) return false;
     const r = reglaQueManda(reglas, isoLocal(fecha));
-    // Los dos paros se ven rayados y el operador no los puede programar.
     return !!r && (r.tipo === "SinDomingo" || r.tipo === "ParoEmpresa");
+}
+
+/** Días de paro del año (los tres tipos: ese día no se trabaja) con el tipo de paro que manda. */
+export function diasDeParoDelAnio(reglas: ReglaDomingo[], anio: number): Map<string, TipoReglaDomingo> {
+    const dias = new Map<string, TipoReglaDomingo>();
+    if (reglas.length === 0) return dias;
+    for (let d = new Date(anio, 0, 1); d.getFullYear() === anio; d.setDate(d.getDate() + 1)) {
+        const dow = d.getDay();
+        if (dow !== 0 && dow !== 6) continue;
+        const r = reglaQueManda(reglas, isoLocal(d));
+        if (r && esTipoParo(r.tipo)) dias.set(isoLocal(d), r.tipo);
+    }
+    return dias;
 }
 
 /** Sábados y domingos no laborables de un año (yyyy-MM-dd). */

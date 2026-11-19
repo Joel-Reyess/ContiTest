@@ -1,5 +1,8 @@
 import { edicionDiasEmpresaService } from '@/services/edicionDiasEmpresaService';
-import { reprogramacionDiaEmpresaService } from '@/services/reprogramacionDiaEmpresaService';
+import { MOTIVO_LABEL, reprogramacionDiaEmpresaService } from '@/services/reprogramacionDiaEmpresaService';
+
+/** Así empieza la justificación de lo que el superusuario movió con machote. */
+const PREFIJO_MACHOTE = 'Movimiento con machote: ';
 
 /**
  * Un día asignado por la empresa que ya cambió de fecha, y por cuál de los dos
@@ -7,9 +10,18 @@ import { reprogramacionDiaEmpresaService } from '@/services/reprogramacionDiaEmp
  * hace el superusuario. Para quien consulta la lista es el mismo movimiento,
  * solo cambia quién lo hizo.
  */
-export type MovimientoDiaEmpresa = { origen: string; fechaAnterior: string };
+export type MovimientoDiaEmpresa = { origen: string; fechaAnterior: string; motivo?: string };
 
-export type DiaAsignado = { date: string; origen?: string; fechaAnterior?: string };
+/** motivo: por qué se movió (nov-2026: se muestra entre paréntesis al operador). */
+export type DiaAsignado = { date: string; origen?: string; fechaAnterior?: string; motivo?: string };
+
+/** Motivo legible de una reprogramación: el del machote tal cual; si no, el tipo y la justificación. */
+const motivoReprogramacion = (s: { motivoTipo?: string | null; justificacion?: string | null }): string | undefined => {
+    const just = s.justificacion?.trim();
+    if (just?.startsWith(PREFIJO_MACHOTE)) return just.slice(PREFIJO_MACHOTE.length).trim() || undefined;
+    const tipo = s.motivoTipo && s.motivoTipo !== 'Otro' ? MOTIVO_LABEL[s.motivoTipo as keyof typeof MOTIVO_LABEL] ?? s.motivoTipo : undefined;
+    return [tipo, just].filter(Boolean).join(': ') || undefined;
+};
 
 /**
  * Tipos de vacación que cuentan como día asignado por la empresa.
@@ -55,6 +67,7 @@ export async function obtenerMovimientosDiasEmpresa(
             .forEach(s => movimientos.set(soloFecha(s.fechaNueva), {
                 origen: 'Editado por superusuario',
                 fechaAnterior: soloFecha(s.fechaOriginal),
+                motivo: motivoReprogramacion(s),
             }));
     } catch (err) {
         console.warn('No se pudieron cargar las reprogramaciones de día empresa:', err);
@@ -75,7 +88,7 @@ export function marcarDiaAsignado(
 ): DiaAsignado {
     const movimiento = movimientos.get(soloFecha(fechaVacacion));
     if (movimiento) {
-        return { date: fechaVacacion, origen: movimiento.origen, fechaAnterior: movimiento.fechaAnterior };
+        return { date: fechaVacacion, origen: movimiento.origen, fechaAnterior: movimiento.fechaAnterior, motivo: movimiento.motivo };
     }
     // Sin solicitud que lo respalde pero con el tipo ya cambiado: al menos
     // dejamos constancia de que fue alterado.

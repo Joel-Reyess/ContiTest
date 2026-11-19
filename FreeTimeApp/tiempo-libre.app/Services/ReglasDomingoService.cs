@@ -16,7 +16,9 @@ namespace tiempo_libre.Services
     /// </summary>
     public class ReglasDomingoService
     {
-        private static readonly string[] Tipos = { "SinDomingo", "ParoEmpresa", "RolNormal" };
+        private static readonly string[] Tipos = { "SinDomingo", "ParoEmpresa", "ParoOperador", "RolNormal" };
+        /// <summary>Así marca la asignación automática los días que puso en un paro con días por la empresa.</summary>
+        private const string MarcaParoEmpresa = "(paro con días por la empresa)";
         private static readonly string[] TiposEmpresa = { "Automatica", "AsignadaAutomaticamente", "DiaEmpresaReprogramado" };
         private static readonly string[] DiasAplicacion = { "Domingo", "Sabado", "Ambos" };
 
@@ -25,8 +27,47 @@ namespace tiempo_libre.Services
         {
             "SinDomingo" => "paro sin asignaciones",
             "ParoEmpresa" => "paro con días por la empresa",
+            "ParoOperador" => "paro, el operador elige sus días",
             _ => "rol normal"
         };
+
+        private static string NombreDias(string diaAplicacion) => diaAplicacion switch
+        {
+            "Sabado" => "sábados",
+            "Ambos" => "sábados y domingos",
+            _ => "domingos"
+        };
+
+        private static string Describir(ReglaDomingo r)
+        {
+            var tipo = NombreTipo(r.Tipo);
+            return $"{char.ToUpper(tipo[0])}{tipo[1..]} ({NombreDias(r.DiaAplicacion)}) del {r.FechaInicio:dd/MM/yyyy} " +
+                   $"al {r.FechaFin:dd/MM/yyyy}{(r.GrupoId.HasValue ? " (solo un grupo)" : "")}";
+        }
+
+        /// <summary>
+        /// En cuántos de sus sábados/domingos manda la regla y quién le gana los demás
+        /// (nov-2026: un paro con días por la empresa de sábado y domingo solo puso
+        /// sábados porque en los domingos mandaba una regla anterior más corta).
+        /// Compara contra las reglas de su misma unidad (y de su grupo si es de grupo).
+        /// </summary>
+        private static (int Manda, int Total, List<(ReglaDomingo Regla, int Dias)> Ganadoras) Cobertura(
+            ReglaDomingo r, IReadOnlyCollection<ReglaDomingo> activas)
+        {
+            var candidatas = activas.Where(x => x.AreaId == r.AreaId && (x.GrupoId == null || x.GrupoId == r.GrupoId)).ToList();
+            if (candidatas.All(x => x.Id != r.Id)) candidatas.Add(r);
+            int manda = 0, total = 0;
+            var otras = new Dictionary<int, (ReglaDomingo Regla, int Dias)>();
+            for (var d = r.FechaInicio; d <= r.FechaFin; d = d.AddDays(1))
+            {
+                if (!r.AplicaEnDia(d.DayOfWeek)) continue;
+                total++;
+                var g = CalendarioLaboralService.QueManda(candidatas, d);
+                if (g == null || g.Id == r.Id) { manda++; continue; }
+                otras[g.Id] = (g, otras.TryGetValue(g.Id, out var p) ? p.Dias + 1 : 1);
+            }
+            return (manda, total, otras.Values.OrderByDescending(v => v.Dias).ToList());
+        }
 
         private readonly FreeTimeDbContext _db;
         private readonly ILogger<ReglasDomingoService> _logger;
@@ -84,6 +125,23 @@ namespace tiempo_libre.Services
                     "Falta correr Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql en la base de datos (columna DiaAplicacion).");
             }
 
+            // En cuántos días manda cada regla activa (y cuál le gana los otros).
+            var areasLista = reglas.Where(r => r.Activa).Select(r => r.AreaId).Distinct().ToList();
+            if (areasLista.Count > 0)
+            {
+                var activas = await _db.ReglasDomingo.AsNoTracking()
+                    .Where(r => r.Activa && areasLista.Contains(r.AreaId)).ToListAsync();
+                var porId = activas.ToDictionary(r => r.Id);
+                foreach (var dto in reglas.Where(r => r.Activa))
+                {
+                    if (!porId.TryGetValue(dto.Id, out var regla)) continue;
+                    var (manda, total, ganadoras) = Cobertura(regla, activas);
+                    dto.DiasQueManda = manda;
+                    dto.DiasDelPeriodo = total;
+                    dto.GanadaPor = ganadoras.Select(g => $"{Describir(g.Regla)}: {g.Dias} día(s)").ToList();
+                }
+            }
+
             return new ApiResponse<ReglasDomingoResponse>(true, new ReglasDomingoResponse { Reglas = reglas }, null);
         }
 
@@ -94,7 +152,8 @@ namespace tiempo_libre.Services
             if (!await new CalendarioLaboralService(_db).TablaExisteAsync())
                 return Error("Falta crear la tabla: corre Scripts/Migration_ReglasDomingo.sql.");
             if (!Tipos.Contains(req.Tipo))
-                return Error("El tipo debe ser SinDomingo (paro sin asignaciones), ParoEmpresa (paro con días por la empresa) o RolNormal (rol normal, excepción).");
+                return Error("El tipo debe ser SinDomingo (paro sin asignaciones), ParoEmpresa (paro con días por la empresa), " +
+                             "ParoOperador (paro, el operador elige sus días) o RolNormal (rol normal, excepción).");
             var diaAplicacion = string.IsNullOrWhiteSpace(req.DiaAplicacion)
                 ? (req.IncluyeSabado ? "Ambos" : "Domingo")
                 : req.DiaAplicacion.Trim();
@@ -197,6 +256,30 @@ namespace tiempo_libre.Services
             catch (DbUpdateException ex) when ((ex.InnerException?.Message ?? ex.Message).Contains("DiaAplicacion"))
             {
                 return Error("Falta correr Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql en la base de datos (columna DiaAplicacion).");
+            }
+            catch (DbUpdateException ex) when ((ex.InnerException?.Message ?? ex.Message).Contains("CK_RegDom_Tipo"))
+            {
+                return Error("La base de datos todavía no acepta este tipo de regla: vuelve a correr " +
+                             "Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql (se puede correr más de una vez).");
+            }
+
+            // Si en alguno de sus días manda otra regla (más corta, o de grupo), se avisa:
+            // la nueva no va a aplicar ahí hasta que se desactive la otra.
+            if (nuevas.Count > 0)
+            {
+                var areasNuevas = nuevas.Select(n => n.AreaId).Distinct().ToList();
+                var activas = await _db.ReglasDomingo.AsNoTracking()
+                    .Where(r => r.Activa && areasNuevas.Contains(r.AreaId)).ToListAsync();
+                foreach (var n in nuevas)
+                {
+                    var (manda, total, ganadoras) = Cobertura(n, activas);
+                    if (manda == total || resultado.Avisos.Count >= 20) continue;
+                    var area = areas.FirstOrDefault(a => a.AreaId == n.AreaId)?.NombreGeneral ?? "la unidad";
+                    resultado.Avisos.Add(
+                        $"{area}: la regla nueva solo manda en {manda} de sus {total} {NombreDias(n.DiaAplicacion)}. " +
+                        $"En los demás manda otra regla anterior: {string.Join("; ", ganadoras.Select(g => $"{Describir(g.Regla)} ({g.Dias} día(s))"))}. " +
+                        "Si la nueva es la que debe mandar, desactiva esa regla.");
+                }
             }
             _logger.LogWarning("Reglas de trabajo creadas por usuario {Usuario}: {Tipo} {Dia} {Inicio:yyyy-MM-dd}..{Fin:yyyy-MM-dd} planta={Planta} áreas {Areas} grupo {Grupo}; nuevas {Nuevas}, reemplazadas {Reemplazadas}, ya estaban {Ya}",
                 usuarioId, req.Tipo, diaAplicacion, req.FechaInicio, req.FechaFin, req.TodaLaPlanta,
@@ -347,6 +430,98 @@ namespace tiempo_libre.Services
                 })
                 .ToList();
             return new ApiResponse<List<VacacionEnNoLaborableDto>>(true, lista, null);
+        }
+
+        /// <summary>
+        /// Reporte por unidad organizativa de los días por la empresa que la asignación
+        /// puso en un paro con días por la empresa (nov-2026, caso de Román). Trae
+        /// también los días por la empresa que hoy caen en un paro con días por la
+        /// empresa aunque no los haya puesto la asignación. Situación de cada uno:
+        /// "EnParo" (sigue siendo paro: está bien ahí), "SeTrabaja" (después se habilitó
+        /// ese día con Rol normal o se quitó la regla: hay que moverlo, la persona va a
+        /// trabajar) o "OtroParo" (ese día ahora es otro paro, sin días por la empresa).
+        /// De aquí sale el machote con la fecha anterior para la carga masiva.
+        /// </summary>
+        public async Task<ApiResponse<List<DiaEmpresaEnParoDto>>> DiasEmpresaEnParoAsync(int anio, int? areaId)
+        {
+            var calendario = new CalendarioLaboralService(_db);
+            var vacio = new ApiResponse<List<DiaEmpresaEnParoDto>>(true, new List<DiaEmpresaEnParoDto>(), null);
+            if (!await calendario.TablaExisteAsync()) return vacio;
+
+            var ini = new DateOnly(anio, 1, 1);
+            var fin = new DateOnly(anio, 12, 31);
+            var q = _db.VacacionesProgramadas.AsNoTracking()
+                .Where(v => v.EstadoVacacion == "Activa" && v.FechaVacacion >= ini && v.FechaVacacion <= fin &&
+                            TiposEmpresa.Contains(v.TipoVacacion) && v.Empleado.GrupoId != null);
+            if (areaId.HasValue) q = q.Where(v => v.Empleado.Grupo!.AreaId == areaId.Value);
+            var filas = await q
+                .Select(v => new
+                {
+                    v.Id, v.EmpleadoId, v.FechaVacacion, v.TipoVacacion, v.Observaciones,
+                    GrupoId = v.Empleado.GrupoId!.Value,
+                    v.Empleado.Nomina, v.Empleado.FullName,
+                    Rol = v.Empleado.Grupo!.Rol,
+                    AreaId = v.Empleado.Grupo!.AreaId,
+                    Area = v.Empleado.Grupo!.Area!.NombreGeneral
+                })
+                .ToListAsync();
+            var fines = filas.Where(v => v.FechaVacacion.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday).ToList();
+            if (fines.Count == 0) return vacio;
+
+            var tabla = await calendario.PrecargarAsync(fines.Select(v => v.GrupoId).Distinct());
+            var semanaSanta = await _db.DiasInhabiles.AsNoTracking()
+                .Where(d => d.Detalles.Contains("Semana Santa") && d.FechaFinal.Year == anio)
+                .OrderByDescending(d => d.FechaFinal)
+                .Select(d => (DateOnly?)d.FechaFinal)
+                .FirstOrDefaultAsync();
+
+            var lista = new List<DiaEmpresaEnParoDto>();
+            foreach (var v in fines)
+            {
+                var regla = tabla.ReglaQueManda(v.GrupoId, v.FechaVacacion);
+                var enParo = regla?.Tipo == "ParoEmpresa";
+                var puestaEnParo = v.TipoVacacion != "DiaEmpresaReprogramado" &&
+                                   (v.Observaciones?.Contains(MarcaParoEmpresa) ?? false);
+                if (!enParo && !puestaEnParo) continue;
+
+                var dia = v.FechaVacacion.DayOfWeek == DayOfWeek.Sunday ? "domingo" : "sábado";
+                string situacion, detalle;
+                if (enParo)
+                {
+                    situacion = "EnParo";
+                    detalle = $"Sigue siendo paro con días por la empresa ({Describir(regla!)}).";
+                }
+                else if (regla != null && CalendarioLaboralService.EsTipoParo(regla.Tipo))
+                {
+                    situacion = "OtroParo";
+                    detalle = $"Ese {dia} ahora es {NombreTipo(regla.Tipo)} ({Describir(regla)}): ahí ya no van días por la empresa.";
+                }
+                else
+                {
+                    situacion = "SeTrabaja";
+                    detalle = regla != null
+                        ? $"Ese {dia} ya se trabaja: excepción {Describir(regla)}."
+                        : $"Ese {dia} ya se trabaja: ya no hay regla de paro activa ese día.";
+                }
+                var turno = string.IsNullOrEmpty(v.Rol) ? "" : Helpers.TurnosHelper.ObtenerTurnoParaFecha(v.Rol, v.FechaVacacion, semanaSanta);
+                lista.Add(new DiaEmpresaEnParoDto
+                {
+                    VacacionId = v.Id,
+                    EmpleadoId = v.EmpleadoId,
+                    Nomina = v.Nomina,
+                    Nombre = v.FullName ?? "",
+                    AreaId = v.AreaId,
+                    Area = v.Area ?? "",
+                    Grupo = v.Rol ?? "",
+                    Fecha = v.FechaVacacion,
+                    Turno = turno,
+                    Situacion = situacion,
+                    Detalle = detalle
+                });
+            }
+            return new ApiResponse<List<DiaEmpresaEnParoDto>>(true, lista
+                .OrderBy(x => x.Area).ThenBy(x => x.Fecha).ThenBy(x => x.Grupo).ThenBy(x => x.Nomina)
+                .ToList(), null);
         }
 
         /// <summary>

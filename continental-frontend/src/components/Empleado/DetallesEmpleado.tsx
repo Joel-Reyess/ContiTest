@@ -26,8 +26,7 @@ import { excepcionesService } from '@/services/excepcionesService';
 import { OvertimeIndicator } from '../Dashboard-Area/OvertimeIndicator';
 import { OvertimeExceptionsList } from '../Dashboard-Area/OvertimeExceptionsList';
 import { CalendarService } from '@/services/calendarService';
-import { edicionDiasEmpresaService } from '@/services/edicionDiasEmpresaService';
-import { reprogramacionDiaEmpresaService } from '@/services/reprogramacionDiaEmpresaService';
+import { obtenerMovimientosDiasEmpresa, marcarDiaAsignado } from '@/utils/diasEmpresaMovimientos';
 import { OvertimeCalendar } from '../Dashboard-Area/OvertimeCalendar';
 import useAuth from '@/hooks/useAuth';
 import { RegistrarPermisoModal } from "@/components/Empleado/RegistrarPermisoModal";
@@ -212,29 +211,8 @@ export const DetallesEmpleado = ({
           // Fecha nueva -> { origen, fecha que tenía antes }. Se llena con los
           // DOS flujos que mueven un día de empresa; para quien consulta la
           // lista es el mismo movimiento, solo cambia quién lo hizo.
-          const movimientosPorFecha = new Map<string, { origen: string; fechaAnterior: string }>();
-          try {
-            const solicitudesEdicion = await edicionDiasEmpresaService.obtenerMisSolicitudes(empId);
-            (solicitudesEdicion ?? [])
-              .filter(s => s.estadoSolicitud === "Aprobada")
-              .forEach(s => movimientosPorFecha.set(String(s.fechaNueva).slice(0, 10), {
-                origen: "Edición empresa",
-                fechaAnterior: String(s.fechaOriginal).slice(0, 10),
-              }));
-          } catch (err) {
-            console.warn('No se pudieron cargar las ediciones de días empresa:', err);
-          }
-          try {
-            const reprogSuper = await reprogramacionDiaEmpresaService.getTodas('Aprobada');
-            (reprogSuper ?? [])
-              .filter(s => s.empleadoId === empId)
-              .forEach(s => movimientosPorFecha.set(String(s.fechaNueva).slice(0, 10), {
-                origen: "Editado por superusuario",
-                fechaAnterior: String(s.fechaOriginal).slice(0, 10),
-              }));
-          } catch (err) {
-            console.warn('No se pudieron cargar las reprogramaciones de día empresa:', err);
-          }
+          // Mismo cruce que el calendario del operador (incluye el motivo, nov-2026).
+          const movimientosPorFecha = await obtenerMovimientosDiasEmpresa(empId);
 
           // El día que reprograma el superusuario cambia a TipoVacacion
           // "DiaEmpresaReprogramado", así que filtrar solo por "Automatica"
@@ -247,18 +225,9 @@ export const DetallesEmpleado = ({
           ];
           const automaticas = vacs
             .filter(v => TIPOS_ASIGNADOS_POR_EMPRESA.includes(v.tipoVacacion) && v.estadoVacacion === "Activa")
-            .map(v => {
-              const movimiento = movimientosPorFecha.get(String(v.fechaVacacion).slice(0, 10));
-              if (movimiento) {
-                return { date: v.fechaVacacion, origen: movimiento.origen, fechaAnterior: movimiento.fechaAnterior };
-              }
-              // Sin solicitud que lo respalde pero con el tipo ya cambiado:
-              // al menos dejamos constancia de que fue alterado.
-              if (v.tipoVacacion === "DiaEmpresaReprogramado") {
-                return { date: v.fechaVacacion, origen: "Editado por superusuario" };
-              }
-              return { date: v.fechaVacacion };
-            });
+            // Sin solicitud que lo respalde pero con el tipo ya cambiado, al menos
+            // queda constancia de que fue alterado (ver marcarDiaAsignado).
+            .map(v => marcarDiaAsignado(String(v.fechaVacacion), v.tipoVacacion, movimientosPorFecha));
           const festivosTrabajados = vacs
             .filter(v => v.tipoVacacion === "FestivoTrabajado" && v.estadoVacacion === "Activa")
             .map(v => ({ date: v.fechaVacacion }));
