@@ -303,8 +303,10 @@ namespace tiempo_libre.Services
             {
                 if (await new LimitePorcentajeService(_db).TablaExisteAsync())
                 {
+                    // Las de un solo turno no: subirían la prioridad de toda el área en
+                    // esas fechas aunque el % solo cambió para el grupo de ese turno.
                     var capacidades = await _db.CapacidadesPorcentaje.AsNoTracking()
-                        .Where(c => c.Activa && c.AplicaA == "Empresa" && c.FechaInicio <= fin && c.FechaFin >= ini)
+                        .Where(c => c.Activa && c.AplicaA == "Empresa" && c.Turno == null && c.FechaInicio <= fin && c.FechaFin >= ini)
                         .ToListAsync(ct);
                     foreach (var c in capacidades)
                         ctx.Ventanas.Add(new VentanaAsignacion

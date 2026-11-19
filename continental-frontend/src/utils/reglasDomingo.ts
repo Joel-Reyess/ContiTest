@@ -1,4 +1,4 @@
-import type { ReglaDomingo } from "@/services/reglasDomingoService";
+import { diaDeRegla, type ReglaDomingo } from "@/services/reglasDomingoService";
 
 /**
  * Qué regla dominical manda en un día, igual que CalendarioLaboralService en el
@@ -15,9 +15,17 @@ const duracion = (r: ReglaDomingo) =>
 export const isoLocal = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+/** ¿La regla habla de ese día de la semana? (0 = domingo, 6 = sábado). */
+const aplicaEnDia = (r: ReglaDomingo, dow: number) => {
+    const d = diaDeRegla(r);
+    return dow === 0 ? d !== "Sabado" : dow === 6 ? d === "Sabado" || d === "Ambos" : false;
+};
+
+/** Solo compiten las reglas que aplican a ese día (sábado o domingo), igual que el backend. */
 export function reglaQueManda(reglas: ReglaDomingo[], iso: string): ReglaDomingo | undefined {
+    const dow = new Date(`${iso}T12:00:00`).getDay();
     return reglas
-        .filter((r) => r.activa && dia(r.fechaInicio) <= iso && iso <= dia(r.fechaFin))
+        .filter((r) => r.activa && dia(r.fechaInicio) <= iso && iso <= dia(r.fechaFin) && aplicaEnDia(r, dow))
         .sort(
             (a, b) =>
                 duracion(a) - duracion(b) ||
@@ -32,7 +40,7 @@ export function esNoLaborable(reglas: ReglaDomingo[], fecha: Date): boolean {
     const dow = fecha.getDay();
     if (dow !== 0 && dow !== 6) return false;
     const r = reglaQueManda(reglas, isoLocal(fecha));
-    return !!r && r.tipo === "SinDomingo" && (dow === 0 || r.incluyeSabado);
+    return !!r && r.tipo === "SinDomingo";
 }
 
 /** Sábados y domingos no laborables de un año (yyyy-MM-dd). */

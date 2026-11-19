@@ -12,7 +12,11 @@ import { UserRole } from "@/interfaces/User.interface";
 import useAuth from "@/hooks/useAuth";
 import { MovimientoMasivoDiasEmpresa } from "./MovimientoMasivoDiasEmpresa";
 import {
+    diaDeRegla,
+    nombreDiaAplicacion,
+    nombreTipoRegla,
     reglasDomingoService,
+    type DiaAplicacion,
     type ReglaDomingo,
     type ReglasDomingoResponse,
     type TipoReglaDomingo,
@@ -20,7 +24,8 @@ import {
 } from "@/services/reglasDomingoService";
 
 type AlcanceDomingo = "Planta" | "Areas" | "Grupo";
-type PeriodoDomingo = "Domingo" | "Mes" | "Rango";
+/** "Dia" = un sábado, un domingo o un fin de semana (según el día de aplicación). */
+type PeriodoDomingo = "Dia" | "Mes" | "Rango";
 
 /** Reglas que se guardaron juntas (p. ej. toda la planta): un renglón en la lista. */
 interface Lote {
@@ -31,14 +36,18 @@ interface Lote {
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
 /**
- * Domingos por periodo (planeación 2027, punto 1; nov-2026 se pasó a "Capacidad
- * por periodo"). Por unidad organizativa —o toda la planta, o un grupo— y por un
- * periodo (un domingo, un mes o un rango), los domingos son "no laborables"
- * (nadie trabaja: no se programan vacaciones ni días por la empresa, el rol
- * semanal y los calendarios los muestran como descanso) o "en base a rol" (cada
- * quien según su rol). Las reglas se pueden encimar: manda la de periodo más
- * corto, así un domingo suelto (un paro por falta de luz, o habilitar a toda la
- * planta) se configura sin tocar el periodo largo.
+ * Reglas de trabajo y asignación de días (antes "Domingos por periodo"; nombre,
+ * textos y orden de los pasos propuestos por planeación, nov-2026). Por unidad
+ * organizativa —o toda la planta, o un grupo— y por un periodo, el sábado, el
+ * domingo o ambos son:
+ *  - Paro sin asignaciones (SinDomingo): descanso para todos; no se programan
+ *    vacaciones ni días por la empresa, el rol semanal y los calendarios lo
+ *    muestran como descanso.
+ *  - Paro con días por la empresa (ParoEmpresa): aún no se puede guardar; se
+ *    está confirmando con planeación cómo se reparten esos días.
+ *  - Rol normal (RolNormal), como excepción: se trabaja según el rol, p. ej.
+ *    para habilitar un domingo dentro de un paro.
+ * Las reglas se pueden encimar: manda la de periodo más corto.
  */
 export const ReglasDomingoPanel = () => {
     const navigate = useNavigate();
@@ -66,13 +75,15 @@ export const ReglasDomingoPanel = () => {
     const [areaIds, setAreaIds] = useState<number[]>([]);
     const [areaGrupo, setAreaGrupo] = useState<number | "">("");
     const [grupoId, setGrupoId] = useState<number | "">("");
-    const [periodo, setPeriodo] = useState<PeriodoDomingo>("Domingo");
+    const [periodo, setPeriodo] = useState<PeriodoDomingo>("Dia");
     const [dia, setDia] = useState("");
     const [mes, setMes] = useState("");
     const [desde, setDesde] = useState("");
     const [hasta, setHasta] = useState("");
-    const [tipo, setTipo] = useState<TipoReglaDomingo>("RolNormal");
-    const [conSabado, setConSabado] = useState(false);
+    // Sin opción marcada a propósito: antes venía "en base a rol" y se guardaba sin
+    // querer (validación nov-2026).
+    const [tipo, setTipo] = useState<TipoReglaDomingo | "">("");
+    const [diaAplicacion, setDiaAplicacion] = useState<DiaAplicacion>("Domingo");
     const [motivo, setMotivo] = useState("");
     const [guardando, setGuardando] = useState(false);
 
@@ -110,18 +121,20 @@ export const ReglasDomingoPanel = () => {
     // Fechas que se van a guardar, según el periodo elegido.
     const rango = useMemo((): { inicio: string; fin: string; texto: string } | null => {
         try {
-            if (periodo === "Domingo") {
+            if (periodo === "Dia") {
                 if (!dia) return null;
-                // El domingo de esa semana (lunes a domingo); con sábado, desde el sábado.
+                // El sábado o domingo de esa semana (lunes a domingo); con ambos, los dos.
                 const domingo = addDays(startOfWeek(parseISO(dia), { weekStartsOn: 1 }), 6);
-                const inicio = conSabado ? addDays(domingo, -1) : domingo;
-                return {
-                    inicio: iso(inicio),
-                    fin: iso(domingo),
-                    texto: conSabado
-                        ? `el sábado ${format(inicio, "dd/MM")} y domingo ${format(domingo, "dd/MM/yyyy")}`
-                        : `el domingo ${format(domingo, "dd/MM/yyyy")}`,
-                };
+                const sabado = addDays(domingo, -1);
+                if (diaAplicacion === "Sabado")
+                    return { inicio: iso(sabado), fin: iso(sabado), texto: `el sábado ${format(sabado, "dd/MM/yyyy")}` };
+                if (diaAplicacion === "Ambos")
+                    return {
+                        inicio: iso(sabado),
+                        fin: iso(domingo),
+                        texto: `el sábado ${format(sabado, "dd/MM")} y domingo ${format(domingo, "dd/MM/yyyy")}`,
+                    };
+                return { inicio: iso(domingo), fin: iso(domingo), texto: `el domingo ${format(domingo, "dd/MM/yyyy")}` };
             }
             if (periodo === "Mes") {
                 if (!mes) return null;
@@ -137,7 +150,7 @@ export const ReglasDomingoPanel = () => {
         } catch {
             return null;
         }
-    }, [periodo, dia, mes, desde, hasta, conSabado]);
+    }, [periodo, dia, mes, desde, hasta, diaAplicacion]);
 
     const destinoTexto =
         alcance === "Planta"
@@ -152,6 +165,10 @@ export const ReglasDomingoPanel = () => {
     const fechaLarga = (s: string) => format(parseISO(s.slice(0, 10)), "EEE dd/MM/yyyy", { locale: es });
 
     const guardar = async () => {
+        if (!tipo) {
+            toast.error("Elige qué pasa esos días: paro sin asignaciones o rol normal");
+            return;
+        }
         if (alcance === "Areas" && areaIds.length === 0) {
             toast.error("Selecciona al menos una unidad organizativa");
             return;
@@ -171,9 +188,8 @@ export const ReglasDomingoPanel = () => {
                 areaIds: alcance === "Areas" ? areaIds : alcance === "Grupo" && areaGrupo ? [Number(areaGrupo)] : [],
                 grupoId: alcance === "Grupo" && grupoId ? Number(grupoId) : undefined,
                 tipo,
-                // En "un domingo" el sábado ya va en las fechas; en un periodo largo
-                // "también sábados" solo aplica a no laborables.
-                incluyeSabado: tipo === "SinDomingo" && conSabado,
+                diaAplicacion,
+                incluyeSabado: diaAplicacion !== "Domingo",
                 fechaInicio: rango.inicio,
                 fechaFin: rango.fin,
                 motivo: motivo.trim() || undefined,
@@ -183,7 +199,7 @@ export const ReglasDomingoPanel = () => {
                 r.reemplazadas ? `${r.reemplazadas} reemplazaron a una de las mismas fechas` : "",
                 r.yaExistian ? `${r.yaExistian} ya estaban igual` : "",
             ].filter(Boolean);
-            toast.success(`Domingos: ${tipo === "RolNormal" ? "en base a rol" : "no laborables"}`, {
+            toast.success(`${nombreTipoRegla(tipo)} · ${nombreDiaAplicacion(diaAplicacion)}`, {
                 description: `${partes.join(", ")}.${tipo === "SinDomingo" ? " Revisa abajo si hay vacaciones ya programadas en esos días." : ""}`,
                 duration: 8000,
             });
@@ -203,7 +219,7 @@ export const ReglasDomingoPanel = () => {
         for (const r of datos?.reglas ?? []) {
             const clave = r.grupoId
                 ? `g${r.id}`
-                : [r.tipo, r.incluyeSabado, r.fechaInicio, r.fechaFin, r.motivo ?? "", r.creadoPor ?? "", r.fechaCreacion.slice(0, 19), r.activa].join("|");
+                : [r.tipo, diaDeRegla(r), r.fechaInicio, r.fechaFin, r.motivo ?? "", r.creadoPor ?? "", r.fechaCreacion.slice(0, 19), r.activa].join("|");
             mapa.set(clave, [...(mapa.get(clave) ?? []), r]);
         }
         return Array.from(mapa.entries())
@@ -253,46 +269,85 @@ export const ReglasDomingoPanel = () => {
         );
     };
 
-    const reglaTexto = (r: ReglaDomingo) =>
-        r.tipo === "RolNormal" ? "En base a rol" : r.incluyeSabado ? "No laborable (sábado y domingo)" : "No laborable (domingo)";
+    const reglaTexto = (r: ReglaDomingo) => `${nombreTipoRegla(r.tipo)} · ${nombreDiaAplicacion(diaDeRegla(r))}`;
+    const diasTexto = diaAplicacion === "Sabado" ? "sábados" : diaAplicacion === "Ambos" ? "sábados y domingos" : "domingos";
 
     return (
         <div className="space-y-6">
             <div>
                 <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <CalendarOff className="w-5 h-5" /> Domingos por periodo
+                    <CalendarOff className="w-5 h-5" /> Reglas de trabajo y asignación de días
                 </h2>
                 <p className="text-sm text-continental-gray-1 mt-1">
-                    Define, para toda la planta, unas unidades organizativas o un grupo, si los domingos de un periodo son{" "}
-                    <strong>en base a rol</strong> (cada quien trabaja o descansa según su rol, como siempre) o{" "}
-                    <strong>no laborables</strong> (nadie trabaja: el rol semanal y los calendarios lo muestran como descanso,
-                    la captura del operador lo ve rayado con aviso y no se programan vacaciones ni días por la empresa). Sin
-                    regla, los domingos van en base a rol.
+                    Configura la jornada y las asignaciones para un periodo. Puedes aplicar la regla a toda la planta, a una
+                    unidad organizativa o a un grupo. En los días de paro se bloquea la programación de vacaciones del
+                    personal. Esta opción permite decidir si el paro se registra como descanso o si se pueden asignar días
+                    por la empresa según el rol del personal. Sin regla, se trabaja según el rol de cada quien.
                 </p>
                 <p className="text-xs text-continental-gray-1 mt-2">
-                    Se pueden encimar: manda la de periodo más corto, igual que en la capacidad. Ejemplo: Producción sin
-                    domingos de enero a marzo y, para un domingo en que hay que habilitar a toda la planta, "Toda la planta ·
-                    un domingo · en base a rol". Si duran lo mismo, manda la del grupo sobre la del área, y luego la más
-                    reciente.
+                    Se pueden encimar: manda la de periodo más corto, igual que en la capacidad. Ejemplo: Producción con
+                    paro los domingos de enero a marzo y, para un domingo en que hay que habilitar a toda la planta, "Rol
+                    normal · toda la planta · un domingo". Si duran lo mismo, manda la del grupo sobre la del área, y luego la
+                    más reciente.
                 </p>
                 <p className="text-xs text-continental-gray-1 mt-1">
                     Orden antes de asignar días por la empresa: 1) rol y arranques de las reglas de turno, 2) días festivos,
-                    3) estos domingos y la capacidad, 4) asignar días por la empresa.
+                    3) estas reglas y la capacidad, 4) asignar días por la empresa.
                 </p>
             </div>
 
             {datos && !datos.tablaExiste && (
                 <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
                     Falta crear la tabla en la base: corre <code>Scripts/Migration_ReglasDomingo.sql</code>. Mientras tanto
-                    todos los domingos van en base a rol.
+                    se trabaja según el rol de cada quien.
                 </div>
             )}
 
-            {/* Alta */}
+            {/* Alta: primero el día y qué pasa ese día, luego a quién y cuándo (orden propuesto por planeación) */}
             <section className="rounded-lg border p-4 space-y-4 text-sm">
                 <h3 className="font-semibold flex items-center gap-2">
-                    <Plus className="w-4 h-4" /> Nueva regla de domingos
+                    <Plus className="w-4 h-4" /> Nueva regla
                 </h3>
+
+                <fieldset className="space-y-1">
+                    <legend className="text-xs font-medium text-continental-gray-1">Día de aplicación (paro de actividades)</legend>
+                    <div className="flex flex-wrap gap-4">
+                        {(["Sabado", "Domingo", "Ambos"] as DiaAplicacion[]).map((d) => (
+                            <label key={d} className="flex items-center gap-2">
+                                <input type="radio" name="diaAplicacion" checked={diaAplicacion === d} onChange={() => setDiaAplicacion(d)} />
+                                {d === "Sabado" ? "Sábado" : d === "Ambos" ? "Ambos (sábado y domingo)" : "Domingo"}
+                            </label>
+                        ))}
+                    </div>
+                </fieldset>
+
+                <fieldset className="space-y-2">
+                    <legend className="text-xs font-medium text-continental-gray-1">Opción para programación de días por la empresa</legend>
+                    <label className="flex items-start gap-2">
+                        <input type="radio" className="mt-1" name="tipoRegla" checked={tipo === "SinDomingo"} onChange={() => setTipo("SinDomingo")} />
+                        <span>
+                            <strong>Paro sin asignaciones</strong> — el día se registra como descanso para todo el personal
+                            incluido en la regla; no se programan vacaciones ni días por la empresa.
+                        </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-continental-gray-1 cursor-not-allowed" title="Se está confirmando con planeación cómo se reparten esos días">
+                        <input type="radio" className="mt-1" name="tipoRegla" disabled checked={false} onChange={() => undefined} />
+                        <span>
+                            <strong>Paro con días por la empresa</strong> — se pueden asignar días por la empresa en base a su
+                            rol. <em className="text-xs">(Próximamente)</em>
+                        </span>
+                    </label>
+                    <div className="pt-1 border-t">
+                        <span className="text-xs text-continental-gray-1">Excepción</span>
+                        <label className="flex items-start gap-2">
+                            <input type="radio" className="mt-1" name="tipoRegla" checked={tipo === "RolNormal"} onChange={() => setTipo("RolNormal")} />
+                            <span>
+                                <strong>Rol normal</strong> — se trabaja según el rol de cada quien. Sirve para habilitar un día
+                                dentro de un paro (por ejemplo, un domingo en que hay que trabajar).
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                     <label className="flex flex-col gap-1">
@@ -391,14 +446,14 @@ export const ReglasDomingoPanel = () => {
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-continental-gray-1">Periodo</span>
                         <select className="h-9 rounded-md border px-2" value={periodo} onChange={(e) => setPeriodo(e.target.value as PeriodoDomingo)}>
-                            <option value="Domingo">Un domingo</option>
+                            <option value="Dia">{diaAplicacion === "Sabado" ? "Un sábado" : diaAplicacion === "Ambos" ? "Un fin de semana" : "Un domingo"}</option>
                             <option value="Mes">Un mes</option>
                             <option value="Rango">Rango de fechas</option>
                         </select>
                     </label>
-                    {periodo === "Domingo" && (
+                    {periodo === "Dia" && (
                         <label className="flex flex-col gap-1">
-                            <span className="text-xs font-medium text-continental-gray-1">Domingo (o cualquier día de esa semana)</span>
+                            <span className="text-xs font-medium text-continental-gray-1">Cualquier día de esa semana</span>
                             <input type="date" className="h-9 rounded-md border px-2" value={dia} onChange={(e) => setDia(e.target.value)} />
                         </label>
                     )}
@@ -422,40 +477,19 @@ export const ReglasDomingoPanel = () => {
                     )}
                 </div>
 
-                <fieldset className="space-y-1">
-                    <legend className="text-xs font-medium text-continental-gray-1">Esos domingos</legend>
-                    <label className="flex items-center gap-2">
-                        <input type="radio" name="tipoRegla" checked={tipo === "RolNormal"} onChange={() => setTipo("RolNormal")} />
-                        En base a rol (rol regular: trabaja o descansa cada quien según su rol)
-                    </label>
-                    <label className="flex items-center gap-2">
-                        <input type="radio" name="tipoRegla" checked={tipo === "SinDomingo"} onChange={() => setTipo("SinDomingo")} />
-                        No laborables (nadie trabaja; no se programan vacaciones ni días por la empresa)
-                    </label>
-                    {(tipo === "SinDomingo" || periodo === "Domingo") && (
-                        <label className="flex items-center gap-2 pl-6">
-                            <input type="checkbox" checked={conSabado} onChange={(e) => setConSabado(e.target.checked)} />
-                            {periodo === "Domingo" ? "También el sábado de esa semana" : "También sábados (se detiene el rol el sábado)"}
-                        </label>
-                    )}
-                </fieldset>
-
                 <label className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-continental-gray-1">Motivo (ej. paro por falta de luz, se habilita la planta…)</span>
+                    <span className="text-xs font-medium text-continental-gray-1">Motivo (ej. paro por baja producción, se habilita la planta…)</span>
                     <input className="h-9 rounded-md border px-2" maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
                 </label>
 
                 <div className="flex flex-wrap items-center gap-3">
                     <Button variant="continental" onClick={guardar} disabled={guardando || (datos ? !datos.tablaExiste : false)}>
-                        {guardando ? "Guardando…" : "Guardar regla de domingos"}
+                        {guardando ? "Guardando…" : "Guardar regla"}
                     </Button>
-                    {rango && (
+                    {rango && tipo && (
                         <span className="text-continental-gray-1">
-                            Se guardará: <strong>{tipo === "RolNormal" ? "en base a rol" : "no laborable"}</strong>{" "}
-                            {periodo === "Domingo"
-                                ? rango.texto
-                                : `los ${tipo === "RolNormal" ? "fines de semana" : conSabado ? "sábados y domingos" : "domingos"} de ${rango.texto}`}
-                            , {destinoTexto}.
+                            Se guardará: <strong>{nombreTipoRegla(tipo)}</strong>{" "}
+                            {periodo === "Dia" ? rango.texto : `los ${diasTexto} de ${rango.texto}`}, {destinoTexto}.
                         </span>
                     )}
                 </div>
@@ -464,7 +498,7 @@ export const ReglasDomingoPanel = () => {
             {/* Lista */}
             <section className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="font-semibold mr-auto">Reglas de domingos del año</h3>
+                    <h3 className="font-semibold mr-auto">Reglas del año</h3>
                     <select className="h-9 rounded-md border px-2 text-sm" value={anioElegido} onChange={(e) => setAnio(Number(e.target.value))}>
                         {(anios.length ? anios : [anioElegido]).map((a) => (
                             <option key={a} value={a}>
@@ -480,14 +514,14 @@ export const ReglasDomingoPanel = () => {
                 {cargando ? (
                     <p className="text-sm text-continental-gray-1">Cargando…</p>
                 ) : lotes.length === 0 ? (
-                    <p className="text-sm text-continental-gray-1">No hay reglas en {anioElegido}: todos los domingos van en base a rol.</p>
+                    <p className="text-sm text-continental-gray-1">No hay reglas en {anioElegido}: se trabaja según el rol de cada quien.</p>
                 ) : (
                     <div className="overflow-x-auto border rounded-lg">
                         <table className="w-full text-sm">
                             <thead className="bg-slate-50 text-left">
                                 <tr>
                                     <th className="px-3 py-2 font-medium">Aplica a</th>
-                                    <th className="px-3 py-2 font-medium">Domingos</th>
+                                    <th className="px-3 py-2 font-medium">Regla</th>
                                     <th className="px-3 py-2 font-medium">Periodo</th>
                                     <th className="px-3 py-2 font-medium">Motivo</th>
                                     <th className="px-3 py-2 font-medium">Registro</th>
@@ -554,10 +588,10 @@ export const ReglasDomingoPanel = () => {
             <section className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="mr-auto">
-                        <h3 className="font-semibold">Vacaciones ya programadas en días no laborables</h3>
+                        <h3 className="font-semibold">Vacaciones ya programadas en días de paro</h3>
                         <p className="text-xs text-continental-gray-1">
                             Días que se programaron antes de la regla (p. ej. días por la empresa en un domingo que después se
-                            declaró no laborable). No se mueven solos: se reprograman desde el calendario del empleado o,
+                            declaró paro sin asignaciones). No se mueven solos: se reprograman desde el calendario del empleado o,
                             si son muchos, con el machote de abajo.
                         </p>
                     </div>
@@ -567,7 +601,7 @@ export const ReglasDomingoPanel = () => {
                 </div>
                 {afectadas &&
                     (afectadas.length === 0 ? (
-                        <p className="text-sm text-green-700">Ninguna vacación cae en un día no laborable en {anioElegido}.</p>
+                        <p className="text-sm text-green-700">Ninguna vacación cae en un día de paro en {anioElegido}.</p>
                     ) : (
                         <div className="overflow-x-auto border rounded-lg">
                             <table className="w-full text-sm">

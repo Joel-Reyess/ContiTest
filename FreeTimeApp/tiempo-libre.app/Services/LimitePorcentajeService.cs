@@ -30,8 +30,10 @@ namespace tiempo_libre.Services
     ///    Extra" del calendario del área).
     /// 2. Capacidad por periodo vigente (CapacidadesPorcentaje): la de periodo más
     ///    corto (día, luego semana, luego mes) y, con el mismo periodo, la de
-    ///    alcance más chico (grupo, luego área, luego planta); si aun así empatan,
-    ///    la más reciente.
+    ///    alcance más chico (grupo, luego área, luego planta); luego la de un turno
+    ///    antes que la de todo el día (la de un turno solo cuenta si ese día el
+    ///    grupo va en ese turno por su rol, nov-2026); si aun así empatan, la más
+    ///    reciente.
     /// 3. El del año: el del año en preparación si tiene uno propio, si no el
     ///    general (PorcentajeAusenciaHelper.ParaAnio).
     ///
@@ -50,6 +52,8 @@ namespace tiempo_libre.Services
         private bool _configCargada;
         private List<CapacidadPorcentaje>? _capacidades;
         private readonly Dictionary<int, int?> _areaDeGrupo = new();
+        private readonly Dictionary<int, string> _rolDeGrupo = new();
+        private readonly Dictionary<int, DateOnly?> _semanaSanta = new();
         private readonly Dictionary<(int GrupoId, DateOnly Fecha), decimal?> _excepciones = new();
 
         private static volatile bool _tablaConfirmada;
@@ -124,11 +128,16 @@ namespace tiempo_libre.Services
                 return new LimiteAplicable(excepcion.Value, "Excepción del grupo para ese día");
 
             var areaId = _areaDeGrupo.GetValueOrDefault(grupoId);
+            string? turnoDelGrupo = null;
+            string TurnoDelGrupo() => turnoDelGrupo ??= TurnoDeGrupo(grupoId, fecha);
             var capacidad = (_capacidades ?? new List<CapacidadPorcentaje>())
                 .Where(c => c.FechaInicio <= fecha && fecha <= c.FechaFin && Aplica(c, grupoId, areaId) &&
-                            (c.AplicaA == "Ambos" || c.AplicaA == contexto.ToString()))
+                            (c.AplicaA == "Ambos" || c.AplicaA == contexto.ToString()) &&
+                            // De un turno: solo si ese día el grupo va en ese turno por su rol.
+                            (string.IsNullOrEmpty(c.Turno) || TurnoDelGrupo() == c.Turno))
                 .OrderBy(c => RangoPeriodo(c.Periodo))
                 .ThenBy(c => RangoAlcance(c.Alcance))
+                .ThenBy(c => string.IsNullOrEmpty(c.Turno) ? 1 : 0)
                 .ThenBy(c => c.AplicaA == "Ambos" ? 1 : 0)
                 .ThenByDescending(c => c.FechaCreacion)
                 .ThenByDescending(c => c.Id)
@@ -162,7 +171,14 @@ namespace tiempo_libre.Services
                 "Operador" => ", solo días de los operadores",
                 _ => ""
             };
-            return $"Capacidad por periodo ({periodo}, {alcance}{dias})";
+            var turno = c.Turno switch
+            {
+                "1" => ", primer turno",
+                "2" => ", segundo turno",
+                "3" => ", tercer turno",
+                _ => ""
+            };
+            return $"Capacidad por periodo ({periodo}, {alcance}{turno}{dias})";
         }
 
         private static bool Aplica(CapacidadPorcentaje c, int grupoId, int? areaId) => c.Alcance switch
@@ -183,10 +199,25 @@ namespace tiempo_libre.Services
             if (faltan.Count == 0) return;
             var areas = await _db.Grupos
                 .Where(g => faltan.Contains(g.GrupoId))
-                .Select(g => new { g.GrupoId, g.AreaId })
+                .Select(g => new { g.GrupoId, g.AreaId, g.Rol })
                 .ToListAsync();
             foreach (var g in faltan) _areaDeGrupo[g] = null;
-            foreach (var a in areas) _areaDeGrupo[a.GrupoId] = a.AreaId;
+            foreach (var a in areas)
+            {
+                _areaDeGrupo[a.GrupoId] = a.AreaId;
+                _rolDeGrupo[a.GrupoId] = a.Rol ?? string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Turno que le toca al grupo ese día por su rol (con los arranques agendados y
+        /// la semana de Semana Santa, igual que los calendarios y la asignación).
+        /// </summary>
+        private string TurnoDeGrupo(int grupoId, DateOnly fecha)
+        {
+            var rol = _rolDeGrupo.GetValueOrDefault(grupoId);
+            if (string.IsNullOrEmpty(rol)) return string.Empty;
+            return TurnosHelper.ObtenerTurnoParaFecha(rol, fecha, _semanaSanta.GetValueOrDefault(fecha.Year));
         }
 
         private async Task CargarBaseAsync()
@@ -211,10 +242,38 @@ namespace tiempo_libre.Services
                 }
                 catch
                 {
-                    // P. ej. falta la columna AplicaA (no se corrió el script de nuevo):
-                    // mejor el porcentaje general que tumbar la captura y los calendarios.
-                    _capacidades = new List<CapacidadPorcentaje>();
+                    // Falta la columna Turno (no se corrió
+                    // Migration_ReglasTrabajo_CapacidadTurno.sql): se leen sin ella, todas
+                    // de todo el día, como antes. Si también falta AplicaA, el porcentaje
+                    // general: mejor eso que tumbar la captura y los calendarios.
+                    try
+                    {
+                        _capacidades = await _db.CapacidadesPorcentaje.AsNoTracking().Where(c => c.Activa)
+                            .Select(c => new CapacidadPorcentaje
+                            {
+                                Id = c.Id, Alcance = c.Alcance, AplicaA = c.AplicaA, AreaId = c.AreaId, GrupoId = c.GrupoId,
+                                Periodo = c.Periodo, FechaInicio = c.FechaInicio, FechaFin = c.FechaFin,
+                                Porcentaje = c.Porcentaje, Motivo = c.Motivo, Activa = c.Activa, FechaCreacion = c.FechaCreacion
+                            })
+                            .ToListAsync();
+                    }
+                    catch
+                    {
+                        _capacidades = new List<CapacidadPorcentaje>();
+                    }
                 }
+
+                // Las de un turno necesitan el rol de cada grupo ese día, y el rol se
+                // recorre una semana después de Semana Santa.
+                var anios = _capacidades.Where(c => !string.IsNullOrEmpty(c.Turno))
+                    .SelectMany(c => Enumerable.Range(c.FechaInicio.Year, c.FechaFin.Year - c.FechaInicio.Year + 1))
+                    .Distinct().Where(a => !_semanaSanta.ContainsKey(a)).ToList();
+                foreach (var anio in anios)
+                    _semanaSanta[anio] = await _db.DiasInhabiles
+                        .Where(d => d.Detalles.Contains("Semana Santa") && d.FechaFinal.Year == anio)
+                        .OrderByDescending(d => d.FechaFinal)
+                        .Select(d => (DateOnly?)d.FechaFinal)
+                        .FirstOrDefaultAsync();
             }
         }
 

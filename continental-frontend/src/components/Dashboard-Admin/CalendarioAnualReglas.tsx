@@ -375,7 +375,7 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
                 {areasConReglas.length > 0 && (
                     <div className="min-w-[220px]">
                         <Label className="text-xs flex items-center gap-1">
-                            <Filter className="size-3" /> Ver domingos no laborables de
+                            <Filter className="size-3" /> Ver días de paro de
                         </Label>
                         <select
                             value={areaDomingos}

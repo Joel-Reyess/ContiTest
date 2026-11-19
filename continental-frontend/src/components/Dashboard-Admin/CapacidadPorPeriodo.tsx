@@ -14,6 +14,8 @@ import {
     type AplicaCapacidad,
     type CapacidadesPorcentajeResponse,
     type PeriodoCapacidad,
+    type TurnoCapacidad,
+    nombreTurnoCapacidad,
 } from "@/services/capacidadPorcentajeService";
 import { ReglasDomingoPanel } from "./ReglasDomingoPanel";
 
@@ -50,6 +52,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
     // Formulario
     const [alcance, setAlcance] = useState<AlcanceCapacidad>("Planta");
     const [aplicaA, setAplicaA] = useState<AplicaCapacidad>("Ambos");
+    const [turno, setTurno] = useState<TurnoCapacidad>("");
     const [areaId, setAreaId] = useState<number | "">("");
     const [grupoId, setGrupoId] = useState<number | "">("");
     const [periodo, setPeriodo] = useState<PeriodoCapacidad>("Mes");
@@ -175,6 +178,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
             await capacidadPorcentajeService.crear({
                 alcance,
                 aplicaA,
+                turno: turno || undefined,
                 areaId: alcance === "Area" && areaId ? Number(areaId) : undefined,
                 grupoId: alcance === "Grupo" && grupoId ? Number(grupoId) : undefined,
                 periodo,
@@ -257,15 +261,15 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                     </button>{" "}
                     ·{" "}
                     <button type="button" className="underline text-blue-700" onClick={() => document.getElementById("seccion-domingos")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                        domingos en base a rol / no laborables
+                        reglas de trabajo (paros)
                     </button>
                 </p>
                 {onRegresarSecuencia && (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
                         <span>
                             Las dos cosas son opcionales. Si te quedas con el % general
-                            {datos?.anioPreparacion ? ` y el del año ${datos.anioPreparacion}` : ""} y los domingos en base a
-                            rol, aquí no hay que guardar nada: regresa a la secuencia y sigue con el paso 4 (Asignar días
+                            {datos?.anioPreparacion ? ` y el del año ${datos.anioPreparacion}` : ""} y sin paros (se trabaja
+                            según el rol), aquí no hay que guardar nada: regresa a la secuencia y sigue con el paso 4 (Asignar días
                             por empresa).
                         </span>
                         <Button variant="outline" size="sm" onClick={onRegresarSecuencia} className="flex items-center gap-1">
@@ -275,8 +279,10 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                 )}
                 <p className="text-xs text-continental-gray-1 mt-1">
                     Si en un mismo día aplican varias, manda la más específica: primero la de día, luego la de semana y luego
-                    la de mes; con el mismo periodo, la de grupo, luego la de área y luego la de planta. Una excepción de un
-                    grupo para un día capturada en el calendario del área manda sobre todas.
+                    la de mes; con el mismo periodo, la de grupo, luego la de área y luego la de planta; y la de un turno
+                    antes que la de todo el día. Una de un turno solo aplica al grupo que ese día va en ese turno según su
+                    rol; los demás grupos siguen con su porcentaje. Una excepción de un grupo para un día capturada en el
+                    calendario del área manda sobre todas.
                 </p>
             </div>
 
@@ -311,7 +317,22 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                         {aplicaA === "Empresa" && (
                             <span className="text-xs text-blue-700">
                                 Estas fechas también se usan como prioridad al programar los días por la empresa de esa área o
-                                grupo (igual que las fechas de arranque).
+                                grupo (igual que las fechas de arranque){turno ? "; las de un solo turno no" : ""}.
+                            </span>
+                        )}
+                    </label>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-continental-gray-1">Turno</span>
+                        <select className="h-9 rounded-md border px-2" value={turno} onChange={(e) => setTurno(e.target.value as TurnoCapacidad)}>
+                            <option value="">Todo el día</option>
+                            <option value="1">Primer turno</option>
+                            <option value="2">Segundo turno</option>
+                            <option value="3">Tercer turno</option>
+                        </select>
+                        {turno && (
+                            <span className="text-xs text-blue-700">
+                                Aplica solo al grupo que ese día va en {nombreTurnoCapacidad(turno).toLowerCase()} según su rol; los
+                                demás siguen con su porcentaje.
                             </span>
                         )}
                     </label>
@@ -409,6 +430,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                             Se guardará: <strong>{porcentaje}%</strong>
                             {baseDelAnio != null ? ` en lugar del ${baseDelAnio}%` : ""}{" "}
                             {aplicaA === "Empresa" ? "solo para días por la empresa, " : aplicaA === "Operador" ? "solo para días de los operadores, " : ""}
+                            {turno ? `solo ${nombreTurnoCapacidad(turno).toLowerCase()} (el grupo que ese día va en ese turno según su rol), ` : ""}
                             {rangoElegido},{" "}
                             {alcance === "Planta"
                                 ? "toda la planta"
@@ -456,6 +478,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                                     <th className="px-3 py-2 font-medium">Fechas</th>
                                     <th className="px-3 py-2 font-medium">Aplica a</th>
                                     <th className="px-3 py-2 font-medium">Días</th>
+                                    <th className="px-3 py-2 font-medium">Turno</th>
                                     <th className="px-3 py-2 font-medium text-right">%</th>
                                     <th className="px-3 py-2 font-medium">Motivo</th>
                                     <th className="px-3 py-2 font-medium">Registro</th>
@@ -475,6 +498,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                                         <td className="px-3 py-1.5">
                                             {c.aplicaA === "Empresa" ? "Por la empresa" : c.aplicaA === "Operador" ? "De los operadores" : "Ambos"}
                                         </td>
+                                        <td className="px-3 py-1.5">{nombreTurnoCapacidad(c.turno)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{c.porcentaje}%</td>
                                         <td className="px-3 py-1.5">{c.motivo || "—"}</td>
                                         <td className="px-3 py-1.5 text-xs">

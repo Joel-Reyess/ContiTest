@@ -12,6 +12,8 @@ namespace tiempo_libre.DTOs
         public string? Grupo { get; set; }
         public string Tipo { get; set; } = string.Empty;
         public bool IncluyeSabado { get; set; }
+        /// <summary>"Domingo", "Sabado" o "Ambos".</summary>
+        public string DiaAplicacion { get; set; } = "Domingo";
         public DateOnly FechaInicio { get; set; }
         public DateOnly FechaFin { get; set; }
         public string? Motivo { get; set; }
@@ -37,9 +39,16 @@ namespace tiempo_libre.DTOs
         public bool TodaLaPlanta { get; set; }
         /// <summary>Opcional, solo con una unidad: la regla aplica a ese grupo.</summary>
         public int? GrupoId { get; set; }
-        /// <summary>"SinDomingo" o "RolNormal".</summary>
+        /// <summary>
+        /// "SinDomingo" (paro sin asignaciones: descanso para todos) o "RolNormal"
+        /// (excepción: se trabaja según el rol). "ParoEmpresa" (paro con días por la
+        /// empresa) todavía no se acepta.
+        /// </summary>
         public string Tipo { get; set; } = "SinDomingo";
+        /// <summary>Solo si no viene DiaAplicacion (pantallas anteriores): true = sábado y domingo.</summary>
         public bool IncluyeSabado { get; set; }
+        /// <summary>"Domingo", "Sabado" o "Ambos". Si no viene, se toma de IncluyeSabado.</summary>
+        public string? DiaAplicacion { get; set; }
         public DateOnly FechaInicio { get; set; }
         public DateOnly FechaFin { get; set; }
         public string? Motivo { get; set; }

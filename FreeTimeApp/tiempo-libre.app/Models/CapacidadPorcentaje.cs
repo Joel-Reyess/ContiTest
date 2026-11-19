@@ -34,6 +34,14 @@ namespace tiempo_libre.Models
         [Required, MaxLength(10)]
         public string AplicaA { get; set; } = "Ambos";
 
+        /// <summary>
+        /// Turno al que aplica (nov-2026): null = todo el día; "1", "2" o "3" = solo
+        /// los grupos que ese día van en ese turno según su rol (los demás siguen con
+        /// el general). Ej.: Construcción 2, 02/01, primer turno, 10%.
+        /// </summary>
+        [MaxLength(1)]
+        public string? Turno { get; set; }
+
         /// <summary>"Dia", "Semana" (lunes a domingo) o "Mes".</summary>
         [Required, MaxLength(10)]
         public string Periodo { get; set; } = "Mes";

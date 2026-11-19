@@ -36,6 +36,24 @@ namespace tiempo_libre.Models
         /// <summary>Con "SinDomingo": el sábado tampoco es laborable.</summary>
         public bool IncluyeSabado { get; set; }
 
+        /// <summary>
+        /// A qué días de la semana aplica (nov-2026, "Reglas de trabajo y asignación de
+        /// días"): "Domingo", "Sabado" o "Ambos". Las reglas anteriores tenían el
+        /// domingo siempre y el sábado opcional (IncluyeSabado); el script
+        /// Migration_ReglasTrabajo_CapacidadTurno.sql las pasa a "Domingo" o "Ambos".
+        /// IncluyeSabado se sigue guardando (true si aplica al sábado) por compatibilidad.
+        /// </summary>
+        [Required, MaxLength(8)]
+        public string DiaAplicacion { get; set; } = "Domingo";
+
+        /// <summary>¿La regla habla de este día? (sábado o domingo según DiaAplicacion).</summary>
+        public bool AplicaEnDia(DayOfWeek dia) => dia switch
+        {
+            DayOfWeek.Sunday => DiaAplicacion != "Sabado",
+            DayOfWeek.Saturday => DiaAplicacion == "Sabado" || DiaAplicacion == "Ambos",
+            _ => false
+        };
+
         public DateOnly FechaInicio { get; set; }
 
         public DateOnly FechaFin { get; set; }
