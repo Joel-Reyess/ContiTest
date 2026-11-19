@@ -95,8 +95,11 @@ namespace tiempo_libre.Services
             if (_reglas == null || _reglas.Count == 0) return null;
 
             var area = _areaDeGrupo.GetValueOrDefault(grupoId);
+            // Solo compiten las reglas que hablan de ese día (sábado o domingo, según
+            // su "día de aplicación"): una regla de un domingo suelto ya no le gana a
+            // un periodo de sábado y domingo en el sábado de esa semana.
             var regla = _reglas
-                .Where(r => r.FechaInicio <= fecha && fecha <= r.FechaFin &&
+                .Where(r => r.FechaInicio <= fecha && fecha <= r.FechaFin && r.AplicaEnDia(fecha.DayOfWeek) &&
                             (r.GrupoId == grupoId || (r.GrupoId == null && area.HasValue && r.AreaId == area.Value)))
                 .OrderBy(r => r.FechaFin.DayNumber - r.FechaInicio.DayNumber)
                 .ThenBy(r => r.GrupoId.HasValue ? 0 : 1)
@@ -105,21 +108,18 @@ namespace tiempo_libre.Services
                 .FirstOrDefault();
 
             if (regla == null || regla.Tipo != "SinDomingo") return null;
-            if (!esDomingo && !regla.IncluyeSabado) return null;
 
             var dia = esDomingo ? "Domingo" : "Sábado";
             var donde = _nombreArea.TryGetValue(regla.AreaId, out var n) ? n : "la unidad organizativa";
-            return $"{dia} no laborable para {donde} (regla del {regla.FechaInicio:dd/MM/yyyy} al {regla.FechaFin:dd/MM/yyyy}): " +
-                   "no se programan vacaciones ni días por la empresa.";
+            return $"{dia} de paro para {donde} (regla del {regla.FechaInicio:dd/MM/yyyy} al {regla.FechaFin:dd/MM/yyyy}): " +
+                   "se registra como descanso y no se programan vacaciones ni días por la empresa.";
         }
 
         private async Task CargarAsync(IEnumerable<int> grupoIds)
         {
             if (_reglas == null)
             {
-                _reglas = await TablaExisteAsync()
-                    ? await _db.ReglasDomingo.AsNoTracking().Where(r => r.Activa).ToListAsync()
-                    : new List<ReglaDomingo>();
+                _reglas = await TablaExisteAsync() ? await LeerReglasActivasAsync() : new List<ReglaDomingo>();
                 if (_reglas.Count > 0)
                 {
                     var areas = _reglas.Select(r => r.AreaId).Distinct().ToList();
@@ -138,6 +138,32 @@ namespace tiempo_libre.Services
                 .ToListAsync();
             foreach (var g in faltan) _areaDeGrupo[g] = null;
             foreach (var g in areasDeGrupos) _areaDeGrupo[g.GrupoId] = g.AreaId;
+        }
+
+        /// <summary>
+        /// Si falta la columna DiaAplicacion (no se corrió
+        /// Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql) se leen sin ella, como
+        /// antes (domingo, y sábado si IncluyeSabado): la captura, el rol semanal y los
+        /// calendarios no deben tronar por un script pendiente.
+        /// </summary>
+        private async Task<List<ReglaDomingo>> LeerReglasActivasAsync()
+        {
+            try
+            {
+                return await _db.ReglasDomingo.AsNoTracking().Where(r => r.Activa).ToListAsync();
+            }
+            catch (Exception) when (_db.Database.ProviderName?.Contains("SqlServer") == true)
+            {
+                var filas = await _db.ReglasDomingo.AsNoTracking().Where(r => r.Activa)
+                    .Select(r => new { r.Id, r.AreaId, r.GrupoId, r.Tipo, r.IncluyeSabado, r.FechaInicio, r.FechaFin, r.FechaCreacion })
+                    .ToListAsync();
+                return filas.Select(r => new ReglaDomingo
+                {
+                    Id = r.Id, AreaId = r.AreaId, GrupoId = r.GrupoId, Tipo = r.Tipo, IncluyeSabado = r.IncluyeSabado,
+                    DiaAplicacion = r.IncluyeSabado ? "Ambos" : "Domingo",
+                    FechaInicio = r.FechaInicio, FechaFin = r.FechaFin, FechaCreacion = r.FechaCreacion, Activa = true
+                }).ToList();
+            }
         }
 
         /// <summary>

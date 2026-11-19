@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarOff } from "lucide-react";
-import { reglasDomingoService, type ReglaDomingo } from "@/services/reglasDomingoService";
+import { diaDeRegla, reglasDomingoService, type ReglaDomingo } from "@/services/reglasDomingoService";
 import { esNoLaborable, isoLocal } from "@/utils/reglasDomingo";
 
 /**
@@ -42,7 +42,8 @@ export const AvisoDomingosNoLaborables = ({ empleadoId, anio }: { empleadoId?: n
                 const fin = parseISO(r.fechaFin.slice(0, 10));
                 for (let d = parseISO(r.fechaInicio.slice(0, 10)); d <= fin; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
                     const dow = d.getDay();
-                    if (dow !== 0 && !(dow === 6 && r.incluyeSabado)) continue;
+                    const diaRegla = diaDeRegla(r);
+                    if (!(dow === 0 && diaRegla !== "Sabado") && !(dow === 6 && diaRegla !== "Domingo")) continue;
                     if (esNoLaborable(reglas, d)) alguno = true;
                     else conRol.push(isoLocal(d));
                 }
@@ -59,16 +60,16 @@ export const AvisoDomingosNoLaborables = ({ empleadoId, anio }: { empleadoId?: n
         <div className="mx-2 mb-3 flex items-start gap-2 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-800">
             <CalendarOff className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
-                <p className="font-medium">Días no laborables para tu unidad organizativa en {anio}</p>
+                <p className="font-medium">Días de paro para tu unidad organizativa en {anio}</p>
                 <ul className="mt-0.5">
                     {periodos.map(({ r, conRol }) => (
                         <li key={r.id}>
                             {r.fechaInicio.slice(0, 10) === r.fechaFin.slice(0, 10)
                                 ? `El ${fecha(r.fechaInicio)}`
                                 : `Del ${fecha(r.fechaInicio)} al ${fecha(r.fechaFin)}`}
-                            : {r.incluyeSabado ? "sábados y domingos" : "domingos"}
+                            : {diaDeRegla(r) === "Ambos" ? "sábados y domingos" : diaDeRegla(r) === "Sabado" ? "sábados" : "domingos"}
                             {conRol.length > 0 && (
-                                <span className="text-slate-600"> (excepto {conRol.map(fechaCorta).join(", ")}: en base a tu rol)</span>
+                                <span className="text-slate-600"> (excepto {conRol.map(fechaCorta).join(", ")}: según tu rol)</span>
                             )}
                             .
                         </li>

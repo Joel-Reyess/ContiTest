@@ -50,7 +50,7 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
         try {
             const afectadas = (await reglasDomingoService.vacacionesAfectadas(anio)).filter((v) => TIPOS_EMPRESA.includes(v.tipoVacacion));
             if (afectadas.length === 0) {
-                toast.info(`No hay días por la empresa en días no laborables en ${anio}`, {
+                toast.info(`No hay días por la empresa en días de paro en ${anio}`, {
                     description: "Puedes descargar el machote vacío y llenarlo a mano.",
                 });
                 return;
@@ -152,9 +152,9 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
                     <FileSpreadsheet className="w-4 h-4" /> Mover días por la empresa con machote
                 </h3>
                 <p className="text-xs text-continental-gray-1 mt-1">
-                    Para mover muchos de una vez (por ejemplo, un domingo que se declaró no laborable y esos días se reparten
+                    Para mover muchos de una vez (por ejemplo, un domingo que se declaró paro sin asignaciones y esos días se reparten
                     entre lunes, martes y miércoles): descarga el machote, llena "Fecha nueva" y súbelo. Antes de mover se
-                    revisa cada renglón (que sea día laborable de su rol, no inhábil ni no laborable, sin otra vacación, permiso o
+                    revisa cada renglón (que sea día laborable de su rol, no inhábil ni de paro, sin otra vacación, permiso o
                     incapacidad, y el % del grupo). Se aplica directo, sin aprobación del jefe, y queda en el historial de
                     reprogramaciones de día empresa como "C" en el rol semanal.
                 </p>
@@ -163,7 +163,7 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
             <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" onClick={descargarConDias} disabled={descargando}>
                     <Download className="w-4 h-4 mr-1" />
-                    {descargando ? "Generando…" : `Machote con los días en no laborables (${anio})`}
+                    {descargando ? "Generando…" : `Machote con los días en paro (${anio})`}
                 </Button>
                 <Button variant="outline" onClick={() => descargarMachoteDiasEmpresa([], "vacio")}>
                     <Download className="w-4 h-4 mr-1" /> Machote vacío
@@ -247,7 +247,7 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
                                 <input
                                     className="h-9 rounded-md border px-2"
                                     maxLength={300}
-                                    placeholder="Ej. Domingo 14/02 no laborable por paro de luz"
+                                    placeholder="Ej. Domingo 14/02 paro por falta de luz"
                                     value={motivo}
                                     onChange={(e) => setMotivo(e.target.value)}
                                 />

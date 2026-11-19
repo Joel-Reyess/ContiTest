@@ -75,6 +75,7 @@ namespace tiempo_libre.Services
                 Id = f.Capacidad.Id,
                 Alcance = f.Capacidad.Alcance,
                 AplicaA = f.Capacidad.AplicaA,
+                Turno = f.Capacidad.Turno,
                 AreaId = f.Capacidad.AreaId,
                 Area = f.Area,
                 GrupoId = f.Capacidad.GrupoId,
@@ -108,11 +109,15 @@ namespace tiempo_libre.Services
             var aplicaA = string.IsNullOrWhiteSpace(req.AplicaA) ? "Ambos" : req.AplicaA;
             if (!Aplicaciones.Contains(aplicaA))
                 return new ApiResponse<int>(false, 0, "Debe aplicar a Ambos, Empresa u Operador.");
+            var turno = string.IsNullOrWhiteSpace(req.Turno) ? null : req.Turno.Trim();
+            if (turno != null && turno != "1" && turno != "2" && turno != "3")
+                return new ApiResponse<int>(false, 0, "El turno debe ser todo el día, 1, 2 o 3.");
 
             var capacidad = new CapacidadPorcentaje
             {
                 Alcance = req.Alcance,
                 AplicaA = aplicaA,
+                Turno = turno,
                 Periodo = req.Periodo,
                 Porcentaje = Math.Round(req.Porcentaje, 2),
                 Motivo = string.IsNullOrWhiteSpace(req.Motivo) ? null : req.Motivo.Trim(),
@@ -161,7 +166,15 @@ namespace tiempo_libre.Services
             if (choque != null) return new ApiResponse<int>(false, 0, choque);
 
             _db.CapacidadesPorcentaje.Add(capacidad);
-            await _db.SaveChangesAsync();
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when ((ex.InnerException?.Message ?? ex.Message).Contains("Turno"))
+            {
+                return new ApiResponse<int>(false, 0,
+                    "Falta correr Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql en la base de datos (columna Turno).");
+            }
             _logger.LogWarning("Capacidad por periodo {Id} creada por usuario {Usuario}: {Descripcion} = {Pct}% ({Motivo})",
                 capacidad.Id, usuarioId, LimitePorcentajeService.DescribirCapacidad(capacidad), capacidad.Porcentaje, capacidad.Motivo);
             return new ApiResponse<int>(true, capacidad.Id, null);
@@ -222,6 +235,9 @@ namespace tiempo_libre.Services
                             x.AreaId == c.AreaId && x.GrupoId == c.GrupoId &&
                             // "Ambos" se encima con todo; "Empresa" y "Operador" no entre sí.
                             (x.AplicaA == c.AplicaA || x.AplicaA == "Ambos" || c.AplicaA == "Ambos") &&
+                            // Una de todo el día y otra de un turno sí pueden convivir (manda la
+                            // del turno); dos del mismo turno no.
+                            x.Turno == c.Turno &&
                             x.FechaInicio <= c.FechaFin && x.FechaFin >= c.FechaInicio)
                 .FirstOrDefaultAsync();
             return existente == null

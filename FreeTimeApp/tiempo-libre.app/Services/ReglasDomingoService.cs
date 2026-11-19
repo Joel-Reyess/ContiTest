@@ -17,6 +17,15 @@ namespace tiempo_libre.Services
     public class ReglasDomingoService
     {
         private static readonly string[] Tipos = { "SinDomingo", "RolNormal" };
+        private static readonly string[] DiasAplicacion = { "Domingo", "Sabado", "Ambos" };
+
+        /// <summary>Cómo se llama cada tipo en pantalla ("Reglas de trabajo y asignación de días", nov-2026).</summary>
+        public static string NombreTipo(string tipo) => tipo switch
+        {
+            "SinDomingo" => "paro sin asignaciones",
+            "ParoEmpresa" => "paro con días por la empresa",
+            _ => "rol normal"
+        };
 
         private readonly FreeTimeDbContext _db;
         private readonly ILogger<ReglasDomingoService> _logger;
@@ -42,27 +51,37 @@ namespace tiempo_libre.Services
                 q = q.Where(r => r.FechaInicio <= fin && r.FechaFin >= ini);
             }
 
-            var reglas = await q
-                .OrderByDescending(r => r.Activa).ThenBy(r => r.Area!.NombreGeneral).ThenBy(r => r.FechaInicio)
-                .Select(r => new ReglaDomingoDto
-                {
-                    Id = r.Id,
-                    AreaId = r.AreaId,
-                    Area = r.Area != null ? r.Area.NombreGeneral : "",
-                    GrupoId = r.GrupoId,
-                    Grupo = r.Grupo != null ? r.Grupo.Rol : null,
-                    Tipo = r.Tipo,
-                    IncluyeSabado = r.IncluyeSabado,
-                    FechaInicio = r.FechaInicio,
-                    FechaFin = r.FechaFin,
-                    Motivo = r.Motivo,
-                    Activa = r.Activa,
-                    CreadoPor = r.CreadoPor != null ? r.CreadoPor.FullName : null,
-                    FechaCreacion = r.FechaCreacion,
-                    DesactivadoPor = r.DesactivadoPor != null ? r.DesactivadoPor.FullName : null,
-                    FechaDesactivacion = r.FechaDesactivacion
-                })
-                .ToListAsync();
+            List<ReglaDomingoDto> reglas;
+            try
+            {
+                reglas = await q
+                    .OrderByDescending(r => r.Activa).ThenBy(r => r.Area!.NombreGeneral).ThenBy(r => r.FechaInicio)
+                    .Select(r => new ReglaDomingoDto
+                    {
+                        Id = r.Id,
+                        AreaId = r.AreaId,
+                        Area = r.Area != null ? r.Area.NombreGeneral : "",
+                        GrupoId = r.GrupoId,
+                        Grupo = r.Grupo != null ? r.Grupo.Rol : null,
+                        Tipo = r.Tipo,
+                        IncluyeSabado = r.IncluyeSabado,
+                        DiaAplicacion = r.DiaAplicacion,
+                        FechaInicio = r.FechaInicio,
+                        FechaFin = r.FechaFin,
+                        Motivo = r.Motivo,
+                        Activa = r.Activa,
+                        CreadoPor = r.CreadoPor != null ? r.CreadoPor.FullName : null,
+                        FechaCreacion = r.FechaCreacion,
+                        DesactivadoPor = r.DesactivadoPor != null ? r.DesactivadoPor.FullName : null,
+                        FechaDesactivacion = r.FechaDesactivacion
+                    })
+                    .ToListAsync();
+            }
+            catch (Exception ex) when (ex.Message.Contains("DiaAplicacion") || ex.InnerException?.Message.Contains("DiaAplicacion") == true)
+            {
+                return new ApiResponse<ReglasDomingoResponse>(false, null,
+                    "Falta correr Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql en la base de datos (columna DiaAplicacion).");
+            }
 
             return new ApiResponse<ReglasDomingoResponse>(true, new ReglasDomingoResponse { Reglas = reglas }, null);
         }
@@ -73,17 +92,30 @@ namespace tiempo_libre.Services
 
             if (!await new CalendarioLaboralService(_db).TablaExisteAsync())
                 return Error("Falta crear la tabla: corre Scripts/Migration_ReglasDomingo.sql.");
+            if (req.Tipo == "ParoEmpresa")
+                return Error("\"Paro con días por la empresa\" todavía no está disponible: estamos confirmando con planeación cómo se reparten esos días.");
             if (!Tipos.Contains(req.Tipo))
-                return Error("El tipo debe ser SinDomingo (no laborable) o RolNormal (en base a rol).");
+                return Error("El tipo debe ser SinDomingo (paro sin asignaciones) o RolNormal (rol normal, excepción).");
+            var diaAplicacion = string.IsNullOrWhiteSpace(req.DiaAplicacion)
+                ? (req.IncluyeSabado ? "Ambos" : "Domingo")
+                : req.DiaAplicacion.Trim();
+            if (!DiasAplicacion.Contains(diaAplicacion))
+                return Error("El día de aplicación debe ser Sabado, Domingo o Ambos.");
             if (req.FechaFin < req.FechaInicio)
                 return Error("La fecha final no puede ser antes de la inicial.");
             if (req.FechaFin.DayNumber - req.FechaInicio.DayNumber > 366)
                 return Error("El periodo no puede pasar de un año.");
-            var tieneFinDeSemana = false;
-            for (var f = req.FechaInicio; f <= req.FechaFin && !tieneFinDeSemana; f = f.AddDays(1))
-                tieneFinDeSemana = f.DayOfWeek is DayOfWeek.Sunday or DayOfWeek.Saturday;
-            if (!tieneFinDeSemana)
-                return Error("El periodo elegido no tiene ningún sábado ni domingo.");
+            var muestra = new ReglaDomingo { DiaAplicacion = diaAplicacion };
+            var tieneDia = false;
+            for (var f = req.FechaInicio; f <= req.FechaFin && !tieneDia; f = f.AddDays(1))
+                tieneDia = muestra.AplicaEnDia(f.DayOfWeek);
+            if (!tieneDia)
+                return Error(diaAplicacion switch
+                {
+                    "Sabado" => "El periodo elegido no tiene ningún sábado.",
+                    "Domingo" => "El periodo elegido no tiene ningún domingo.",
+                    _ => "El periodo elegido no tiene ningún sábado ni domingo."
+                });
 
             var areas = req.TodaLaPlanta
                 ? await _db.Areas.Select(a => new { a.AreaId, a.NombreGeneral }).ToListAsync()
@@ -107,7 +139,8 @@ namespace tiempo_libre.Services
             // Todas con la misma hora: así la pantalla las muestra como un solo renglón
             // (p. ej. "Toda la planta") y se desactivan juntas.
             var ahora = DateTime.Now;
-            var incluyeSabado = req.Tipo == "SinDomingo" && req.IncluyeSabado;
+            // IncluyeSabado se sigue llenando (pantallas y reportes anteriores lo leen).
+            var incluyeSabado = diaAplicacion != "Domingo";
             var motivo = string.IsNullOrWhiteSpace(req.Motivo) ? null : req.Motivo.Trim();
             var creadoPor = usuarioId > 0 ? usuarioId : (int?)null;
 
@@ -115,9 +148,12 @@ namespace tiempo_libre.Services
             // CalendarioLaboralService). Solo una de la MISMA unidad/grupo y las MISMAS
             // fechas no tendría sentido: si dice lo mismo se deja, si dice otra cosa la
             // nueva la reemplaza (la anterior queda desactivada con quién y cuándo).
+            // "Mismas" incluye el mismo día de aplicación: un sábado y un domingo con
+            // las mismas fechas son reglas distintas.
             var mismas = await _db.ReglasDomingo
                 .Where(r => r.Activa && areaIds.Contains(r.AreaId) && r.GrupoId == grupoId &&
-                            r.FechaInicio == req.FechaInicio && r.FechaFin == req.FechaFin)
+                            r.FechaInicio == req.FechaInicio && r.FechaFin == req.FechaFin &&
+                            r.DiaAplicacion == diaAplicacion)
                 .ToListAsync();
 
             var resultado = new ResultadoReglasDomingoDto();
@@ -125,7 +161,7 @@ namespace tiempo_libre.Services
             foreach (var areaId in areaIds)
             {
                 var previas = mismas.Where(r => r.AreaId == areaId).ToList();
-                if (previas.Any(r => r.Tipo == req.Tipo && r.IncluyeSabado == incluyeSabado))
+                if (previas.Any(r => r.Tipo == req.Tipo))
                 {
                     resultado.YaExistian++;
                     continue;
@@ -143,6 +179,7 @@ namespace tiempo_libre.Services
                     GrupoId = grupoId,
                     Tipo = req.Tipo,
                     IncluyeSabado = incluyeSabado,
+                    DiaAplicacion = diaAplicacion,
                     FechaInicio = req.FechaInicio,
                     FechaFin = req.FechaFin,
                     Motivo = motivo,
@@ -154,9 +191,16 @@ namespace tiempo_libre.Services
             resultado.Creadas = nuevas.Count;
 
             _db.ReglasDomingo.AddRange(nuevas);
-            await _db.SaveChangesAsync();
-            _logger.LogWarning("Reglas dominicales creadas por usuario {Usuario}: {Tipo} {Inicio:yyyy-MM-dd}..{Fin:yyyy-MM-dd} sábado={Sabado} planta={Planta} áreas {Areas} grupo {Grupo}; nuevas {Nuevas}, reemplazadas {Reemplazadas}, ya estaban {Ya}",
-                usuarioId, req.Tipo, req.FechaInicio, req.FechaFin, incluyeSabado, req.TodaLaPlanta,
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when ((ex.InnerException?.Message ?? ex.Message).Contains("DiaAplicacion"))
+            {
+                return Error("Falta correr Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql en la base de datos (columna DiaAplicacion).");
+            }
+            _logger.LogWarning("Reglas de trabajo creadas por usuario {Usuario}: {Tipo} {Dia} {Inicio:yyyy-MM-dd}..{Fin:yyyy-MM-dd} planta={Planta} áreas {Areas} grupo {Grupo}; nuevas {Nuevas}, reemplazadas {Reemplazadas}, ya estaban {Ya}",
+                usuarioId, req.Tipo, diaAplicacion, req.FechaInicio, req.FechaFin, req.TodaLaPlanta,
                 req.TodaLaPlanta ? "todas" : string.Join(",", areas.Select(a => a.NombreGeneral)), grupoId,
                 resultado.Creadas, resultado.Reemplazadas, resultado.YaExistian);
             return new ApiResponse<ResultadoReglasDomingoDto>(true, resultado, null);
@@ -236,6 +280,7 @@ namespace tiempo_libre.Services
                 GrupoId = r.GrupoId,
                 Tipo = r.Tipo,
                 IncluyeSabado = r.IncluyeSabado,
+                DiaAplicacion = r.DiaAplicacion,
                 FechaInicio = r.FechaInicio,
                 FechaFin = r.FechaFin,
                 Motivo = r.Motivo,
@@ -311,11 +356,11 @@ namespace tiempo_libre.Services
         {
             var existente = await _db.ReglasDomingo
                 .Where(x => x.Activa && x.Id != r.Id && x.AreaId == r.AreaId && x.GrupoId == r.GrupoId &&
-                            x.FechaInicio == r.FechaInicio && x.FechaFin == r.FechaFin)
+                            x.FechaInicio == r.FechaInicio && x.FechaFin == r.FechaFin && x.DiaAplicacion == r.DiaAplicacion)
                 .FirstOrDefaultAsync();
             return existente == null
                 ? null
-                : $"Ya hay una regla activa con esas mismas fechas ({(existente.Tipo == "SinDomingo" ? "no laborable" : "en base a rol")} del " +
+                : $"Ya hay una regla activa con esas mismas fechas ({NombreTipo(existente.Tipo)} del " +
                   $"{existente.FechaInicio:dd/MM/yyyy} al {existente.FechaFin:dd/MM/yyyy}). Desactívala primero.";
         }
     }

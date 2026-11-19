@@ -3,7 +3,14 @@ import type { ApiResponse } from '@/interfaces/Api.interface'
 
 const BASE = '/api/reglas-domingo'
 
-export type TipoReglaDomingo = 'SinDomingo' | 'RolNormal'
+/**
+ * SinDomingo = paro sin asignaciones (descanso para todos); RolNormal = excepción,
+ * se trabaja según el rol; ParoEmpresa = paro con días por la empresa (todavía no
+ * se puede guardar).
+ */
+export type TipoReglaDomingo = 'SinDomingo' | 'RolNormal' | 'ParoEmpresa'
+/** A qué días de la semana aplica la regla. */
+export type DiaAplicacion = 'Domingo' | 'Sabado' | 'Ambos'
 
 /** Regla dominical de una unidad organizativa (o un grupo) en un periodo. */
 export interface ReglaDomingo {
@@ -14,6 +21,8 @@ export interface ReglaDomingo {
     grupo?: string | null
     tipo: TipoReglaDomingo
     incluyeSabado: boolean
+    /** Backends anteriores no lo mandan: se toma de incluyeSabado. */
+    diaAplicacion?: DiaAplicacion
     fechaInicio: string
     fechaFin: string
     motivo?: string | null
@@ -36,10 +45,22 @@ export interface CrearReglaDomingoRequest {
     grupoId?: number
     tipo: TipoReglaDomingo
     incluyeSabado: boolean
+    diaAplicacion: DiaAplicacion
     fechaInicio: string
     fechaFin: string
     motivo?: string
 }
+
+/** Día de aplicación de una regla (las de antes: domingo, y sábado si incluyeSabado). */
+export const diaDeRegla = (r: Pick<ReglaDomingo, 'diaAplicacion' | 'incluyeSabado'>): DiaAplicacion =>
+    r.diaAplicacion ?? (r.incluyeSabado ? 'Ambos' : 'Domingo')
+
+/** Nombres en pantalla ("Reglas de trabajo y asignación de días", nov-2026). */
+export const nombreTipoRegla = (t: TipoReglaDomingo) =>
+    t === 'SinDomingo' ? 'Paro sin asignaciones' : t === 'ParoEmpresa' ? 'Paro con días por la empresa' : 'Rol normal (excepción)'
+
+export const nombreDiaAplicacion = (d: DiaAplicacion) =>
+    d === 'Sabado' ? 'Sábado' : d === 'Ambos' ? 'Sábado y domingo' : 'Domingo'
 
 export interface ResultadoReglasDomingo {
     creadas: number

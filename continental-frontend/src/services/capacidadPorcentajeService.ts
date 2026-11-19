@@ -7,12 +7,18 @@ export type AlcanceCapacidad = 'Planta' | 'Area' | 'Grupo'
 export type PeriodoCapacidad = 'Dia' | 'Semana' | 'Mes'
 /** A qué días aplica: solo los que asigna la empresa, solo los que programan los operadores, o ambos. */
 export type AplicaCapacidad = 'Ambos' | 'Empresa' | 'Operador'
+/** null o '' = todo el día; '1' | '2' | '3' = solo el grupo que ese día va en ese turno por su rol. */
+export type TurnoCapacidad = '' | '1' | '2' | '3'
+
+export const nombreTurnoCapacidad = (t?: string | null) =>
+    t === '1' ? 'Primer turno' : t === '2' ? 'Segundo turno' : t === '3' ? 'Tercer turno' : 'Todo el día'
 
 /** Porcentaje distinto al general durante un día, semana o mes (planta, área o grupo). */
 export interface CapacidadPorcentaje {
     id: number
     alcance: AlcanceCapacidad
     aplicaA: AplicaCapacidad
+    turno?: string | null
     areaId?: number | null
     area?: string | null
     grupoId?: number | null
@@ -41,6 +47,8 @@ export interface CapacidadesPorcentajeResponse {
 export interface CrearCapacidadRequest {
     alcance: AlcanceCapacidad
     aplicaA: AplicaCapacidad
+    /** Sin turno = todo el día. */
+    turno?: '1' | '2' | '3'
     areaId?: number
     grupoId?: number
     periodo: PeriodoCapacidad

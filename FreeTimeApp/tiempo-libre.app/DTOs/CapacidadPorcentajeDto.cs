@@ -9,6 +9,8 @@ namespace tiempo_libre.DTOs
         public int Id { get; set; }
         public string Alcance { get; set; } = string.Empty;
         public string AplicaA { get; set; } = "Ambos";
+        /// <summary>null = todo el día; "1", "2" o "3" = solo los grupos que ese día van en ese turno.</summary>
+        public string? Turno { get; set; }
         public int? AreaId { get; set; }
         public string? Area { get; set; }
         public int? GrupoId { get; set; }
@@ -44,6 +46,8 @@ namespace tiempo_libre.DTOs
 
         /// <summary>"Ambos", "Empresa" (solo días por la empresa) u "Operador" (solo lo que programan los operadores).</summary>
         public string AplicaA { get; set; } = "Ambos";
+        /// <summary>null o vacío = todo el día; "1", "2" o "3" = solo el turno que ese día le toca al grupo por su rol.</summary>
+        public string? Turno { get; set; }
         public int? AreaId { get; set; }
         public int? GrupoId { get; set; }
 

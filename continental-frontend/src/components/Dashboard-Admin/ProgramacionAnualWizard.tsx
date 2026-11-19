@@ -198,9 +198,9 @@ export const ProgramacionAnualWizard = ({
         const donde = (x: (typeof r.reglas)[number]) => (x.grupo ? `${x.area} ${x.grupo}` : x.area);
         r.reglas.forEach((x) => {
           if (x.tipo === "SinDomingo") {
-            if (x.activa) registrarCambio(comoFecha(x.fechaCreacion), `domingos no laborables en ${donde(x)}`);
+            if (x.activa) registrarCambio(comoFecha(x.fechaCreacion), `paro sin asignaciones en ${donde(x)}`);
           } else if (hayNoLaborables) {
-            registrarCambio(comoFecha(x.fechaDesactivacion), `se quitó "en base a rol" en ${donde(x)}`);
+            registrarCambio(comoFecha(x.fechaDesactivacion), `se quitó "rol normal" en ${donde(x)}`);
           }
         });
         const activas = r.reglas.filter((x) => x.activa);
@@ -208,19 +208,19 @@ export const ProgramacionAnualWizard = ({
         const enBaseARol = activas.length - sinDomingo.length;
         const unidades = new Set(sinDomingo.map((x) => x.areaId)).size;
         if (tablaDomingosFalta) partes.push("Falta correr Scripts/Migration_ReglasDomingo.sql");
-        else if (activas.length === 0) partes.push("Domingos: sin reglas, todos en base a rol");
+        else if (activas.length === 0) partes.push("Reglas de trabajo: sin paros, se trabaja según el rol");
         else
           partes.push(
-            "Domingos: " +
+            "Reglas de trabajo: " +
               [
-                sinDomingo.length > 0 ? `${unidades} unidad(es) con no laborables` : "sin no laborables",
-                enBaseARol > 0 ? `${enBaseARol} regla(s) en base a rol` : null,
+                sinDomingo.length > 0 ? `${unidades} unidad(es) con paro sin asignaciones` : "sin paros",
+                enBaseARol > 0 ? `${enBaseARol} regla(s) de rol normal` : null,
               ]
                 .filter(Boolean)
                 .join(" · ")
           );
       } catch {
-        partes.push("Domingos: no se pudo verificar");
+        partes.push("Reglas de trabajo: no se pudo verificar");
       }
       try {
         const c = await capacidadPorcentajeService.listar(anio);
@@ -252,7 +252,7 @@ export const ProgramacionAnualWizard = ({
         detalle: !resumen.asignacionRealizada
           ? "Aún no se ejecuta la asignación de días por empresa"
           : quedoVieja
-            ? `⚠ Se asignó el ${asignada!.toLocaleDateString("es-MX")} y el ${cambio!.toLocaleDateString("es-MX")} cambió el rol o los domingos (${queCambio}): puede haber días en descanso o en domingo no laborable. Para rehacerla: "Revertir asignación" y luego "Programar días". Volver a programar sin revertir no la rehace: solo completa a quien le falten días.`
+            ? `⚠ Se asignó el ${asignada!.toLocaleDateString("es-MX")} y el ${cambio!.toLocaleDateString("es-MX")} cambió el rol o las reglas de trabajo (${queCambio}): puede haber días en descanso o en día de paro. Para rehacerla: "Revertir asignación" y luego "Programar días". Volver a programar sin revertir no la rehace: solo completa a quien le falten días.`
             : `${resumen.totalVacacionesAsignadas} día(s) asignado(s) a ${resumen.empleadosConAsignacion} empleado(s)`,
       };
     } catch (e) {
@@ -323,13 +323,13 @@ export const ProgramacionAnualWizard = ({
         },
         {
           numero: 3,
-          titulo: "Domingos y capacidad por periodo (si aplican)",
+          titulo: "Reglas de trabajo y capacidad por periodo (si aplican)",
           descripcion:
-            `Antes de asignar días: en Capacidad por periodo define en qué periodos los domingos (o sábados) son no laborables o en base a rol —para toda la planta, unidades organizativas o un grupo— y si alguna área tendrá más capacidad (tiempo extra) en ciertas fechas, por ejemplo en los arranques. La asignación respeta las dos cosas.`,
+            `Antes de asignar días: en Capacidad por periodo define las reglas de trabajo (en qué periodos el sábado, el domingo o ambos son paro, para toda la planta, unidades organizativas o un grupo) y si alguna área tendrá más capacidad (tiempo extra) en ciertas fechas o turnos, por ejemplo en los arranques. La asignación respeta las dos cosas.`,
           estado: estado.domingos,
           acciones: onIrAPestana
             ? [
-                { etiqueta: "Ir a Domingos (en Capacidad por periodo)", onClick: () => onIrAPestana("domingos") },
+                { etiqueta: "Ir a Reglas de trabajo (en Capacidad por periodo)", onClick: () => onIrAPestana("domingos") },
                 { etiqueta: "Ir a Capacidad por periodo", onClick: () => onIrAPestana("capacidad") },
               ]
             : [],
