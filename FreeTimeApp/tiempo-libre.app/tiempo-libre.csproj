@@ -16,6 +16,15 @@
     firma y Control de aplicaciones / Smart App Control lo bloquea al abrirlo
     ("Una directiva de Control de aplicaciones bloqueo este archivo"). dotnet.exe
     si esta firmado. El publish en Release no cambia: sigue llevando el .exe.
+
+    Ojo (nov-2026): Smart App Control tambien puede bloquear tiempo-libre.dll
+    (FileLoadException 0x800711C7). Lo que lo destraba es que el .dll cambie: con
+    cualquier commit nuevo cambia solo (lleva el commit). Sin commit, se puede
+    forzar un .dll distinto en local con
+        dotnet run -p:SourceRevisionId=prueba2
+    (cualquier texto distinto cada vez). Recompilar sin cambios da el mismo .dll
+    y sigue bloqueado. Para publicar no hace falta correrlo: dotnet publish no
+    abre el .dll.
   -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <UseAppHost>false</UseAppHost>
