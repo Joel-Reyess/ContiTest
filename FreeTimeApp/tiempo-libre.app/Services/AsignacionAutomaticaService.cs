@@ -159,6 +159,8 @@ namespace tiempo_libre.Services
                         continue;
                     }
                     response.ResultadosPorEmpleado.Add(resultado);
+                    if (resultado.AsignacionExitosa && resultado.Nota != null)
+                        response.Advertencias.Add($"Empleado {empleado.FullName} ({empleado.Nomina}): {resultado.Nota}");
                     if (resultado.AsignacionExitosa && resultado.CompletaFaltantes)
                         response.Advertencias.Add(
                             $"Empleado {empleado.FullName} ({empleado.Nomina}): tenía días a medias; se le completaron {resultado.DiasAsignados}.");
@@ -482,28 +484,47 @@ namespace tiempo_libre.Services
                     return resultado;
                 }
 
-                var secuencia = await BuscarSecuenciaAsync(empleado, faltan, ctx);
-                if (secuencia == null)
+                // Paro con días por la empresa (nov-2026): primero en esos sábados o
+                // domingos, solo los que su rol trabajaba, del primero en adelante. Ahí no
+                // hay % (la planta no abre) y no importa si el mes está excluido.
+                var enParo = DiasDeParoConEmpresa(empleado, faltan, ctx);
+                foreach (var d in enParo) Ocupar(ctx, empleado.Id, d.Fecha);
+                var restantes = faltan - enParo.Count;
+
+                // Lo que no cupo en los días de paro (o todo, si su unidad no tiene paro),
+                // como siempre: días seguidos según su rol. Los días de paro no cuentan
+                // para esto (son no laborables para la asignación normal).
+                List<DiaVacacionAsignado>? secuencia = null;
+                if (restantes > 0)
                 {
-                    resultado.MotivoFallo =
-                        $"No se encontraron {faltan} día(s) laborables seguidos en el grupo {resultado.NombreGrupo} " +
-                        "(contando hasta la semana siguiente): todas las opciones quedaron llenas, excluidas o en descanso.";
-                    return resultado;
+                    secuencia = await BuscarSecuenciaAsync(empleado, restantes, ctx);
+                    if (secuencia == null && enParo.Count == 0)
+                    {
+                        resultado.MotivoFallo =
+                            $"No se encontraron {faltan} día(s) laborables seguidos en el grupo {resultado.NombreGrupo} " +
+                            "(contando hasta la semana siguiente): todas las opciones quedaron llenas, excluidas o en descanso.";
+                        return resultado;
+                    }
+                    if (secuencia == null)
+                        resultado.Nota =
+                            $"se le asignaron {enParo.Count} día(s) en los días de paro; los otros {restantes} no encontraron " +
+                            $"{restantes} día(s) laborables seguidos (opciones llenas, excluidas o en descanso).";
                 }
 
-                resultado.SemanaAsignada = NumeroSemana(ctx.Anio, secuencia[0].Fecha);
-                resultado.DiasVacaciones = secuencia;
-                resultado.DiasAsignados = secuencia.Count;
-                resultado.AsignacionExitosa = secuencia.Count > 0;
+                var dias = enParo.Concat(secuencia ?? new List<DiaVacacionAsignado>()).OrderBy(d => d.Fecha).ToList();
+                resultado.SemanaAsignada = NumeroSemana(ctx.Anio, dias[0].Fecha);
+                resultado.DiasVacaciones = dias;
+                resultado.DiasAsignados = dias.Count;
+                resultado.AsignacionExitosa = dias.Count > 0;
 
                 // Lo asignado ya ocupa: al empleado y a la carga de su grupo.
-                foreach (var d in secuencia)
+                foreach (var d in dias)
                 {
                     Ocupar(ctx, empleado.Id, d.Fecha);
                     var clave = (empleado.GrupoId ?? 0, NumeroSemana(ctx.Anio, d.Fecha));
                     ctx.CargaPorGrupoSemana[clave] = ctx.CargaPorGrupoSemana.GetValueOrDefault(clave) + 1;
                 }
-                ctx.DiasEmpresaExistentes[empleado.Id] = ctx.DiasEmpresaExistentes.GetValueOrDefault(empleado.Id) + secuencia.Count;
+                ctx.DiasEmpresaExistentes[empleado.Id] = ctx.DiasEmpresaExistentes.GetValueOrDefault(empleado.Id) + dias.Count;
 
                 return resultado;
             }
@@ -513,6 +534,39 @@ namespace tiempo_libre.Services
                 resultado.MotivoFallo = $"Error interno: {ex.Message}";
                 return resultado;
             }
+        }
+
+        /// <summary>
+        /// Días de "paro con días por la empresa" (Reglas de trabajo, nov-2026) en los
+        /// que el empleado trabajaría según su rol, del primero del año en adelante,
+        /// hasta completar los que le faltan. Si por rol descansa ese día, no se toca
+        /// (queda descanso). Sin % de ausencia: la planta no abre y la idea es que
+        /// esos días por la empresa se consuman ahí. No importan los meses excluidos:
+        /// la regla ya dice las fechas. Nunca hoy ni días pasados.
+        /// </summary>
+        private List<DiaVacacionAsignado> DiasDeParoConEmpresa(User empleado, int cuantos, ContextoAsignacion ctx)
+        {
+            var lista = new List<DiaVacacionAsignado>();
+            if (empleado.GrupoId is not int grupoId || cuantos <= 0) return lista;
+            var rol = empleado.Grupo?.Rol ?? "";
+            for (var d = new DateOnly(ctx.Anio, 1, 1); d.Year == ctx.Anio && lista.Count < cuantos; d = d.AddDays(1))
+            {
+                if (d.DayOfWeek != DayOfWeek.Saturday && d.DayOfWeek != DayOfWeek.Sunday) continue;
+                if (d <= ctx.Hoy) continue;
+                if (!ctx.NoLaborables.EsParoConDiasEmpresa(grupoId, d)) continue;
+                if (ctx.Inhabiles.Contains(d)) continue;
+                if (ctx.Ocupados.TryGetValue(empleado.Id, out var ocupados) && ocupados.Contains(d)) continue;
+                var turno = ObtenerTurnoEmpleado(rol, d, ctx.SemanaSanta);
+                if (TurnosHelper.EsDescanso(turno)) continue;
+                lista.Add(new DiaVacacionAsignado
+                {
+                    Fecha = d,
+                    TurnoOriginal = turno,
+                    TipoVacacion = "Automatica",
+                    EnParo = true
+                });
+            }
+            return lista;
         }
 
         /// <summary>
@@ -697,8 +751,10 @@ namespace tiempo_libre.Services
                     EstadoVacacion = "Activa",
                     PeriodoProgramacion = "ProgramacionAnual",
                     PuedeSerIntercambiada = false,
-                    Observaciones = $"Asignación automática - Semana {resultado.SemanaAsignada}" +
-                                    (resultado.CompletaFaltantes ? " (completa días faltantes)" : "")
+                    Observaciones = dia.EnParo
+                        ? $"Asignación automática - Semana {NumeroSemana(dia.Fecha.Year, dia.Fecha)} (paro con días por la empresa)"
+                        : $"Asignación automática - Semana {resultado.SemanaAsignada}" +
+                          (resultado.CompletaFaltantes ? " (completa días faltantes)" : "")
                 };
 
                 _db.VacacionesProgramadas.Add(vacacion);

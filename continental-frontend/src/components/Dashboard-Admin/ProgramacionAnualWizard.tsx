@@ -194,26 +194,37 @@ export const ProgramacionAnualWizard = ({
         // los domingos ya van en base a rol (antes contaba igual y el aviso salía
         // sin motivo). Agregar "en base a rol" o quitar un no laborable solo abre
         // días y no deja vieja la asignación.
-        const hayNoLaborables = r.reglas.some((x) => x.tipo === "SinDomingo" && x.activa);
+        // Los dos paros cuentan igual: cierran el día y el paro con días por la
+        // empresa además cambia dónde van esos días.
+        const esParo = (x: (typeof r.reglas)[number]) => x.tipo === "SinDomingo" || x.tipo === "ParoEmpresa";
+        const hayNoLaborables = r.reglas.some((x) => esParo(x) && x.activa);
         const donde = (x: (typeof r.reglas)[number]) => (x.grupo ? `${x.area} ${x.grupo}` : x.area);
         r.reglas.forEach((x) => {
-          if (x.tipo === "SinDomingo") {
-            if (x.activa) registrarCambio(comoFecha(x.fechaCreacion), `paro sin asignaciones en ${donde(x)}`);
+          if (esParo(x)) {
+            if (x.activa)
+              registrarCambio(
+                comoFecha(x.fechaCreacion),
+                `${x.tipo === "ParoEmpresa" ? "paro con días por la empresa" : "paro sin asignaciones"} en ${donde(x)}`
+              );
           } else if (hayNoLaborables) {
             registrarCambio(comoFecha(x.fechaDesactivacion), `se quitó "rol normal" en ${donde(x)}`);
           }
         });
         const activas = r.reglas.filter((x) => x.activa);
         const sinDomingo = activas.filter((x) => x.tipo === "SinDomingo");
-        const enBaseARol = activas.length - sinDomingo.length;
+        const paroEmpresa = activas.filter((x) => x.tipo === "ParoEmpresa");
+        const enBaseARol = activas.length - sinDomingo.length - paroEmpresa.length;
         const unidades = new Set(sinDomingo.map((x) => x.areaId)).size;
+        const unidadesEmpresa = new Set(paroEmpresa.map((x) => x.areaId)).size;
         if (tablaDomingosFalta) partes.push("Falta correr Scripts/Migration_ReglasDomingo.sql");
         else if (activas.length === 0) partes.push("Reglas de trabajo: sin paros, se trabaja según el rol");
         else
           partes.push(
             "Reglas de trabajo: " +
               [
-                sinDomingo.length > 0 ? `${unidades} unidad(es) con paro sin asignaciones` : "sin paros",
+                sinDomingo.length > 0 ? `${unidades} unidad(es) con paro sin asignaciones` : null,
+                paroEmpresa.length > 0 ? `${unidadesEmpresa} unidad(es) con paro con días por la empresa` : null,
+                sinDomingo.length + paroEmpresa.length === 0 ? "sin paros" : null,
                 enBaseARol > 0 ? `${enBaseARol} regla(s) de rol normal` : null,
               ]
                 .filter(Boolean)

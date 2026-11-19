@@ -16,7 +16,8 @@ namespace tiempo_libre.Services
     /// </summary>
     public class ReglasDomingoService
     {
-        private static readonly string[] Tipos = { "SinDomingo", "RolNormal" };
+        private static readonly string[] Tipos = { "SinDomingo", "ParoEmpresa", "RolNormal" };
+        private static readonly string[] TiposEmpresa = { "Automatica", "AsignadaAutomaticamente", "DiaEmpresaReprogramado" };
         private static readonly string[] DiasAplicacion = { "Domingo", "Sabado", "Ambos" };
 
         /// <summary>Cómo se llama cada tipo en pantalla ("Reglas de trabajo y asignación de días", nov-2026).</summary>
@@ -92,10 +93,8 @@ namespace tiempo_libre.Services
 
             if (!await new CalendarioLaboralService(_db).TablaExisteAsync())
                 return Error("Falta crear la tabla: corre Scripts/Migration_ReglasDomingo.sql.");
-            if (req.Tipo == "ParoEmpresa")
-                return Error("\"Paro con días por la empresa\" todavía no está disponible: estamos confirmando con planeación cómo se reparten esos días.");
             if (!Tipos.Contains(req.Tipo))
-                return Error("El tipo debe ser SinDomingo (paro sin asignaciones) o RolNormal (rol normal, excepción).");
+                return Error("El tipo debe ser SinDomingo (paro sin asignaciones), ParoEmpresa (paro con días por la empresa) o RolNormal (rol normal, excepción).");
             var diaAplicacion = string.IsNullOrWhiteSpace(req.DiaAplicacion)
                 ? (req.IncluyeSabado ? "Ambos" : "Domingo")
                 : req.DiaAplicacion.Trim();
@@ -303,7 +302,7 @@ namespace tiempo_libre.Services
             var ini = new DateOnly(anio, 1, 1);
             var fin = new DateOnly(anio, 12, 31);
             var reglas = await _db.ReglasDomingo.AsNoTracking()
-                .Where(r => r.Activa && r.Tipo == "SinDomingo" && r.FechaInicio <= fin && r.FechaFin >= ini)
+                .Where(r => r.Activa && (r.Tipo == "SinDomingo" || r.Tipo == "ParoEmpresa") && r.FechaInicio <= fin && r.FechaFin >= ini)
                 .ToListAsync();
             if (reglas.Count == 0) return new ApiResponse<List<VacacionEnNoLaborableDto>>(true, new List<VacacionEnNoLaborableDto>(), null);
 
@@ -330,6 +329,9 @@ namespace tiempo_libre.Services
             var lista = fines
                 .Select(v => new { v, Motivo = tabla.Motivo(v.GrupoId, v.FechaVacacion) })
                 .Where(x => x.Motivo != null)
+                // En un paro con días por la empresa, los días por la empresa están ahí a
+                // propósito (los puso la asignación); solo estorban las vacaciones de otro tipo.
+                .Where(x => !(TiposEmpresa.Contains(x.v.TipoVacacion) && tabla.EsParoConDiasEmpresa(x.v.GrupoId, x.v.FechaVacacion)))
                 .OrderBy(x => x.v.Area).ThenBy(x => x.v.FechaVacacion).ThenBy(x => x.v.Nomina)
                 .Select(x => new VacacionEnNoLaborableDto
                 {

@@ -34,7 +34,7 @@ export const AvisoDomingosNoLaborables = ({ empleadoId, anio }: { empleadoId?: n
     // se muestran.
     const periodos = useMemo(() => {
         return reglas
-            .filter((r) => r.activa && r.tipo === "SinDomingo")
+            .filter((r) => r.activa && (r.tipo === "SinDomingo" || r.tipo === "ParoEmpresa"))
             .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio))
             .map((r) => {
                 const conRol: string[] = [];
@@ -76,7 +76,8 @@ export const AvisoDomingosNoLaborables = ({ empleadoId, anio }: { empleadoId?: n
                     ))}
                 </ul>
                 <p className="text-xs text-slate-600 mt-0.5">
-                    Se ven rayados en el calendario: esos días no se programan vacaciones ni días por la empresa.
+                    Se ven rayados en el calendario y esos días no se pueden programar vacaciones. En un paro con días por
+                    la empresa, si te tocaba trabajar según tu rol, ahí pueden quedar tus días por la empresa.
                 </p>
             </div>
         </div>

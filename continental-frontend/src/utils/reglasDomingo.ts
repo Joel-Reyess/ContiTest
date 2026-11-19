@@ -40,7 +40,8 @@ export function esNoLaborable(reglas: ReglaDomingo[], fecha: Date): boolean {
     const dow = fecha.getDay();
     if (dow !== 0 && dow !== 6) return false;
     const r = reglaQueManda(reglas, isoLocal(fecha));
-    return !!r && r.tipo === "SinDomingo";
+    // Los dos paros se ven rayados y el operador no los puede programar.
+    return !!r && (r.tipo === "SinDomingo" || r.tipo === "ParoEmpresa");
 }
 
 /** Sábados y domingos no laborables de un año (yyyy-MM-dd). */
