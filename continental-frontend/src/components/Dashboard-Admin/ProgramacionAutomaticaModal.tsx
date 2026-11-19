@@ -12,6 +12,7 @@ import type { Area } from '@/interfaces/Areas.interface';
 import { AsignacionAutomaticaService } from '@/services/asignacionAutomaticaService';
 import { capacidadPorcentajeService, type CapacidadPorcentaje } from '@/services/capacidadPorcentajeService';
 import type { AsignacionAutomaticaResponse } from '@/interfaces/Api.interface';
+import { diaDeRegla, reglasDomingoService, type ReglaDomingo } from '@/services/reglasDomingoService';
 import { format, getWeek, startOfMonth, endOfMonth, eachWeekOfInterval, endOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -72,6 +73,24 @@ export const ProgramacionAutomaticaModal = ({
       .listar(anio)
       .then((r) => setPrioridadesCapacidad(r.capacidades.filter((c) => c.activa && c.aplicaA === 'Empresa')))
       .catch(() => setPrioridadesCapacidad([]));
+  }, [isOpen, anio]);
+  // Paros con días por la empresa del año (Reglas de trabajo): a esas unidades se
+  // les asignan primero sus días en esos sábados/domingos, según su rol. Se muestran
+  // aquí para que se vea qué va a pasar antes de confirmar (nov-2026).
+  const [parosEmpresa, setParosEmpresa] = useState<{ clave: string; reglas: ReglaDomingo[] }[]>([]);
+  useEffect(() => {
+    if (!isOpen || !Number.isFinite(anio)) return;
+    reglasDomingoService
+      .listar(anio)
+      .then((r) => {
+        const mapa = new Map<string, ReglaDomingo[]>();
+        for (const x of r.reglas.filter((x) => x.activa && x.tipo === 'ParoEmpresa')) {
+          const clave = [diaDeRegla(x), x.fechaInicio.slice(0, 10), x.fechaFin.slice(0, 10)].join('|');
+          mapa.set(clave, [...(mapa.get(clave) ?? []), x]);
+        }
+        setParosEmpresa(Array.from(mapa.entries()).map(([clave, reglas]) => ({ clave, reglas })));
+      })
+      .catch(() => setParosEmpresa([]));
   }, [isOpen, anio]);
   const actualizarVentana = (id: number, cambios: Partial<VentanaForm>) =>
     setVentanas((vs) => vs.map((v) => (v.id === id ? { ...v, ...cambios } : v)));
@@ -300,7 +319,8 @@ export const ProgramacionAutomaticaModal = ({
           </Label>
           <p className="text-xs text-gray-500 mt-1">
             Seleccione los meses cuyas semanas desea excluir de la asignación automática. Aplican a
-            todos los empleados de todas las áreas, no solo a una. Si quieres que ciertas áreas tomen sus
+            todos los empleados de todas las áreas, no solo a una (salvo los días de un "paro con días por la
+            empresa", que se usan aunque el mes esté excluido). Si quieres que ciertas áreas tomen sus
             días en ciertas fechas (por ejemplo producción de enero a Semana Santa), usa abajo "Fechas de
             arranque o paro de planta".
           </p>
@@ -361,6 +381,27 @@ export const ProgramacionAutomaticaModal = ({
               <Plus className="w-4 h-4" /> Agregar fechas
             </Button>
           </div>
+          {parosEmpresa.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+              <p className="font-medium">
+                Paro con días por la empresa (Reglas de trabajo): a estas unidades se les asignan primero sus días en esos
+                días, solo los que trabajan según su rol y sin % de ausencia. Lo que no alcance va de forma normal.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {parosEmpresa.map(({ clave, reglas }) => {
+                  const r = reglas[0];
+                  const dias = diaDeRegla(r) === 'Ambos' ? 'sábados y domingos' : diaDeRegla(r) === 'Sabado' ? 'sábados' : 'domingos';
+                  const nombres = reglas.map((x) => (x.grupo ? `${x.area} (${x.grupo})` : x.area)).sort((a, b) => a.localeCompare(b, 'es'));
+                  return (
+                    <li key={clave} title={nombres.join(', ')}>
+                      {nombres.length <= 3 ? nombres.join(', ') : `${nombres.length} unidades organizativas`} · {dias} del{' '}
+                      {r.fechaInicio.slice(0, 10)} al {r.fechaFin.slice(0, 10)}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           {prioridadesCapacidad.length > 0 && (
             <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
               <p className="font-medium">Ya marcadas como prioridad desde Capacidad por periodo (solo días por la empresa):</p>
