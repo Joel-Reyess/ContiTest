@@ -230,8 +230,13 @@ namespace tiempo_libre.Services
                         Nomina = a.Empleado.Nomina?.ToString() ?? "",
                         PosicionEnBloque = a.PosicionEnBloque,
                         FechaIngreso = a.Empleado.FechaIngreso.HasValue ? (DateTime?)a.Empleado.FechaIngreso.Value.ToDateTime(TimeOnly.MinValue) : null,
+                        // Antigüedad al 31 de diciembre del año de los bloques, igual que
+                        // los días que le tocan (VacacionesService.DerechoAl31Dic) y el
+                        // orden de los bloques. Antes era "año actual - año de ingreso":
+                        // en los bloques de 2027 generados en 2026 salía un año de menos
+                        // (validación nov-2026: ingreso 2006 decía 20 y son 21).
                         AntiguedadAnios = a.Empleado.FechaIngreso.HasValue
-                            ? DateTime.Now.Year - a.Empleado.FechaIngreso.Value.Year
+                            ? (b.AnioGeneracion > 0 ? b.AnioGeneracion : DateTime.Now.Year) - a.Empleado.FechaIngreso.Value.Year
                             : null,
                         Estado = a.Estado
                     }).ToList()
@@ -739,7 +744,7 @@ namespace tiempo_libre.Services
                             PosicionEnBloque = a.PosicionEnBloque,
                             FechaIngreso = a.Empleado.FechaIngreso.HasValue ? (DateTime?)a.Empleado.FechaIngreso.Value.ToDateTime(TimeOnly.MinValue) : null,
                             AntiguedadAnios = a.Empleado.FechaIngreso.HasValue
-                                ? DateTime.Now.Year - a.Empleado.FechaIngreso.Value.Year
+                                ? (b.AnioGeneracion > 0 ? b.AnioGeneracion : DateTime.Now.Year) - a.Empleado.FechaIngreso.Value.Year
                                 : null,
                             Estado = a.Estado
                         }).ToList()
@@ -986,7 +991,7 @@ namespace tiempo_libre.Services
                             ? (DateTime?)a.Empleado.FechaIngreso.Value.ToDateTime(TimeOnly.MinValue)
                             : null,
                         AntiguedadAnios = a.Empleado.FechaIngreso.HasValue
-                            ? DateTime.Now.Year - a.Empleado.FechaIngreso.Value.Year
+                            ? (bloque.AnioGeneracion > 0 ? bloque.AnioGeneracion : DateTime.Now.Year) - a.Empleado.FechaIngreso.Value.Year
                             : null,
                         Estado = a.Estado
                     }).ToList() ?? new List<EmpleadoAsignadoBloqueDto>(),
