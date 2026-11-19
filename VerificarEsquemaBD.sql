@@ -28,6 +28,7 @@ FROM (VALUES
   ('CapacidadesPorcentaje.AplicaA',            'Scripts/Migration_CapacidadesPorcentaje.sql',      IIF(COL_LENGTH('dbo.CapacidadesPorcentaje','AplicaA') IS NOT NULL,1,0)),
   ('Tabla ReglasDomingo',                      'Scripts/Migration_ReglasDomingo.sql',              IIF(OBJECT_ID('dbo.ReglasDomingo') IS NOT NULL,1,0)),
   ('ReglasDomingo.DiaAplicacion',              'Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql', IIF(COL_LENGTH('dbo.ReglasDomingo','DiaAplicacion') IS NOT NULL,1,0)),
+  ('CK_RegDom_Tipo acepta ParoOperador',       'Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql', IIF(EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_RegDom_Tipo' AND definition LIKE '%ParoOperador%'),1,0)),
   ('CapacidadesPorcentaje.Turno',              'Scripts/Migration_ReglasTrabajo_CapacidadTurno.sql', IIF(COL_LENGTH('dbo.CapacidadesPorcentaje','Turno') IS NOT NULL,1,0)),
   ('Tabla SolicitudesReprogramacionPostIncapacidad','Scripts/Migration_ReprogramacionPostIncapacidad.sql', IIF(OBJECT_ID('dbo.SolicitudesReprogramacionPostIncapacidad') IS NOT NULL,1,0)),
   ('PermisosEIncapacidadesSAP.ProtegidoPorExtension','Scripts/Migration_ProtecccionExtensionPermiso.sql', IIF(COL_LENGTH('dbo.PermisosEIncapacidadesSAP','ProtegidoPorExtension') IS NOT NULL,1,0)),

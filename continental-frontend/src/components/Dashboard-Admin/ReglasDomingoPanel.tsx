@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { addDays, endOfMonth, format, parseISO, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
-import { CalendarOff, Plus, RotateCcw, Search, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarOff, Plus, RotateCcw, Search, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { areasService } from "@/services/areasService";
@@ -11,6 +11,7 @@ import type { Area } from "@/interfaces/Areas.interface";
 import { UserRole } from "@/interfaces/User.interface";
 import useAuth from "@/hooks/useAuth";
 import { MovimientoMasivoDiasEmpresa } from "./MovimientoMasivoDiasEmpresa";
+import { DiasEmpresaEnParoReporte } from "./DiasEmpresaEnParoReporte";
 import {
     diaDeRegla,
     nombreDiaAplicacion,
@@ -45,12 +46,18 @@ const iso = (d: Date) => format(d, "yyyy-MM-dd");
  *    muestran como descanso.
  *  - Paro con días por la empresa (ParoEmpresa): tampoco se programan vacaciones,
  *    y la asignación pone ahí los días por la empresa de quien trabajaba ese día
- *    según su rol (del primero del periodo en adelante, sin %); lo que no alcanza
- *    queda descanso y los días que sobran se asignan normal (pendiente de que
- *    planeación confirme esos dos casos, nov-2026).
+ *    según su rol (en orden de fecha, sin %); lo que no alcanza queda descanso y
+ *    los días que sobran se asignan normal (pendiente de que planeación confirme
+ *    esos dos casos, nov-2026).
+ *  - Paro, el operador elige (ParoOperador, 20-nov-2026): no se trabaja ni se
+ *    asignan días por la empresa ahí, pero el operador que lo trabajaba por rol
+ *    puede programar ese día como vacación si quiere.
  *  - Rol normal (RolNormal), como excepción: se trabaja según el rol, p. ej.
  *    para habilitar un domingo dentro de un paro.
- * Las reglas se pueden encimar: manda la de periodo más corto.
+ * Las reglas se pueden encimar: manda la de periodo más corto. Cada regla dice en
+ * cuántos de sus días manda y cuál le gana los otros (nov-2026: en TEST un paro de
+ * fin de semana solo puso sábados porque en los domingos mandaba una regla vieja
+ * de "Rol normal" más corta).
  */
 export const ReglasDomingoPanel = () => {
     const navigate = useNavigate();
@@ -89,6 +96,8 @@ export const ReglasDomingoPanel = () => {
     const [diaAplicacion, setDiaAplicacion] = useState<DiaAplicacion>("Domingo");
     const [motivo, setMotivo] = useState("");
     const [guardando, setGuardando] = useState(false);
+    /** Al guardar: unidades donde la regla nueva no manda en todos sus días (otra le gana). */
+    const [avisosGuardado, setAvisosGuardado] = useState<string[]>([]);
 
     const [afectadas, setAfectadas] = useState<VacacionEnNoLaborable[] | null>(null);
     const [buscandoAfectadas, setBuscandoAfectadas] = useState(false);
@@ -203,9 +212,10 @@ export const ReglasDomingoPanel = () => {
                 r.yaExistian ? `${r.yaExistian} ya estaban igual` : "",
             ].filter(Boolean);
             toast.success(`${nombreTipoRegla(tipo)} · ${nombreDiaAplicacion(diaAplicacion)}`, {
-                description: `${partes.join(", ")}.${tipo !== "RolNormal" ? " Revisa abajo si hay vacaciones ya programadas en esos días." : ""}${tipo === "ParoEmpresa" ? " Los días por la empresa se ponen ahí al dar \"Programar días\" (paso 4)." : ""}`,
+                description: `${partes.join(", ")}.${tipo === "SinDomingo" || tipo === "ParoEmpresa" ? " Revisa abajo si hay vacaciones ya programadas en esos días." : ""}${tipo === "ParoEmpresa" ? " Los días por la empresa se ponen ahí al dar \"Programar días\" (paso 4)." : ""}${tipo === "ParoOperador" ? " Los operadores pueden programar ahí; la asignación no pone días por la empresa esos días." : ""}`,
                 duration: 8000,
             });
+            setAvisosGuardado(r.avisos ?? []);
             setMotivo("");
             setAfectadas(null);
             await cargar();
@@ -273,7 +283,11 @@ export const ReglasDomingoPanel = () => {
     };
 
     const reglaTexto = (r: ReglaDomingo) => `${nombreTipoRegla(r.tipo)} · ${nombreDiaAplicacion(diaDeRegla(r))}`;
+    /** Reglas del renglón que no mandan en todos sus días (otra regla más corta o de grupo les gana). */
+    const coberturaParcial = (lote: Lote) =>
+        lote.reglas.filter((x) => x.activa && x.diasDelPeriodo != null && x.diasQueManda != null && x.diasQueManda < x.diasDelPeriodo);
     const diasTexto = diaAplicacion === "Sabado" ? "sábados" : diaAplicacion === "Ambos" ? "sábados y domingos" : "domingos";
+    const diaSingular = diaAplicacion === "Sabado" ? "sábado" : diaAplicacion === "Ambos" ? "sábado o domingo" : "domingo";
 
     return (
         <div className="space-y-6">
@@ -338,10 +352,19 @@ export const ReglasDomingoPanel = () => {
                         <span>
                             <strong>Paro con días por la empresa</strong> — se pueden asignar días por la empresa en base a su
                             rol. Nadie programa vacaciones esos días. Al dar "Programar días", a quien según su rol le tocaba
-                            trabajar ese día (primero, segundo o tercero) se le pone ahí uno de sus días por la empresa, del
-                            primero del periodo en adelante y sin % de ausencia, hasta completar sus días. Si por rol
+                            trabajar ese día (primero, segundo o tercero) se le pone ahí uno de sus días por la empresa, en
+                            orden de fecha (el primer {diaSingular} del periodo que le
+                            toca trabajar, luego el siguiente…) y sin % de ausencia, hasta completar sus días. Si por rol
                             descansaba, o ya no le alcanzan los días, ese día queda como descanso. Si le sobran días, se le
                             asignan de forma normal.
+                        </span>
+                    </label>
+                    <label className="flex items-start gap-2">
+                        <input type="radio" className="mt-1" name="tipoRegla" checked={tipo === "ParoOperador"} onChange={() => setTipo("ParoOperador")} />
+                        <span>
+                            <strong>Paro, el operador elige sus días</strong> — ese día no se trabaja y la asignación no pone ahí
+                            días por la empresa. En lugar de eso, el operador que según su rol lo trabajaba puede programar ese
+                            día como vacación si quiere (con el % normal de su grupo). Si no lo programa, queda como descanso.
                         </span>
                     </label>
                     <div className="pt-1 border-t">
@@ -502,6 +525,27 @@ export const ReglasDomingoPanel = () => {
                 </div>
             </section>
 
+            {avisosGuardado.length > 0 && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-1">
+                    <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                        <strong className="mr-auto">La regla que guardaste no manda en todos sus días</strong>
+                        <button type="button" onClick={() => setAvisosGuardado([])} title="Cerrar">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    {avisosGuardado.map((a) => (
+                        <p key={a} className="pl-6">
+                            {a}
+                        </p>
+                    ))}
+                    <p className="pl-6 text-xs">
+                        Cuando dos reglas tocan el mismo día, manda la de periodo más corto (luego la de grupo y luego la más
+                        reciente). Desactiva en la lista de abajo la regla que ya no aplique.
+                    </p>
+                </div>
+            )}
+
             {/* Lista */}
             <section className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
@@ -543,6 +587,17 @@ export const ReglasDomingoPanel = () => {
                                             <td className="px-3 py-1.5">{destinoLote(lote)}</td>
                                             <td className="px-3 py-1.5">
                                                 <span className={r.tipo === "RolNormal" ? "text-green-700" : "text-slate-700 font-medium"}>{reglaTexto(r)}</span>
+                                                {r.activa && coberturaParcial(lote).length > 0 && (
+                                                    <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1 text-xs text-amber-900 max-w-md">
+                                                        {coberturaParcial(lote).map((x) => (
+                                                            <div key={x.id}>
+                                                                <AlertTriangle className="inline w-3 h-3 mr-1" />
+                                                                {lote.reglas.length > 1 ? `${x.area}: ` : ""}manda en {x.diasQueManda} de {x.diasDelPeriodo} días. Le gana:{" "}
+                                                                {(x.ganadaPor ?? []).join("; ")}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">
                                                 {r.fechaInicio.slice(0, 10) === r.fechaFin.slice(0, 10)
@@ -644,6 +699,8 @@ export const ReglasDomingoPanel = () => {
                         </div>
                     ))}
             </section>
+
+            <DiasEmpresaEnParoReporte anio={anioElegido} areas={areas} />
 
             {esSuperUsuario && (
                 <MovimientoMasivoDiasEmpresa anio={anioElegido} onAplicado={() => afectadas && revisarAfectadas()} />

@@ -112,8 +112,8 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
 
     const aplicar = async () => {
         if (!renglones || !revision) return;
-        if (!motivo.trim()) {
-            toast.error("Escribe el motivo (queda en el historial de cada empleado)");
+        if (!motivo.trim() && renglones.some((r) => !r.motivo)) {
+            toast.error("Escribe el motivo general (es para los renglones que no traen motivo propio; queda en el historial y el operador lo ve)");
             return;
         }
         if (!window.confirm(`¿Mover ${aMover} día(s) por la empresa? Se aplica directo, sin aprobación del jefe, y queda en el historial.`)) return;
@@ -153,10 +153,12 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
                 </h3>
                 <p className="text-xs text-continental-gray-1 mt-1">
                     Para mover muchos de una vez (por ejemplo, un domingo que se declaró paro sin asignaciones y esos días se reparten
-                    entre lunes, martes y miércoles): descarga el machote, llena "Fecha nueva" y súbelo. Antes de mover se
-                    revisa cada renglón (que sea día laborable de su rol, no inhábil ni de paro, sin otra vacación, permiso o
-                    incapacidad, y el % del grupo). Se aplica directo, sin aprobación del jefe, y queda en el historial de
-                    reprogramaciones de día empresa como "C" en el rol semanal.
+                    entre lunes, martes y miércoles, o un domingo de paro con días por la empresa que al final se trabaja): descarga
+                    el machote (o el de "Días por la empresa en días de paro" de arriba, ya filtrado por unidad), llena "Fecha
+                    nueva" y, si quieres, el "Motivo" de cada renglón, y súbelo. Antes de mover se revisa cada renglón (que sea día
+                    laborable de su rol, no inhábil ni de paro, sin otra vacación, permiso o incapacidad, y el % del grupo). Se
+                    aplica directo, sin aprobación del jefe, queda en el historial de reprogramaciones de día empresa como "C" en el
+                    rol semanal, y el operador ve el motivo entre paréntesis junto a su día por la empresa.
                 </p>
             </div>
 
@@ -233,7 +235,10 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
                                                 {r.estado === "Advertencia" ? "Rebasa %" : r.estado}
                                             </span>
                                         </td>
-                                        <td className="px-3 py-1.5 text-xs">{r.mensaje ?? ""}</td>
+                                        <td className="px-3 py-1.5 text-xs">
+                                            {r.mensaje ?? ""}
+                                            {r.motivo && <div className="text-continental-gray-1">Motivo: {r.motivo}</div>}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -243,7 +248,9 @@ export const MovimientoMasivoDiasEmpresa = ({ anio, onAplicado }: { anio: number
                     {!aplicado && (
                         <div className="flex flex-wrap items-end gap-3">
                             <label className="flex flex-col gap-1 grow min-w-[260px]">
-                                <span className="text-xs font-medium text-continental-gray-1">Motivo (queda en el historial de cada empleado)</span>
+                                <span className="text-xs font-medium text-continental-gray-1">
+                                    Motivo general (para los renglones sin motivo propio; queda en el historial y el operador lo ve)
+                                </span>
                                 <input
                                     className="h-9 rounded-md border px-2"
                                     maxLength={300}

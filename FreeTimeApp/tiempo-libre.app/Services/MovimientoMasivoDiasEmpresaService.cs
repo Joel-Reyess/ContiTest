@@ -30,6 +30,8 @@ namespace tiempo_libre.Services
     public class MovimientoMasivoDiasEmpresaService
     {
         public const int MaximoRenglones = 3000;
+        /// <summary>Así empieza la justificación de lo que se movió con machote.</summary>
+        public const string PrefijoMachote = "Movimiento con machote: ";
         private static readonly string[] TiposEmpresa = { "Automatica", "AsignadaAutomaticamente", ReprogramacionDiaEmpresaService.TipoVacacionReprogramado };
         private static readonly string[] FormatosFecha = { "yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy" };
 
@@ -60,8 +62,10 @@ namespace tiempo_libre.Services
             var error = Revisar(req);
             if (error != null) return new ApiResponse<ResultadoMovimientoMasivoDto>(false, null, error);
             var motivo = string.IsNullOrWhiteSpace(req.Motivo) ? null : req.Motivo.Trim();
-            if (motivo == null)
-                return new ApiResponse<ResultadoMovimientoMasivoDto>(false, null, "Escribe el motivo del movimiento (queda en el historial).");
+            if (motivo == null && req.Renglones.Any(r => string.IsNullOrWhiteSpace(r.Motivo)))
+                return new ApiResponse<ResultadoMovimientoMasivoDto>(false, null,
+                    "Escribe el motivo del movimiento (queda en el historial y el operador lo ve en su calendario), " +
+                    "o llena la columna Motivo en todos los renglones.");
 
             using var tx = await _db.Database.BeginTransactionAsync();
             try
@@ -75,18 +79,20 @@ namespace tiempo_libre.Services
                 var ids = aplicar.Select(e => e.VacacionId!.Value).ToList();
                 var vacaciones = await _db.VacacionesProgramadas.Where(v => ids.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
                 var ahora = DateTime.UtcNow;
-                var justificacion = $"Movimiento con machote: {motivo}";
-                if (justificacion.Length > 500) justificacion = justificacion[..500];
 
                 foreach (var e in aplicar)
                 {
+                    // El del renglón manda sobre el general.
+                    var motivoRenglon = string.IsNullOrWhiteSpace(e.Resultado.Motivo) ? motivo! : e.Resultado.Motivo!;
+                    var justificacion = $"{PrefijoMachote}{motivoRenglon}";
+                    if (justificacion.Length > 500) justificacion = justificacion[..500];
                     var vac = vacaciones[e.VacacionId!.Value];
                     var original = vac.FechaVacacion;
                     vac.FechaVacacion = e.FechaNueva;
                     vac.TipoVacacion = ReprogramacionDiaEmpresaService.TipoVacacionReprogramado;
                     vac.UpdatedAt = ahora;
                     vac.UpdatedBy = usuarioId > 0 ? usuarioId : null;
-                    var obs = $"Movimiento con machote: {original:yyyy-MM-dd} → {e.FechaNueva:yyyy-MM-dd} ({motivo})";
+                    var obs = $"Movimiento con machote: {original:yyyy-MM-dd} → {e.FechaNueva:yyyy-MM-dd} ({motivoRenglon})";
                     vac.Observaciones = obs.Length > 500 ? obs[..500] : obs;
 
                     _db.SolicitudesReprogramacionDiaEmpresa.Add(new SolicitudReprogramacionDiaEmpresa
@@ -130,6 +136,60 @@ namespace tiempo_libre.Services
                 _logger.LogError(ex, "Error en el movimiento masivo de días por la empresa");
                 return new ApiResponse<ResultadoMovimientoMasivoDto>(false, null, "No se movió nada: " + ex.GetBaseException().Message);
             }
+        }
+
+        /// <summary>
+        /// Días por la empresa ya movidos en el año (aprobados): con machote o por
+        /// reprogramación. Fecha anterior, fecha nueva, motivo y quién (nov-2026).
+        /// </summary>
+        public async Task<ApiResponse<List<MovimientoDiaEmpresaDto>>> MovimientosAsync(int anio, int? areaId)
+        {
+            var ini = new DateOnly(anio, 1, 1);
+            var fin = new DateOnly(anio, 12, 31);
+            var q = _db.SolicitudesReprogramacionDiaEmpresa.AsNoTracking()
+                .Where(s => s.EstadoSolicitud == "Aprobada" &&
+                            ((s.FechaOriginal >= ini && s.FechaOriginal <= fin) || (s.FechaNueva >= ini && s.FechaNueva <= fin)));
+            if (areaId.HasValue) q = q.Where(s => s.Empleado.Grupo != null && s.Empleado.Grupo.AreaId == areaId.Value);
+            var filas = await q
+                .OrderByDescending(s => s.FechaRespuesta ?? s.FechaSolicitud)
+                .Select(s => new
+                {
+                    s.Id, s.EmpleadoId, s.Empleado.Nomina, s.Empleado.FullName,
+                    AreaId = s.Empleado.Grupo != null ? (int?)s.Empleado.Grupo.AreaId : null,
+                    Area = s.Empleado.Grupo != null && s.Empleado.Grupo.Area != null ? s.Empleado.Grupo.Area.NombreGeneral : "",
+                    Grupo = s.Empleado.Grupo != null ? s.Empleado.Grupo.Rol : "",
+                    s.FechaOriginal, s.FechaNueva, s.MotivoTipo, s.Justificacion,
+                    Aprobo = s.AprobadoPor != null ? s.AprobadoPor.FullName : null,
+                    Solicito = s.SolicitadoPor != null ? s.SolicitadoPor.FullName : null,
+                    Cuando = s.FechaRespuesta ?? s.FechaSolicitud
+                })
+                .Take(5000)
+                .ToListAsync();
+
+            var lista = filas.Select(s =>
+            {
+                var machote = s.Justificacion != null && s.Justificacion.StartsWith(PrefijoMachote);
+                var motivo = machote
+                    ? s.Justificacion![PrefijoMachote.Length..]
+                    : string.IsNullOrWhiteSpace(s.Justificacion) ? s.MotivoTipo : $"{s.MotivoTipo}: {s.Justificacion}";
+                return new MovimientoDiaEmpresaDto
+                {
+                    Id = s.Id,
+                    EmpleadoId = s.EmpleadoId,
+                    Nomina = s.Nomina,
+                    Nombre = s.FullName ?? "",
+                    AreaId = s.AreaId,
+                    Area = s.Area ?? "",
+                    Grupo = s.Grupo ?? "",
+                    FechaAnterior = s.FechaOriginal,
+                    FechaNueva = s.FechaNueva,
+                    Motivo = motivo,
+                    Como = machote ? "Machote" : "Reprogramación",
+                    Quien = s.Aprobo ?? s.Solicito,
+                    Cuando = s.Cuando
+                };
+            }).ToList();
+            return new ApiResponse<List<MovimientoDiaEmpresaDto>>(true, lista, null);
         }
 
         private static string? Revisar(MovimientoMasivoDiasEmpresaRequest req)
@@ -242,6 +302,8 @@ namespace tiempo_libre.Services
                     Nomina = x.r.Nomina,
                     FechaActual = x.Actual?.ToString("yyyy-MM-dd") ?? x.r.FechaActual,
                     FechaNueva = x.Nueva?.ToString("yyyy-MM-dd") ?? x.r.FechaNueva,
+                    Motivo = string.IsNullOrWhiteSpace(x.r.Motivo) ? null
+                        : (x.r.Motivo.Trim().Length > 300 ? x.r.Motivo.Trim()[..300] : x.r.Motivo.Trim()),
                 };
                 var ev = new Evaluado { Resultado = res };
                 resultado.Add(ev);
@@ -277,7 +339,8 @@ namespace tiempo_libre.Services
                 if (conEdicionPendiente.Contains(vac.Id)) { Falla("Ese día tiene una solicitud de edición de días pendiente: resuélvela primero."); continue; }
 
                 if (inhabiles.Contains(nueva)) { Falla($"El {nueva:dd/MM/yyyy} es día inhábil."); continue; }
-                var motivoNl = noLaborables.Motivo(emp.GrupoId.Value, nueva);
+                // Ningún paro recibe días por la empresa movidos (tampoco "el operador elige").
+                var motivoNl = noLaborables.MotivoParo(emp.GrupoId.Value, nueva);
                 if (motivoNl != null) { Falla(motivoNl); continue; }
                 if (!string.IsNullOrEmpty(emp.Grupo.Rol))
                 {

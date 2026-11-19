@@ -3,7 +3,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarOff } from "lucide-react";
 import { diaDeRegla, reglasDomingoService, type ReglaDomingo } from "@/services/reglasDomingoService";
-import { esNoLaborable, isoLocal } from "@/utils/reglasDomingo";
+import { esNoLaborable, isoLocal, reglaQueManda } from "@/utils/reglasDomingo";
 
 /**
  * Aviso arriba del calendario de selección: en qué periodos los domingos (o
@@ -52,7 +52,25 @@ export const AvisoDomingosNoLaborables = ({ empleadoId, anio }: { empleadoId?: n
             .filter((p) => p.alguno);
     }, [reglas]);
 
-    if (periodos.length === 0) return null;
+    // "Paro, el operador elige" (nov-2026): no se trabaja, pero el operador sí puede
+    // programar ahí (no se raya). Solo los días en que esa regla es la que manda.
+    const eligeOperador = useMemo(() => {
+        return reglas
+            .filter((r) => r.activa && r.tipo === "ParoOperador")
+            .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio))
+            .map((r) => {
+                const dias: string[] = [];
+                const fin = parseISO(r.fechaFin.slice(0, 10));
+                for (let d = parseISO(r.fechaInicio.slice(0, 10)); d <= fin; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+                    if (d.getDay() !== 0 && d.getDay() !== 6) continue;
+                    if (reglaQueManda(reglas, isoLocal(d))?.id === r.id) dias.push(isoLocal(d));
+                }
+                return { r, dias };
+            })
+            .filter((p) => p.dias.length > 0);
+    }, [reglas]);
+
+    if (periodos.length === 0 && eligeOperador.length === 0) return null;
     const fecha = (iso: string) => format(parseISO(iso.slice(0, 10)), "d 'de' MMMM", { locale: es });
     const fechaCorta = (iso: string) => format(parseISO(iso.slice(0, 10)), "EEE d MMM", { locale: es });
 
@@ -75,10 +93,26 @@ export const AvisoDomingosNoLaborables = ({ empleadoId, anio }: { empleadoId?: n
                         </li>
                     ))}
                 </ul>
-                <p className="text-xs text-slate-600 mt-0.5">
-                    Se ven rayados en el calendario y esos días no se pueden programar vacaciones. En un paro con días por
-                    la empresa, si te tocaba trabajar según tu rol, ahí pueden quedar tus días por la empresa.
-                </p>
+                {periodos.length > 0 && (
+                    <p className="text-xs text-slate-600 mt-0.5">
+                        Se ven rayados en el calendario y esos días no se pueden programar vacaciones. En un paro con días por
+                        la empresa, si te tocaba trabajar según tu rol, ahí pueden quedar tus días por la empresa.
+                    </p>
+                )}
+                {eligeOperador.length > 0 && (
+                    <div className="mt-1">
+                        <p className="font-medium">Paro en el que tú eliges</p>
+                        <ul className="mt-0.5">
+                            {eligeOperador.map(({ r, dias }) => (
+                                <li key={r.id}>{dias.map(fechaCorta).join(", ")}.</li>
+                            ))}
+                        </ul>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                            Esos días no se trabaja y no se asignan días por la empresa. Si según tu rol te tocaba trabajar,
+                            puedes programarlo como vacación; si no, queda como descanso.
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );

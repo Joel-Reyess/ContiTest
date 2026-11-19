@@ -196,7 +196,7 @@ export const ProgramacionAnualWizard = ({
         // días y no deja vieja la asignación.
         // Los dos paros cuentan igual: cierran el día y el paro con días por la
         // empresa además cambia dónde van esos días.
-        const esParo = (x: (typeof r.reglas)[number]) => x.tipo === "SinDomingo" || x.tipo === "ParoEmpresa";
+        const esParo = (x: (typeof r.reglas)[number]) => x.tipo === "SinDomingo" || x.tipo === "ParoEmpresa" || x.tipo === "ParoOperador";
         const hayNoLaborables = r.reglas.some((x) => esParo(x) && x.activa);
         const donde = (x: (typeof r.reglas)[number]) => (x.grupo ? `${x.area} ${x.grupo}` : x.area);
         r.reglas.forEach((x) => {
@@ -204,7 +204,7 @@ export const ProgramacionAnualWizard = ({
             if (x.activa)
               registrarCambio(
                 comoFecha(x.fechaCreacion),
-                `${x.tipo === "ParoEmpresa" ? "paro con días por la empresa" : "paro sin asignaciones"} en ${donde(x)}`
+                `${x.tipo === "ParoEmpresa" ? "paro con días por la empresa" : x.tipo === "ParoOperador" ? "paro, el operador elige" : "paro sin asignaciones"} en ${donde(x)}`
               );
           } else if (hayNoLaborables) {
             registrarCambio(comoFecha(x.fechaDesactivacion), `se quitó "rol normal" en ${donde(x)}`);
@@ -213,7 +213,8 @@ export const ProgramacionAnualWizard = ({
         const activas = r.reglas.filter((x) => x.activa);
         const sinDomingo = activas.filter((x) => x.tipo === "SinDomingo");
         const paroEmpresa = activas.filter((x) => x.tipo === "ParoEmpresa");
-        const enBaseARol = activas.length - sinDomingo.length - paroEmpresa.length;
+        const paroOperador = activas.filter((x) => x.tipo === "ParoOperador");
+        const enBaseARol = activas.length - sinDomingo.length - paroEmpresa.length - paroOperador.length;
         const unidades = new Set(sinDomingo.map((x) => x.areaId)).size;
         const unidadesEmpresa = new Set(paroEmpresa.map((x) => x.areaId)).size;
         if (tablaDomingosFalta) partes.push("Falta correr Scripts/Migration_ReglasDomingo.sql");
@@ -224,7 +225,8 @@ export const ProgramacionAnualWizard = ({
               [
                 sinDomingo.length > 0 ? `${unidades} unidad(es) con paro sin asignaciones` : null,
                 paroEmpresa.length > 0 ? `${unidadesEmpresa} unidad(es) con paro con días por la empresa` : null,
-                sinDomingo.length + paroEmpresa.length === 0 ? "sin paros" : null,
+                paroOperador.length > 0 ? `${new Set(paroOperador.map((x) => x.areaId)).size} unidad(es) con paro donde el operador elige` : null,
+                sinDomingo.length + paroEmpresa.length + paroOperador.length === 0 ? "sin paros" : null,
                 enBaseARol > 0 ? `${enBaseARol} regla(s) de rol normal` : null,
               ]
                 .filter(Boolean)

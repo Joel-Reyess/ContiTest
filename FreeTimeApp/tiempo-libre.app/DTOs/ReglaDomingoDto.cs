@@ -22,6 +22,12 @@ namespace tiempo_libre.DTOs
         public DateTime FechaCreacion { get; set; }
         public string? DesactivadoPor { get; set; }
         public DateTime? FechaDesactivacion { get; set; }
+        /// <summary>Solo activas: en cuántos de sus sábados/domingos manda.</summary>
+        public int? DiasQueManda { get; set; }
+        /// <summary>Solo activas: cuántos sábados/domingos tiene su periodo.</summary>
+        public int? DiasDelPeriodo { get; set; }
+        /// <summary>Las reglas que le ganan los demás días (más cortas o de grupo), con cuántos.</summary>
+        public List<string> GanadaPor { get; set; } = new();
     }
 
     public class ReglasDomingoResponse
@@ -61,6 +67,26 @@ namespace tiempo_libre.DTOs
         public int Creadas { get; set; }
         public int Reemplazadas { get; set; }
         public int YaExistian { get; set; }
+        /// <summary>Unidades donde la regla nueva no manda en todos sus días porque otra le gana.</summary>
+        public List<string> Avisos { get; set; } = new();
+    }
+
+    /// <summary>Día por la empresa en un sábado/domingo de paro (reporte por unidad organizativa).</summary>
+    public class DiaEmpresaEnParoDto
+    {
+        public int VacacionId { get; set; }
+        public int EmpleadoId { get; set; }
+        public int? Nomina { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public int AreaId { get; set; }
+        public string Area { get; set; } = string.Empty;
+        public string Grupo { get; set; } = string.Empty;
+        public DateOnly Fecha { get; set; }
+        /// <summary>El turno que le tocaba ese día por su rol ("1", "2", "3").</summary>
+        public string Turno { get; set; } = string.Empty;
+        /// <summary>"EnParo", "SeTrabaja" u "OtroParo".</summary>
+        public string Situacion { get; set; } = string.Empty;
+        public string Detalle { get; set; } = string.Empty;
     }
 
     /// <summary>Desactivar o reactivar de una vez las reglas que se guardaron juntas (p. ej. toda la planta).</summary>

@@ -5,9 +5,10 @@ import type { RenglonMovimientoDiaEmpresa, ResultadoRenglonMovimiento } from '@/
 
 /**
  * Machote para mover en lote días por la empresa (nov-2026): una hoja
- * "Machote" con Nómina, Nombre, Área, Grupo, Día por la empresa actual y Fecha
- * nueva (la que llena Sarahí), y una hoja de instrucciones. Al subirlo se leen
- * solo Nómina, Día actual y Fecha nueva; lo demás es para ubicarse.
+ * "Machote" con Nómina, Nombre, Área, Grupo, Día por la empresa actual, Fecha
+ * nueva (la que llena Sarahí) y Motivo (opcional, por renglón: es el que ve el
+ * operador entre paréntesis), y una hoja de instrucciones. Al subirlo se leen
+ * Nómina, Día actual, Fecha nueva y Motivo; lo demás es para ubicarse.
  */
 
 export interface RenglonMachote {
@@ -19,12 +20,16 @@ export interface RenglonMachote {
     fechaActual: string;
     /** yyyy-MM-dd, opcional (normalmente vacía en la descarga). */
     fechaNueva?: string | null;
+    /** Turno que le tocaba ese día (reporte de días en paro). */
+    turno?: string | null;
+    motivo?: string | null;
     nota?: string | null;
 }
 
 const COL_NOMINA = 'Nómina';
 const COL_ACTUAL = 'Día por la empresa actual (dd/mm/aaaa)';
 const COL_NUEVA = 'Fecha nueva (dd/mm/aaaa)';
+const COL_MOTIVO = 'Motivo (opcional: lo ve el operador)';
 
 const ddmmyyyy = (iso?: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
 
@@ -40,14 +45,16 @@ export const descargarMachoteDiasEmpresa = (renglones: RenglonMachote[], etiquet
         Nombre: r.nombre ?? '',
         Área: r.area ?? '',
         Grupo: r.grupo ?? '',
+        Turno: r.turno ?? '',
         [COL_ACTUAL]: ddmmyyyy(r.fechaActual),
         [COL_NUEVA]: ddmmyyyy(r.fechaNueva),
+        [COL_MOTIVO]: r.motivo ?? '',
         Nota: r.nota ?? '',
     }));
     const hoja = XLSX.utils.json_to_sheet(filas, {
-        header: [COL_NOMINA, 'Nombre', 'Área', 'Grupo', COL_ACTUAL, COL_NUEVA, 'Nota'],
+        header: [COL_NOMINA, 'Nombre', 'Área', 'Grupo', 'Turno', COL_ACTUAL, COL_NUEVA, COL_MOTIVO, 'Nota'],
     });
-    hoja['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 60 }];
+    hoja['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 7 }, { wch: 22 }, { wch: 22 }, { wch: 40 }, { wch: 60 }];
     XLSX.utils.book_append_sheet(wb, hoja, 'Machote');
 
     const instrucciones = XLSX.utils.aoa_to_sheet([
@@ -56,8 +63,9 @@ export const descargarMachoteDiasEmpresa = (renglones: RenglonMachote[], etiquet
         ['1. Un renglón por cada día por la empresa que se mueve.'],
         ['2. Llena la columna "Fecha nueva" con dd/mm/aaaa (por ejemplo 16/02/2027). Los renglones sin fecha nueva no se mueven.'],
         ['3. Si agregas renglones a mano, basta con Nómina, Día por la empresa actual y Fecha nueva.'],
+        ['3b. Motivo (opcional): si lo llenas, ese renglón lleva su propio motivo; si no, se usa el motivo general que escribes al aplicar. El operador lo ve entre paréntesis junto a su día por la empresa.'],
         ['4. La fecha nueva debe ser del mismo año, día laborable de su rol, no inhábil, no domingo/sábado no laborable, y sin otra vacación, permiso o incapacidad.'],
-        ['5. Súbelo en Vacaciones → Capacidad por periodo → Domingos → "Mover días por la empresa con machote". Antes de aplicar se ve renglón por renglón qué se mueve y por qué no.'],
+        ['5. Súbelo en Vacaciones → Capacidad por periodo → Reglas de trabajo → "Mover días por la empresa con machote". Antes de aplicar se ve renglón por renglón qué se mueve y por qué no.'],
         ['6. Si el grupo rebasa su % ese día, el renglón sale como advertencia: solo se mueve si marcas "aplicar también los que rebasan el %".'],
     ]);
     instrucciones['!cols'] = [{ wch: 120 }];
@@ -77,12 +85,13 @@ export const descargarResultadoMachote = (renglones: ResultadoRenglonMovimiento[
             Grupo: r.grupo ?? '',
             [COL_ACTUAL]: /^\d{4}-\d{2}-\d{2}$/.test(r.fechaActual ?? '') ? ddmmyyyy(r.fechaActual) : r.fechaActual ?? '',
             [COL_NUEVA]: /^\d{4}-\d{2}-\d{2}$/.test(r.fechaNueva ?? '') ? ddmmyyyy(r.fechaNueva) : r.fechaNueva ?? '',
+            [COL_MOTIVO]: r.motivo ?? '',
             Estado: r.estado,
             Detalle: r.mensaje ?? '',
             'Renglón original': r.renglon,
         }))
     );
-    hoja['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 12 }, { wch: 70 }, { wch: 10 }];
+    hoja['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 40 }, { wch: 12 }, { wch: 70 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, hoja, 'Machote');
     guardar(wb, `Machote_DiasEmpresa_resultado_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
 };
@@ -130,6 +139,7 @@ export const leerMachoteDiasEmpresa = async (archivo: File): Promise<MachoteLeid
     const iNomina = col('nomina');
     const iActual = col('dia por la empresa actual', 'dia actual', 'fecha actual', 'dia empresa');
     const iNueva = col('fecha nueva', 'nueva fecha', 'dia nuevo');
+    const iMotivo = col('motivo');
     if (iNomina < 0 || iActual < 0 || iNueva < 0)
         throw new Error('No se encontraron las columnas "Nómina", "Día por la empresa actual" y "Fecha nueva". Usa el machote descargado.');
 
@@ -146,11 +156,13 @@ export const leerMachoteDiasEmpresa = async (archivo: File): Promise<MachoteLeid
             return;
         }
         const nomina = Number(nominaTxt.replace(/\D/g, ''));
+        const motivo = iMotivo >= 0 ? String(f[iMotivo] ?? '').trim() : '';
         renglones.push({
             renglon: i + 2, // renglón de Excel (1 = encabezado)
             nomina: nominaTxt && Number.isFinite(nomina) && nomina > 0 ? nomina : null,
             fechaActual: actual,
             fechaNueva: nueva,
+            motivo: motivo || null,
         });
     });
     return { renglones, sinFechaNueva };

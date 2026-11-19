@@ -578,7 +578,8 @@ namespace tiempo_libre.Services
         {
             turno = "";
             if (ctx.Inhabiles.Contains(fecha)) return false;
-            if (ctx.NoLaborables.EsNoLaborable(empleado.GrupoId ?? 0, fecha)) return false;
+            // Ningún paro (tampoco "el operador elige") recibe días por la empresa seguidos.
+            if (ctx.NoLaborables.EsParo(empleado.GrupoId ?? 0, fecha)) return false;
             if (ctx.Ocupados.TryGetValue(empleado.Id, out var ocupados) && ocupados.Contains(fecha)) return false;
             turno = ObtenerTurnoEmpleado(empleado.Grupo?.Rol ?? "", fecha, ctx.SemanaSanta);
             return !TurnosHelper.EsDescanso(turno);

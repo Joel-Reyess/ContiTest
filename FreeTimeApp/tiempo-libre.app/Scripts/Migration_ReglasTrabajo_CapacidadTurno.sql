@@ -7,7 +7,9 @@
 --    (IncluyeSabado): las reglas que ya existen quedan igual que estaban
 --    ("Ambos" si tenían el sábado, "Domingo" si no).
 -- 2) CK_RegDom_Tipo acepta también 'ParoEmpresa' (paro con días por la
---    empresa; la pantalla todavía no lo deja guardar).
+--    empresa) y 'ParoOperador' (paro, el operador elige sus días; 20-nov-2026).
+--    Si ya lo habías corrido antes del 20-nov, vuelve a correrlo: rehace la
+--    validación para que acepte 'ParoOperador'.
 -- 3) CapacidadesPorcentaje.Turno: NULL = todo el día; '1', '2' o '3' = el % solo
 --    aplica a los grupos que ese día van en ese turno por su rol.
 --
@@ -36,16 +38,18 @@ BEGIN
 
     IF EXISTS (SELECT 1 FROM sys.check_constraints
                WHERE name = 'CK_RegDom_Tipo' AND parent_object_id = OBJECT_ID('dbo.ReglasDomingo')
-                 AND definition NOT LIKE '%ParoEmpresa%')
+                 AND definition NOT LIKE '%ParoOperador%')
         ALTER TABLE dbo.ReglasDomingo DROP CONSTRAINT CK_RegDom_Tipo;
 
     IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
                    WHERE name = 'CK_RegDom_Tipo' AND parent_object_id = OBJECT_ID('dbo.ReglasDomingo'))
     BEGIN
         ALTER TABLE dbo.ReglasDomingo ADD CONSTRAINT CK_RegDom_Tipo
-            CHECK ([Tipo] IN ('SinDomingo', 'RolNormal', 'ParoEmpresa'));
-        PRINT 'CK_RegDom_Tipo acepta ParoEmpresa.';
+            CHECK ([Tipo] IN ('SinDomingo', 'RolNormal', 'ParoEmpresa', 'ParoOperador'));
+        PRINT 'CK_RegDom_Tipo acepta ParoEmpresa y ParoOperador.';
     END
+    ELSE
+        PRINT 'CK_RegDom_Tipo ya aceptaba ParoEmpresa y ParoOperador.';
 END
 
 -- 3) CapacidadesPorcentaje.Turno

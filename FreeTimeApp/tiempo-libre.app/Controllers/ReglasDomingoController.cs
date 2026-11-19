@@ -25,11 +25,14 @@ namespace tiempo_libre.Controllers
         private const string RolesConsulta = RolesEdicion + ",JefeArea,Jefe De Area,JefeDeArea,Gerente BT,GerenteBT,RH";
 
         private readonly ReglasDomingoService _service;
+        private readonly MovimientoMasivoDiasEmpresaService _movimientos;
         private readonly ILogger<ReglasDomingoController> _logger;
 
-        public ReglasDomingoController(ReglasDomingoService service, ILogger<ReglasDomingoController> logger)
+        public ReglasDomingoController(ReglasDomingoService service, MovimientoMasivoDiasEmpresaService movimientos,
+            ILogger<ReglasDomingoController> logger)
         {
             _service = service;
+            _movimientos = movimientos;
             _logger = logger;
         }
 
@@ -86,5 +89,17 @@ namespace tiempo_libre.Controllers
         [Authorize(Roles = RolesConsulta)]
         public Task<IActionResult> VacacionesAfectadas([FromQuery] int anio) =>
             Ejecutar(() => _service.VacacionesEnNoLaborablesAsync(anio), "listar vacaciones en días no laborables");
+
+        /// <summary>Reporte por unidad: días por la empresa en sábados/domingos de paro y si ese día ya se trabaja.</summary>
+        [HttpGet("dias-empresa-en-paro")]
+        [Authorize(Roles = RolesConsulta)]
+        public Task<IActionResult> DiasEmpresaEnParo([FromQuery] int anio, [FromQuery] int? areaId = null) =>
+            Ejecutar(() => _service.DiasEmpresaEnParoAsync(anio, areaId), "reporte de días por la empresa en paro");
+
+        /// <summary>Días por la empresa ya movidos en el año (machote o reprogramación): fecha anterior, nueva, motivo y quién.</summary>
+        [HttpGet("movimientos-dias-empresa")]
+        [Authorize(Roles = RolesConsulta)]
+        public Task<IActionResult> MovimientosDiasEmpresa([FromQuery] int anio, [FromQuery] int? areaId = null) =>
+            Ejecutar(() => _movimientos.MovimientosAsync(anio, areaId), "listar movimientos de días por la empresa");
     }
 }
