@@ -484,7 +484,8 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({
             );
 
             if (gruposData.length > 0) {
-                const date = new Date(fechaData.fecha);
+                // yyyy-MM-dd leída a mediodía local: con new Date() a secas se lee en UTC y el lunes salía como domingo.
+                const date = new Date(`${String(fechaData.fecha).slice(0, 10)}T12:00:00`);
                 const isSunday = date.getDay() === 0;
                 const divisor = isSunday ? 2 : 3;
                 const sum = gruposData.reduce((sum, g) => sum + g.porcentajeAusencia, 0);
