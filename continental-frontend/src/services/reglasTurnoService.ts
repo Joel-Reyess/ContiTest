@@ -133,6 +133,24 @@ export const reglasTurnoService = {
         }
     },
 
+    /**
+     * Turno de cada sub-grupo para todos los días del año, calculado por el
+     * servidor (mismo cálculo que el calendario del operador: arranques,
+     * recorridos y pausa de Semana Santa). null si el servidor todavía no lo
+     * ofrece o falla: quien lo pide calcula como antes.
+     */
+    async calendarioAnual(anio: number): Promise<Record<string, string[]> | null> {
+        try {
+            const response = await httpClient.get<ApiResponse<{ anio: number; turnos: Record<string, string[]> }>>(
+                `${BASE}/calendario-anual?anio=${anio}&_t=${Date.now()}`
+            );
+            const data = (response.data ?? response) as { anio?: number; turnos?: Record<string, string[]> };
+            return data && data.anio === anio && data.turnos ? data.turnos : null;
+        } catch {
+            return null;
+        }
+    },
+
     async listarRotacionesProgramadas(desde?: string, hasta?: string): Promise<RotacionProgramada[]> {
         try {
             const qs: string[] = [`_t=${Date.now()}`];
