@@ -76,8 +76,8 @@ const RequestVacations = () => {
         const automaticVacations = vacacionesData.vacaciones.filter(vacacion => {
             if (vacacion.tipoVacacion !== "Automatica") return false;
 
-            const fechaVacacion = new Date(vacacion.fechaVacacion);
-            const vacationMonth = fechaVacacion.getMonth() + 1; // getMonth() es 0-indexed
+            // yyyy-MM-dd: new Date() la lee en UTC y el día 1 caía en el mes anterior.
+            const vacationMonth = Number(String(vacacion.fechaVacacion).slice(5, 7));
             return vacationMonth === month;
         });
 

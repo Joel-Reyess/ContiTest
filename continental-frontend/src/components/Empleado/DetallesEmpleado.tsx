@@ -14,7 +14,7 @@ import { userService } from "@/services/userService";
 import { UserRole } from "@/interfaces/User.interface";
 import type { Rol } from "@/interfaces/User.interface";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import ReasignacionTurnoModal from "../Dashboard-Area/ReasignacionTurnoModal";
@@ -952,7 +952,7 @@ const handleRemoveDay = async (fecha: string) => {
               ) : (
                 <>
                   <span>
-                    Fecha de Ingreso: {sindicalizado?.fechaIngreso ? format(new Date(sindicalizado.fechaIngreso), 'dd \'de\' MMMM \'de\' yyyy', { locale: es }) : 'No disponible'}
+                    Fecha de Ingreso: {sindicalizado?.fechaIngreso ? format(parseISO(String(sindicalizado.fechaIngreso).slice(0, 10)), 'dd \'de\' MMMM \'de\' yyyy', { locale: es }) : 'No disponible'}
                   </span>
                   {isSuperUsuario && (
                     <button

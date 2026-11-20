@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { VacacionesAsignadasEmpresaResponse } from '@/interfaces/Api.interface';
 
@@ -35,7 +35,10 @@ export const generarExcelVacacionesAsignadasEmpresa = (data: VacacionesAsignadas
       'Nombre': vacacion.nombreCompleto,
       'Area': vacacion.nombreArea || '',
       'Grupo': vacacion.nombreGrupo || '',
-      'Fecha Vacacion': format(new Date(vacacion.fechaVacacion), "dd/MM/yyyy", { locale: es }),
+      // La fecha llega como yyyy-MM-dd: con new Date() se lee en UTC y en México sale un día antes
+      // (un domingo se veía como sábado en el Excel). parseISO la lee como fecha local.
+      'Fecha Vacacion': format(parseISO(String(vacacion.fechaVacacion).slice(0, 10)), "dd/MM/yyyy", { locale: es }),
+      'Dia': format(parseISO(String(vacacion.fechaVacacion).slice(0, 10)), "EEEE", { locale: es }),
       'Tipo': vacacion.tipoVacacion,
       'Origen': vacacion.origenAsignacion,
       'Estado': vacacion.estadoVacacion,
@@ -52,6 +55,7 @@ export const generarExcelVacacionesAsignadasEmpresa = (data: VacacionesAsignadas
     { wch: 22 }, // Area
     { wch: 18 }, // Grupo
     { wch: 14 }, // Fecha vacacion
+    { wch: 12 }, // Dia
     { wch: 18 }, // Tipo
     { wch: 16 }, // Origen
     { wch: 12 }, // Estado

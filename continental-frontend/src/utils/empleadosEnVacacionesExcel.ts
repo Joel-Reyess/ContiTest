@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { EmpleadosEnVacacionesResponse } from '@/interfaces/Api.interface';
 
@@ -8,7 +8,7 @@ export const generarExcelEmpleadosEnVacaciones = (data: EmpleadosEnVacacionesRes
   const workbook = XLSX.utils.book_new();
 
   const resumen = [
-    { Concepto: 'Fecha consulta', Valor: format(new Date(data.fechaConsulta), "dd/MM/yyyy", { locale: es }) },
+    { Concepto: 'Fecha consulta', Valor: format(parseISO(String(data.fechaConsulta).slice(0, 10)), "dd/MM/yyyy", { locale: es }) },
     { Concepto: 'Total registros', Valor: data.totalRegistros },
     { Concepto: 'Total empleados', Valor: data.totalEmpleados },
     {
@@ -35,7 +35,10 @@ export const generarExcelEmpleadosEnVacaciones = (data: EmpleadosEnVacacionesRes
       'Nombre': empleado.nombreCompleto,
       'Area': empleado.nombreArea || '',
       'Grupo': empleado.nombreGrupo || '',
-      'Fecha Vacacion': format(new Date(empleado.fechaVacacion), "dd/MM/yyyy", { locale: es }),
+      // La fecha llega como yyyy-MM-dd: con new Date() se lee en UTC y en México sale un día antes
+      // (un domingo se veía como sábado en el Excel). parseISO la lee como fecha local.
+      'Fecha Vacacion': format(parseISO(String(empleado.fechaVacacion).slice(0, 10)), "dd/MM/yyyy", { locale: es }),
+      'Dia': format(parseISO(String(empleado.fechaVacacion).slice(0, 10)), "EEEE", { locale: es }),
       'Tipo': empleado.tipoVacacion,
       'Origen': empleado.origenAsignacion,
       'Estado': empleado.estadoVacacion,
@@ -51,6 +54,7 @@ export const generarExcelEmpleadosEnVacaciones = (data: EmpleadosEnVacacionesRes
     { wch: 22 }, // Area
     { wch: 18 }, // Grupo
     { wch: 14 }, // Fecha vacacion
+    { wch: 12 }, // Dia
     { wch: 16 }, // Tipo
     { wch: 16 }, // Origen
     { wch: 12 }, // Estado
