@@ -177,13 +177,23 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
         try {
             const [rs, ars] = await Promise.all([
                 reglasTurnoService.getAll(),
+                // Sin fecha inicial: también hacen falta los movimientos PENDIENTES de
+                // años anteriores. Con solo los del año, los días de enero anteriores al
+                // primer arranque (p. ej. 1 al 3 de enero de 2027, arranque el lunes 4)
+                // se calculaban sin lo agendado para lo que resta de 2026 y no seguían
+                // la secuencia del 31 de diciembre, como sí lo hace el calendario del
+                // operador (TurnosHelper usa todos los pendientes).
                 reglasTurnoService.listarRotacionesProgramadas(
-                    `${anio}-01-01`,
+                    undefined,
                     `${anio}-12-31`,
                 ).catch(() => [] as RotacionProgramada[]),
             ]);
             setReglas(rs.filter(r => r.patron.length > 0));
-            setArranques(ars.filter(a => a.estado !== "Cancelada"));
+            const inicioAnio = `${anio}-01-01`;
+            setArranques(ars.filter(a =>
+                a.estado !== "Cancelada" &&
+                (a.fechaEjecucion.slice(0, 10) >= inicioAnio || a.estado === "Pendiente")
+            ));
         } catch (err: any) {
             toast.error(err?.message ?? "Error al cargar el calendario anual");
         } finally {
@@ -435,7 +445,7 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
                     </select>
                 </div>
                 <div className="text-[11px] text-continental-gray-1 pb-1">
-                    {filas.length} sub-grupo(s) · {arranques.length} arranque(s) programado(s) en {anio}
+                    {filas.length} sub-grupo(s) · {arranques.filter(a => a.fechaEjecucion.slice(0, 4) === String(anio)).length} arranque(s) programado(s) en {anio}
                 </div>
             </div>
 
