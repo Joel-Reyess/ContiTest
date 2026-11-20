@@ -100,6 +100,32 @@ function codigoParaFecha(
     return (patron[idx] ?? "").toUpperCase();
 }
 
+/** Turnos del año que manda el servidor: un código por día, por sub-grupo ("R0144_02"). */
+interface TurnosServidor {
+    anio: number;
+    turnos: Record<string, string[]>;
+}
+
+/**
+ * El turno que se pinta. Manda el del servidor (el mismo cálculo del calendario
+ * del operador y de la asignación, con la pausa de Semana Santa): calcularlo
+ * aquí por separado hizo que esta vista saliera una semana corrida después de
+ * Semana Santa y del 1 de enero al siguiente arranque (nov-2026). El cálculo
+ * local queda de respaldo por si el servidor aún no trae el dato.
+ */
+function codigoDeFila(
+    fecha: Date,
+    fila: { regla: ReglaTurno; subGrupo: number; nombre: string },
+    arranques: RotacionProgramada[],
+    servidor: TurnosServidor | null,
+): string {
+    if (servidor && servidor.anio === fecha.getFullYear()) {
+        const delServidor = servidor.turnos[fila.nombre]?.[diffDias(new Date(servidor.anio, 0, 1), fecha)];
+        if (delServidor) return delServidor.toUpperCase();
+    }
+    return codigoParaFecha(fecha, fila.regla, arranques, fila.subGrupo);
+}
+
 function esDiaArranque(
     fecha: Date,
     codigoRegla: string,
@@ -138,6 +164,7 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
     const anioDeUrl = Number(searchParams.get("anio"));
     const [reglas, setReglas] = useState<ReglaTurno[]>([]);
     const [arranques, setArranques] = useState<RotacionProgramada[]>([]);
+    const [turnosServidor, setTurnosServidor] = useState<TurnosServidor | null>(null);
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState<number>(
         anioInicial ?? (Number.isInteger(anioDeUrl) && anioDeUrl > 2000 ? anioDeUrl : new Date().getFullYear())
@@ -175,7 +202,7 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
     const cargar = async () => {
         setLoading(true);
         try {
-            const [rs, ars] = await Promise.all([
+            const [rs, ars, turnos] = await Promise.all([
                 reglasTurnoService.getAll(),
                 // Sin fecha inicial: también hacen falta los movimientos PENDIENTES de
                 // años anteriores. Con solo los del año, los días de enero anteriores al
@@ -187,7 +214,9 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
                     undefined,
                     `${anio}-12-31`,
                 ).catch(() => [] as RotacionProgramada[]),
+                reglasTurnoService.calendarioAnual(anio),
             ]);
+            setTurnosServidor(turnos ? { anio, turnos } : null);
             setReglas(rs.filter(r => r.patron.length > 0));
             const inicioAnio = `${anio}-01-01`;
             setArranques(ars.filter(a =>
@@ -268,7 +297,7 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
                 const fechaIso = toIsoDate(fecha);
                 const diaSemana = DIAS_SEMANA_CORTO[fecha.getDay()];
                 for (const fila of filas) {
-                    const codigo = codigoParaFecha(fecha, fila.regla, arranques, fila.subGrupo);
+                    const codigo = codigoDeFila(fecha, fila, arranques, turnosServidor);
                     const entry = codigo && (codigo in SAP_NOMENCLATURA)
                         ? SAP_NOMENCLATURA[codigo as SAPCodigo]
                         : null;
@@ -488,6 +517,7 @@ export const CalendarioAnualReglas = ({ anioInicial }: CalendarioAnualReglasProp
                                     mesLabel={mesLabel}
                                     filas={filas}
                                     arranques={arranques}
+                                    turnosServidor={turnosServidor}
                                     hoyIso={hoyIso}
                                     noLaborables={noLaborables}
                                 />
@@ -506,12 +536,13 @@ interface MesTablaProps {
     mesLabel: string;
     filas: FilaSubGrupo[];
     arranques: RotacionProgramada[];
+    turnosServidor: TurnosServidor | null;
     hoyIso: string;
     /** Días (yyyy-MM-dd) de paro para la unidad organizativa elegida, con el tipo de paro. */
     noLaborables: ReadonlyMap<string, TipoReglaDomingo>;
 }
 
-const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso, noLaborables }: MesTablaProps) => {
+const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, turnosServidor, hoyIso, noLaborables }: MesTablaProps) => {
     const dias = diasEnMes(anio, mes0);
     const fechas = Array.from({ length: dias }, (_, i) => new Date(anio, mes0, i + 1));
 
@@ -547,7 +578,7 @@ const MesTabla = ({ anio, mes0, mesLabel, filas, arranques, hoyIso, noLaborables
                                 {fila.nombre}
                             </td>
                             {fechas.map((f, i) => {
-                                const codigoRol = codigoParaFecha(f, fila.regla, arranques, fila.subGrupo);
+                                const codigoRol = codigoDeFila(f, fila, arranques, turnosServidor);
                                 // Domingo (o sábado) no laborable para la unidad elegida: nadie trabaja.
                                 const codigo = noLaborables.has(toIsoDate(f)) && ["1", "2", "3"].includes(codigoRol ?? "")
                                     ? "NL"

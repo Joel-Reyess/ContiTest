@@ -66,7 +66,63 @@ namespace tiempo_libre.Helpers
         /// </summary>
         private static Dictionary<string, List<(DateTime Fecha, string[]? Patron, int DiasRotacion)>> ARRANQUES { get; set; } = new();
 
+        /// <summary>
+        /// Último día de cada Semana Santa cargada en Días Inhábiles (una por año, en
+        /// orden). El rol se detiene una semana en cada Semana Santa y esa pausa se
+        /// arrastra hasta que la regla se vuelve a arrancar: antes solo se contaba la
+        /// del año que pasaba quien preguntaba, así que del 1 de enero al siguiente
+        /// arranque el rol brincaba una semana respecto al 31 de diciembre (nov-2026:
+        /// 1 al 3 de enero de 2027, arranque el lunes 4).
+        /// </summary>
+        private static List<DateOnly> SEMANAS_SANTAS { get; set; } = new();
+
         private static readonly object _lock = new();
+
+        /// <summary>
+        /// Vuelve a leer las Semanas Santas de Días Inhábiles. Se llama desde Reload
+        /// y al agregar o borrar días inhábiles. Silencioso ante fallos.
+        /// </summary>
+        public static void RecargarSemanasSantas(FreeTimeDbContext db)
+        {
+            try
+            {
+                var fechas = db.DiasInhabiles.AsNoTracking()
+                    .Where(d => d.Detalles.Contains("Semana Santa"))
+                    .Select(d => d.FechaFinal)
+                    .ToList();
+                var porAnio = fechas.GroupBy(f => f.Year).Select(g => g.Max()).OrderBy(f => f).ToList();
+                lock (_lock)
+                {
+                    SEMANAS_SANTAS = porAnio;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARN] TurnosHelper: no se pudieron leer las Semanas Santas: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Cuántas semanas de pausa lleva el rol en una fecha: una por cada Semana
+        /// Santa entre el día en que arrancó el patrón (inclusive) y la fecha. Se usan
+        /// las cargadas en Días Inhábiles y, si quien pregunta trae la de un año que
+        /// todavía no está en memoria, también esa.
+        /// </summary>
+        public static int SemanasDePausa(DateTime ancla, DateOnly fecha, DateOnly? semanaSantaFechaFinal = null)
+        {
+            var anclaDia = DateOnly.FromDateTime(ancla);
+            var conocidas = SEMANAS_SANTAS;
+            var pausas = 0;
+            var traeConocida = false;
+            foreach (var ss in conocidas)
+            {
+                if (semanaSantaFechaFinal.HasValue && ss.Year == semanaSantaFechaFinal.Value.Year) traeConocida = true;
+                if (anclaDia <= ss && ss < fecha) pausas++;
+            }
+            if (semanaSantaFechaFinal is DateOnly extra && !traeConocida && anclaDia <= extra && extra < fecha)
+                pausas++;
+            return pausas;
+        }
 
         /// <summary>
         /// Recarga REGLAS y FECHA_REFERENCIA desde la tabla ReglasTurno. Se llama al
@@ -75,6 +131,7 @@ namespace tiempo_libre.Helpers
         /// </summary>
         public static void Reload(FreeTimeDbContext db)
         {
+            RecargarSemanasSantas(db);
             try
             {
                 var filas = db.ReglasTurno.AsNoTracking().ToList();
@@ -304,16 +361,14 @@ namespace tiempo_libre.Helpers
                 return "1";
 
             // La pausa de una semana por Semana Santa solo aplica a un patrón que
-            // arrancó ANTES de Semana Santa. Si el rol se volvió a arrancar después
+            // arrancó ANTES de esa Semana Santa. Si el rol se volvió a arrancar después
             // (el arranque de abril), ese arranque ya dice dónde sigue el rol: restarle
-            // además la semana lo dejaba corrido siete días en el calendario y la
-            // asignación, mientras el rol semanal y el calendario anual lo mostraban
-            // bien (nov-2026).
-            var arrancoDespuesDeSemanaSanta = semanaSantaFechaFinal.HasValue &&
-                DateOnly.FromDateTime(ancla) > semanaSantaFechaFinal.Value;
-            var fechaAjustada = arrancoDespuesDeSemanaSanta
-                ? fechaDateTime
-                : AjustarFechaPorSemanaSanta(fechaDateTime, semanaSantaFechaFinal);
+            // además la semana lo dejaba corrido siete días (nov-2026).
+            // Y la pausa se arrastra: un patrón que venía del año anterior sigue con
+            // su semana de pausa en enero, hasta el siguiente arranque. Se cuentan
+            // todas las Semanas Santas desde que arrancó el patrón, no solo la del año
+            // que pasa quien pregunta; así todas las vistas dan el mismo turno.
+            var fechaAjustada = fechaDateTime.AddDays(-7 * SemanasDePausa(ancla, fecha, semanaSantaFechaFinal));
             var diasDiferencia = (fechaAjustada.Date - ancla.Date).Days;
 
             // Módulo real y no Math.Abs: para fechas anteriores al ancla, el valor

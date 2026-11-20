@@ -100,6 +100,8 @@ public class DiasInhabilesController : ControllerBase
 		{
 			db.DiasInhabiles.AddRange(dias);
 			db.SaveChanges();
+			// La Semana Santa mueve el rol una semana: que el cálculo de turnos la vea de inmediato.
+			tiempo_libre.Helpers.TurnosHelper.RecargarSemanasSantas(db);
 			_logger.LogInformation("Días inhábiles creados correctamente: {Ids}", dias.Select(d => d.Id).ToList());
 			var mensaje = omitidas.Count == 0
 				? "Días inhábiles creados correctamente"
@@ -200,6 +202,7 @@ public class DiasInhabilesController : ControllerBase
 				eliminados = 1;
 			}
 			db.SaveChanges();
+			tiempo_libre.Helpers.TurnosHelper.RecargarSemanasSantas(db);
 			_logger.LogInformation("Eliminación exitosa. Días eliminados: {Eliminados}", eliminados);
 			return Ok(new ApiResponse<object>(true, eliminados, $"Se eliminaron {eliminados} día(s) inhábil(es) correctamente"));
 		}

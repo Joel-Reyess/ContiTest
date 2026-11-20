@@ -112,6 +112,41 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        /// <summary>
+        /// Turno de cada sub-grupo de cada regla para todos los días de un año,
+        /// calculado con TurnosHelper: el mismo cálculo del calendario del operador
+        /// y de la asignación (arranques y recorridos agendados, pausa de Semana
+        /// Santa). El "Calendario anual de reglas" lo pinta tal cual en vez de
+        /// calcularlo por su cuenta: las dos vistas ya no se pueden contradecir.
+        /// </summary>
+        [HttpGet("calendario-anual")]
+        [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,IngenieroIndustrial,Jefe De Area,JefeArea,Delegado Sindical,DelegadoSindical,Gerente BT,GerenteBT,RH")]
+        public IActionResult CalendarioAnual([FromQuery] int anio)
+        {
+            if (anio < 2020 || anio > 2100)
+                return BadRequest(new ApiResponse<object>(false, null, "Año no válido."));
+
+            var turnos = new Dictionary<string, string[]>();
+            var inicio = new DateOnly(anio, 1, 1);
+            var dias = DateTime.IsLeapYear(anio) ? 366 : 365;
+            foreach (var (codigo, patronBase) in tiempo_libre.Helpers.TurnosHelper.REGLAS.ToList())
+            {
+                // Los sub-grupos salen del patrón que va a regir al final del año (un
+                // arranque agendado puede traer más o menos semanas que el actual).
+                var alFinal = tiempo_libre.Helpers.TurnosHelper.ObtenerPatronVigente(codigo, new DateTime(anio, 12, 31)).Patron;
+                var subGrupos = Math.Max(1, Math.Max(patronBase.Length, alFinal.Length) / 7);
+                for (var g = 1; g <= subGrupos; g++)
+                {
+                    var rol = g == 1 ? codigo : $"{codigo}_{g:00}";
+                    var fila = new string[dias];
+                    for (var i = 0; i < dias; i++)
+                        fila[i] = tiempo_libre.Helpers.TurnosHelper.ObtenerTurnoParaFecha(rol, inicio.AddDays(i));
+                    turnos[rol] = fila;
+                }
+            }
+            return Ok(new ApiResponse<object>(true, new { anio, turnos }, null));
+        }
+
         /// <summary>Obtener una regla por código.</summary>
         [HttpGet("{codigo}")]
         [Authorize(Roles = "Super Usuario,SuperUsuario,Ingeniero Industrial,IngenieroIndustrial,Jefe De Area,JefeArea,Delegado Sindical,DelegadoSindical,Gerente BT,GerenteBT,RH")]
