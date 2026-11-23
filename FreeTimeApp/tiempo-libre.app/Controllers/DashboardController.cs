@@ -504,10 +504,15 @@ namespace tiempo_libre.Controllers
             if (areasIds != null && areasIds.Count == 0)
                 return Ok(new ApiResponse<object>(true, new List<object>()));
 
+            // Grupos y excepciones de manning se cargan una vez para los 12 meses.
+            // El rol sí se calcula mes por mes, con el mismo rango que la vista
+            // por semana, para que los dos den los mismos números.
+            var datos = await CargarGruposTiempoExtraAsync(anio, null, areasIds);
+
             var resultado = new List<object>();
             for (int mes = 1; mes <= 12; mes++)
             {
-                var resumen = await CalcularResumenTiempoExtraMes(anio, mes, areasIds);
+                var resumen = datos == null ? new List<ResumenSemanaDto>() : await ResumenTiempoExtraMesAsync(anio, mes, datos);
                 var totalExtra = resumen.Sum(r => r.HorasExtra);
                 var totalNormal = resumen.Sum(r => r.HorasNormales);
                 resultado.Add(new
@@ -745,30 +750,60 @@ namespace tiempo_libre.Controllers
         private async Task<List<ResumenSemanaDto>> CalcularResumenTiempoExtraMes(
             int anio, int mes, List<int>? areasIds)
         {
-            var semanas = CalcularSemanasLunesDomingo(anio, mes);
-            var rangoInicio = semanas.First().Inicio;
-            var rangoFin = semanas.Last().Fin;
+            var datos = await CargarGruposTiempoExtraAsync(anio, mes, areasIds);
+            return datos == null ? new List<ResumenSemanaDto>() : await ResumenTiempoExtraMesAsync(anio, mes, datos);
+        }
 
+        /// <summary>
+        /// Grupos y excepciones de manning para el cálculo de tiempo extra. mes = null
+        /// trae las excepciones de todo el año (resumen anual). null si no hay grupos.
+        /// </summary>
+        private sealed record DatosTiempoExtra(List<Grupo> Grupos, List<ExcepcionesManning> Excepciones);
+
+        private async Task<DatosTiempoExtra?> CargarGruposTiempoExtraAsync(int anio, int? mes, List<int>? areasIds)
+        {
             var gruposQuery = _db.Grupos.Include(g => g.Area).AsQueryable();
             if (areasIds != null)
                 gruposQuery = gruposQuery.Where(g => areasIds.Contains(g.AreaId));
 
             var grupos = await gruposQuery.ToListAsync();
-            if (!grupos.Any()) return new List<ResumenSemanaDto>();
+            if (!grupos.Any()) return null;
 
-            var excepcionesManning = await _db.ExcepcionesManning
-                .Where(e => grupos.Select(g => g.AreaId).Contains(e.AreaId) &&
-                            e.Anio == anio && e.Mes == mes && e.Activa)
-                .ToListAsync();
+            var areasDeGrupos = grupos.Select(g => g.AreaId).Distinct().ToList();
+            var excepcionesQuery = _db.ExcepcionesManning
+                .Where(e => areasDeGrupos.Contains(e.AreaId) && e.Anio == anio && e.Activa);
+            if (mes.HasValue)
+                excepcionesQuery = excepcionesQuery.Where(e => e.Mes == mes.Value);
+            var excepciones = await excepcionesQuery.ToListAsync();
+
+            return new DatosTiempoExtra(grupos, excepciones);
+        }
+
+        private async Task<List<ResumenSemanaDto>> ResumenTiempoExtraMesAsync(int anio, int mes, DatosTiempoExtra datos)
+        {
+            var semanas = CalcularSemanasLunesDomingo(anio, mes);
+            var rangoInicio = semanas.First().Inicio;
+            var rangoFin = semanas.Last().Fin;
+            var grupos = datos.Grupos;
+            var excepcionesManning = datos.Excepciones.Where(e => e.Mes == mes).ToList();
+            var sinCodigos = new List<string>();
 
             // Calcular el código de turno FINAL por empleado y día usando el
             // mismo servicio que el rol semanal (WeeklyRoles). Una sola llamada
-            // por grupo cubre todo el rango del mes.
-            var codigosPorGrupo = new Dictionary<int, Dictionary<(int, DateOnly), string>>();
+            // por grupo cubre todo el rango del mes. Se agrupan por día para no
+            // recorrer el diccionario completo en cada día.
+            var codigosPorGrupo = new Dictionary<int, Dictionary<DateOnly, List<string>>>();
             foreach (var grupo in grupos)
             {
-                codigosPorGrupo[grupo.GrupoId] =
-                    await _rolSemanal.CalcularCodigosTurnoGrupoAsync(grupo.GrupoId, rangoInicio, rangoFin);
+                var crudo = await _rolSemanal.CalcularCodigosTurnoGrupoAsync(grupo.GrupoId, rangoInicio, rangoFin);
+                var porDia = new Dictionary<DateOnly, List<string>>();
+                foreach (var kv in crudo)
+                {
+                    if (!porDia.TryGetValue(kv.Key.Item2, out var lista))
+                        porDia[kv.Key.Item2] = lista = new List<string>();
+                    lista.Add(kv.Value);
+                }
+                codigosPorGrupo[grupo.GrupoId] = porDia;
             }
 
             var resultado = new List<ResumenSemanaDto>();
@@ -800,10 +835,7 @@ namespace tiempo_libre.Controllers
                         //   descanso  = código "D"
                         //   personalTiempoNormal = total − ausentes − descanso
                         //   díaDescanso = nadie con turno de trabajo {1,2,3,F}
-                        var codigosDia = codigos
-                            .Where(kv => kv.Key.Item2 == dia)
-                            .Select(kv => kv.Value)
-                            .ToList();
+                        var codigosDia = codigos.TryGetValue(dia, out var delDia) ? delDia : sinCodigos;
 
                         if (codigosDia.Count == 0) continue;
 
