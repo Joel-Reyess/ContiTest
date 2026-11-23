@@ -73,6 +73,8 @@ export interface LoginResponse {
     expiration: string;
     user?: Record<string, unknown>;
     ultimoInicioSesion?: string | null;
+    /** Primera vez o contraseña reseteada: tiene que poner una nueva antes de entrar. */
+    debeCambiarPassword?: boolean;
 }
 
 export interface RefreshTokenRequest {
@@ -1318,6 +1320,10 @@ export interface DiaProgramacionAnual {
     porcentaje: number;
     excedenteSobrePermitido: number;
     gruposEnRebase: string[];
+    /** Grupos en paro ese día (no cuentan en el % ni pueden estar en rebase). */
+    gruposEnParo?: number;
+    /** Días por la empresa puestos en esos paros (ya incluidos en diasEmpresa). */
+    diasEmpresaEnParo?: number;
 }
 
 export interface MesProgramacionAnual {

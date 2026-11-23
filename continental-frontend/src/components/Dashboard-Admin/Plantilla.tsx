@@ -13,7 +13,8 @@ import { useEmpleadosSindicalizados } from '@/hooks/useEmpleadosSindicalizados';
 import { useAreas } from '@/hooks/useAreas';
 import { useLeaderCache } from '@/hooks/useLeaderCache';
 import Fuse from 'fuse.js';
-import { Loader2 } from 'lucide-react';
+import { Loader2, KeyRound } from 'lucide-react';
+import { toast } from 'sonner';
 import { empleadosService } from '@/services/empleadosService';
 import type { UsuarioInfoDto } from '@/interfaces/Api.interface';
 
@@ -161,6 +162,32 @@ export const Plantilla = () => {
         }
     }, [deleteModal.row, deletePassword, refetch]);
 
+    // Reseteo general de contraseñas de operadores (solo superusuario: esta
+    // pantalla es la de /admin).
+    const [resetModal, setResetModal] = useState(false);
+    const [resetPassword, setResetPassword] = useState('');
+    const [resetConfirmacion, setResetConfirmacion] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+    const [resetError, setResetError] = useState('');
+    const cerrarReset = () => { setResetModal(false); setResetPassword(''); setResetConfirmacion(''); setResetError(''); };
+    const handleResetConfirm = useCallback(async () => {
+        setResetLoading(true);
+        setResetError('');
+        try {
+            const r = await empleadosService.resetearPasswordsSindicalizados(resetPassword);
+            toast.success(`Se resetearon ${r.reseteadas.toLocaleString('es-MX')} contraseñas de operadores`, {
+                description: 'Ahora su contraseña es su número de nómina; al entrar tendrán que poner una nueva.' +
+                    (r.omitidas > 0 ? ` No se tocaron ${r.omitidas} cuentas con rol de administración.` : ''),
+                duration: 10000,
+            });
+            cerrarReset();
+        } catch (e: any) {
+            setResetError(e?.details?.errorMsg ?? e?.response?.data?.errorMsg ?? e?.message ?? 'No se pudieron resetear');
+        } finally {
+            setResetLoading(false);
+        }
+    }, [resetPassword]);
+
   const filterConfigs: FilterConfig[] = [
     { type: 'search', key: 'search', placeholder: 'Busca por nombre, nómina, área o grupo', value: searchTerm, onChange: handleSearchChange },
     { type: 'select', key: 'area', label: 'Área', placeholder: 'Seleccionar área', value: selectedArea,
@@ -211,7 +238,14 @@ export const Plantilla = () => {
   return (
     <div className="p-6 bg-white min-h-screen">
       <div className="max-w-7xl mx-auto w-full space-y-6">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            className="h-[45px] rounded-lg text-red-700 border-red-300 hover:bg-red-50"
+            onClick={() => setResetModal(true)}
+          >
+            <KeyRound className="w-4 h-4 mr-2" /> Resetear contraseñas de operadores
+          </Button>
           <Button variant="continental" className="h-[45px] w-[150px] rounded-lg" onClick={() => refetch()}>
             Actualizar datos
           </Button>
@@ -242,6 +276,57 @@ export const Plantilla = () => {
           )}
         </ContentContainer>
           </div>
+          {resetModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl">
+                      <h2 className="text-lg font-bold mb-2">Resetear contraseñas de todos los operadores</h2>
+                      <div className="text-sm text-gray-700 space-y-2 mb-4">
+                          <p>
+                              A <strong>todos los empleados sindicalizados</strong> su contraseña vuelve a ser su
+                              <strong> número de nómina</strong>. La próxima vez que entren, el sistema les pedirá
+                              una contraseña nueva antes de dejarlos pasar.
+                          </p>
+                          <p>
+                              No cambia las contraseñas de superusuarios, jefes de área, líderes de grupo,
+                              ingeniería industrial, gerentes ni RH (aunque también tengan nómina).
+                          </p>
+                          <p className="text-red-700">
+                              No se puede deshacer: las contraseñas que tienen ahora se pierden.
+                          </p>
+                      </div>
+                      <label className="text-xs text-gray-600">Escribe RESETEAR para confirmar</label>
+                      <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2 mb-3 text-sm"
+                          value={resetConfirmacion}
+                          onChange={e => setResetConfirmacion(e.target.value)}
+                      />
+                      <label className="text-xs text-gray-600">Tu contraseña</label>
+                      <input
+                          type="password"
+                          placeholder="Tu contraseña"
+                          className="w-full border rounded px-3 py-2 mb-3 text-sm"
+                          value={resetPassword}
+                          onChange={e => setResetPassword(e.target.value)}
+                      />
+                      {resetError && <p className="text-red-600 text-sm mb-3">{resetError}</p>}
+                      <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={cerrarReset} disabled={resetLoading}>
+                              Cancelar
+                          </Button>
+                          <Button
+                              variant="continental"
+                              size="sm"
+                              className="bg-red-600 hover:bg-red-700 text-white"
+                              onClick={handleResetConfirm}
+                              disabled={resetLoading || !resetPassword || resetConfirmacion.trim().toUpperCase() !== 'RESETEAR'}
+                          >
+                              {resetLoading ? 'Reseteando...' : 'Resetear contraseñas'}
+                          </Button>
+                      </div>
+                  </div>
+              </div>
+          )}
           {deleteModal.open && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                   <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">

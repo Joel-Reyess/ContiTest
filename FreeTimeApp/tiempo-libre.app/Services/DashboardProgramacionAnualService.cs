@@ -143,6 +143,12 @@ namespace tiempo_libre.Services
                 // periodo o el del año (el mismo que usa el candado).
                 var limites = await _limites.PrecargarAsync(grupoIds, inicio, fin);
 
+                // Sábados y domingos de paro (Reglas de trabajo). Ese día el grupo no
+                // trabaja: los días por la empresa que caen ahí no llevan % y no son
+                // rebase. Antes salían en rojo con 40-50% (todo el que trabajaba el
+                // domingo por rol tiene ahí su día por la empresa).
+                var noLaborables = await new CalendarioLaboralService(_db).PrecargarAsync(grupoIds);
+
                 // ── Cruce en memoria ────────────────────────────────────────
                 // (grupo, fecha) -> empleados ausentes distintos. Un empleado que
                 // tiene vacación y permiso el mismo día cuenta UNA vez, igual que
@@ -228,6 +234,9 @@ namespace tiempo_libre.Services
                     var totalDiasCapturados = 0;
                     var gruposEnRebase = new List<string>();
                     var excedenteMaximo = 0m;
+                    var gruposEnParo = 0;
+                    var diasEmpresaEnParo = 0;
+                    var plantillaQueTrabaja = 0;
 
                     foreach (var grupo in grupos)
                     {
@@ -235,9 +244,18 @@ namespace tiempo_libre.Services
                         var ausentesGrupo = ausentes.TryGetValue(clave, out var set) ? set.Count : 0;
                         var plantillaGrupo = plantillaPorGrupo.GetValueOrDefault(grupo.GrupoId);
 
-                        totalAusentes += ausentesGrupo;
                         totalDiasEmpresa += diasEmpresa.GetValueOrDefault(clave);
                         totalDiasCapturados += diasCapturados.GetValueOrDefault(clave);
+
+                        if (noLaborables.EsNoLaborable(grupo.GrupoId, fecha))
+                        {
+                            gruposEnParo++;
+                            diasEmpresaEnParo += diasEmpresa.GetValueOrDefault(clave);
+                            continue;
+                        }
+
+                        totalAusentes += ausentesGrupo;
+                        plantillaQueTrabaja += plantillaGrupo;
 
                         if (plantillaGrupo == 0 || ausentesGrupo == 0) continue;
 
@@ -260,12 +278,16 @@ namespace tiempo_libre.Services
                         DiasEmpresa = totalDiasEmpresa,
                         DiasCapturados = totalDiasCapturados,
                         Ausentes = totalAusentes,
-                        Plantilla = plantillaTotal,
-                        Porcentaje = plantillaTotal > 0
-                            ? Math.Round((decimal)totalAusentes / plantillaTotal * 100m, 2)
+                        // Solo la gente de los grupos que ese día trabajan (sin los que
+                        // están en paro).
+                        Plantilla = plantillaQueTrabaja,
+                        Porcentaje = plantillaQueTrabaja > 0
+                            ? Math.Round((decimal)totalAusentes / plantillaQueTrabaja * 100m, 2)
                             : 0m,
                         ExcedenteSobrePermitido = Math.Round(Math.Max(0m, excedenteMaximo), 2),
-                        GruposEnRebase = gruposEnRebase
+                        GruposEnRebase = gruposEnRebase,
+                        GruposEnParo = gruposEnParo,
+                        DiasEmpresaEnParo = diasEmpresaEnParo
                     });
                 }
 

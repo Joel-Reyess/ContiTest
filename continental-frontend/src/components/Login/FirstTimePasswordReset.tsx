@@ -36,6 +36,9 @@ export const FirstTimePasswordReset = ({
     if (password.length < 8) {
       return 'La contraseña debe tener al menos 8 caracteres';
     }
+    if (password.trim() === userIdentifier.trim()) {
+      return 'La contraseña nueva no puede ser tu número de nómina ni tu usuario';
+    }
     return null;
   };
 
@@ -72,7 +75,10 @@ export const FirstTimePasswordReset = ({
       setFormData({ password: '', confirmPassword: '' });
     } catch (err: unknown) {
       logger.error('First time password reset failed', err);
-      const errorMessage = err instanceof Error ? err.message : 'No se pudo restablecer la contraseña. Intenta nuevamente.';
+      // httpClient lanza { message, status }, no un Error: sin esto el motivo del
+      // servidor ("no puede ser tu número de nómina"...) no se veía.
+      const errorMessage =
+        (err as { message?: string } | null)?.message || 'No se pudo restablecer la contraseña. Intenta nuevamente.';
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -104,7 +110,7 @@ export const FirstTimePasswordReset = ({
               Establecer Nueva Contraseña
             </h2>
             <p className="text-sm text-continental-gray-2">
-              Es tu primer inicio de sesión. Por seguridad, debes establecer una nueva contraseña.
+              Es tu primer inicio de sesión o tu contraseña se reseteó. Por seguridad, debes establecer una nueva contraseña antes de entrar.
             </p>
             <p className="text-xs text-continental-gray-2 bg-blue-50 p-2 rounded-lg">
               <strong>{isEmployee ? 'Nómina' : 'Usuario'}:</strong> {userIdentifier}
@@ -170,6 +176,7 @@ export const FirstTimePasswordReset = ({
             <p className="font-medium mb-1">La contraseña debe contener:</p>
             <ul className="list-disc list-inside space-y-1">
               <li>Al menos 8 caracteres</li>
+              <li>Distinta de tu número de nómina</li>
             </ul>
           </div>
 
