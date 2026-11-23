@@ -108,16 +108,6 @@ namespace tiempo_libre.DTOs
 
         /// <summary>Grupos que ese día quedaron por encima de su porcentaje.</summary>
         public List<string> GruposEnRebase { get; set; } = new();
-
-        /// <summary>
-        /// Grupos que ese día están en paro (paro sin asignaciones o paro con días por
-        /// la empresa). No cuentan en el % del día ni pueden estar en rebase: la
-        /// planta no trabaja y los días por la empresa ahí no llevan %.
-        /// </summary>
-        public int GruposEnParo { get; set; }
-
-        /// <summary>Días por la empresa que caen en esos grupos en paro (ya incluidos en DiasEmpresa).</summary>
-        public int DiasEmpresaEnParo { get; set; }
     }
 
     public class GrupoProgramacionAnualDto

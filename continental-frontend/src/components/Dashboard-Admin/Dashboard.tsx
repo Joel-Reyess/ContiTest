@@ -174,7 +174,9 @@ export const Dashboard: React.FC = () => {
 
     const hoy = new Date();
     const [anioSel,    setAnioSel]    = useState(hoy.getFullYear());
-    const [mesSel,     setMesSel]     = useState(hoy.getMonth() + 1);
+    // null = sin mes elegido. Al cambiar de año el mes se limpia: antes se quedaba
+    // el mes en curso (nov-2027) y las semanas salían de un mes que nadie eligió.
+    const [mesSel,     setMesSel]     = useState<number | null>(hoy.getMonth() + 1);
     const [semanaSel,  setSemanaSel]  = useState<number | 'all'>('all');
     const [diaSel,     setDiaSel]     = useState<string>('');
 
@@ -225,6 +227,8 @@ export const Dashboard: React.FC = () => {
     const [tiempoExtraAnualData, setTiempoExtraAnualData] = useState<any[]>([]);
 
     const [loadingTEAnual, setLoadingTEAnual] = useState(false);
+    const [errorTEAnual,   setErrorTEAnual]   = useState(false);
+    const [loadingAnual,   setLoadingAnual]   = useState(true);
     const [loadingHoy,     setLoadingHoy]     = useState(true);
     const [loadingHist,    setLoadingHist]    = useState(true);
     const [loadingTE,      setLoadingTE]      = useState(false);
@@ -252,18 +256,6 @@ export const Dashboard: React.FC = () => {
         }
     }, [isAdmin, areasUsuario, areasSel.length]);
 
-    const fechaEfectiva = useMemo(() => {
-        if (diaSel) return diaSel;
-        if (semanaSel !== 'all') {
-            const primerDia = (Number(semanaSel) - 1) * 7 + 1;
-            const d = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
-            return fechaLocalISO(d);
-        }
-        const esHoy = anioSel === hoy.getFullYear() && mesSel === hoy.getMonth() + 1;
-        if (esHoy) return fechaLocalISO(hoy);
-        return `${anioSel}-${String(mesSel).padStart(2, '0')}-01`;
-    }, [diaSel, semanaSel, anioSel, mesSel]);
-
     // Cuando hay un subset explícito, mandamos uno o varios `areaIds`. Si el
     // array está vacío, no mandamos nada — el backend ya filtra por las áreas
     // permitidas del usuario (admin → todas; jefe → sus áreas).
@@ -276,6 +268,14 @@ export const Dashboard: React.FC = () => {
     // Cuando es semana o mes, agregamos personas únicas (un empleado con
     // ausencia en 1+ días del período se cuenta una sola vez).
     useEffect(() => {
+        // Sin mes elegido no hay periodo que consultar (el año completo, grupo
+        // por grupo y día por día, es demasiado para esta tabla).
+        if (mesSel == null) {
+            setGrupos([]);
+            setLoadingHoy(false);
+            return;
+        }
+        let vigente = true;
         setLoadingHoy(true);
 
         let fechaInicio: Date;
@@ -318,6 +318,7 @@ export const Dashboard: React.FC = () => {
             areaId: id,
         })))
             .then(arrays => {
+                if (!vigente) return;
                 const data = arrays.flat();
                 if (view === 'daily') {
                     // Mismo formato local con el que se pidió el día; con
@@ -369,44 +370,89 @@ export const Dashboard: React.FC = () => {
                 setGrupos(agregado);
             })
             .catch(console.error)
-            .finally(() => setLoadingHoy(false));
+            .finally(() => { if (vigente) setLoadingHoy(false); });
+        return () => { vigente = false; };
     }, [diaSel, semanaSel, anioSel, mesSel, areasSel, isAdmin, areasUsuario]);
 
-    // Datos históricos
+    // Ausencias por mes: todo el año, no depende del mes elegido.
     useEffect(() => {
+        let vigente = true;
+        setLoadingAnual(true);
+        httpClient.get<any>(`/api/dashboard/ausencias-anuales?anio=${anioSel}${buildAreaParam()}`)
+            .then(anual => { if (vigente) setAnualData(anual?.data ?? anual ?? []); })
+            .catch(console.error)
+            .finally(() => { if (vigente) setLoadingAnual(false); });
+        return () => { vigente = false; };
+    }, [anioSel, buildAreaParam]);
+
+    // Semanas y motivos del mes elegido. Sin mes: no hay semanas y los motivos
+    // son de todo el año.
+    useEffect(() => {
+        let vigente = true;
         setLoadingHist(true);
         const areaParam = buildAreaParam();
+        const dd = (n: number) => String(n).padStart(2, '0');
+        const desde = mesSel != null ? `${anioSel}-${dd(mesSel)}-01` : `${anioSel}-01-01`;
+        const hasta = mesSel != null
+            ? `${anioSel}-${dd(mesSel)}-${dd(new Date(anioSel, mesSel, 0).getDate())}`
+            : `${anioSel}-12-31`;
         Promise.all([
-            httpClient.get<any>(`/api/dashboard/ausencias-anuales?anio=${anioSel}${areaParam}`),
-            httpClient.get<any>(`/api/dashboard/ausencias-semanales?anio=${anioSel}&mes=${mesSel}${areaParam}`),
-            httpClient.get<any>(`/api/dashboard/ausencias-motivos?fecha=${anioSel}-${String(mesSel).padStart(2,'0')}-01&fechaFin=${anioSel}-${String(mesSel).padStart(2,'0')}-${String(new Date(anioSel, mesSel, 0).getDate()).padStart(2,'0')}${areaParam}`),
+            mesSel != null
+                ? httpClient.get<any>(`/api/dashboard/ausencias-semanales?anio=${anioSel}&mes=${mesSel}${areaParam}`)
+                : Promise.resolve([] as any),
+            httpClient.get<any>(`/api/dashboard/ausencias-motivos?fecha=${desde}&fechaFin=${hasta}${areaParam}`),
         ])
-            .then(([anual, semanal, motivos]) => {
-                setAnualData(anual?.data   ?? anual   ?? []);
+            .then(([semanal, motivos]) => {
+                if (!vigente) return;
                 setSemanalData(semanal?.data ?? semanal ?? []);
                 setMotivosData(motivos?.data ?? motivos ?? []);
             })
             .catch(console.error)
-            .finally(() => setLoadingHist(false));
-    }, [anioSel, mesSel, fechaEfectiva, buildAreaParam]);
+            .finally(() => { if (vigente) setLoadingHist(false); });
+        return () => { vigente = false; };
+    }, [anioSel, mesSel, buildAreaParam]);
 
-    // Datos tiempo extra
+    // % de tiempo extra por mes: todo el año, no depende del mes elegido. Es
+    // pesado (roles de cada grupo los 12 meses); con el límite normal de 10 s
+    // la petición se cortaba y la gráfica salía vacía hasta que otro cambio
+    // (elegir un mes) la volvía a pedir.
     useEffect(() => {
         if (vistaMode !== 'tiempoExtra') return;
-        const areaParam = buildAreaParam();
-
-        setLoadingTE(true);
-        httpClient.get<any>(`/api/dashboard/resumen-tiempo-extra-semanal-v2?anio=${anioSel}&mes=${mesSel}${areaParam}`)
-            .then(data => setTiempoExtraData(data?.data ?? data ?? []))
-            .catch(console.error)
-            .finally(() => setLoadingTE(false));
-
+        let vigente = true;
         setLoadingTEAnual(true);
-        httpClient.get<any>(`/api/dashboard/resumen-tiempo-extra-anual?anio=${anioSel}${areaParam}`)
-            .then(data => setTiempoExtraAnualData(data?.data ?? data ?? []))
+        setErrorTEAnual(false);
+        httpClient.get<any>(`/api/dashboard/resumen-tiempo-extra-anual?anio=${anioSel}${buildAreaParam()}`, undefined, { timeout: 300000 })
+            .then(data => { if (vigente) setTiempoExtraAnualData(data?.data ?? data ?? []); })
+            .catch(err => {
+                console.error(err);
+                if (vigente) { setTiempoExtraAnualData([]); setErrorTEAnual(true); }
+            })
+            .finally(() => { if (vigente) setLoadingTEAnual(false); });
+        return () => { vigente = false; };
+    }, [vistaMode, anioSel, buildAreaParam]);
+
+    // Tiempo extra por semana del mes elegido.
+    useEffect(() => {
+        if (vistaMode !== 'tiempoExtra') return;
+        if (mesSel == null) { setTiempoExtraData([]); setLoadingTE(false); return; }
+        let vigente = true;
+        setLoadingTE(true);
+        httpClient.get<any>(`/api/dashboard/resumen-tiempo-extra-semanal-v2?anio=${anioSel}&mes=${mesSel}${buildAreaParam()}`, undefined, { timeout: 120000 })
+            .then(data => { if (vigente) setTiempoExtraData(data?.data ?? data ?? []); })
             .catch(console.error)
-            .finally(() => setLoadingTEAnual(false));
+            .finally(() => { if (vigente) setLoadingTE(false); });
+        return () => { vigente = false; };
     }, [vistaMode, anioSel, mesSel, buildAreaParam]);
+
+    // Clic en un mes de las gráficas anuales: lo elige en el filtro, y las
+    // gráficas por semana de abajo pasan a ese mes.
+    const elegirMesDeGrafica = useCallback((label: unknown) => {
+        const i = MESES.indexOf(String(label ?? ''));
+        if (i < 0) return;
+        setMesSel(i + 1);
+        setSemanaSel('all');
+        setDiaSel('');
+    }, []);
 
     // ── Chart: barras apiladas anuales ────────────────────────────────────
     // _turnosDisponibles = días_hábiles × 3 turnos × manning (viene del backend)
@@ -428,7 +474,7 @@ export const Dashboard: React.FC = () => {
             : semanalData;
         return rows.map(r => {
             const primerDia  = (r.semana - 1) * 7 + 1;
-            const fecha      = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
+            const fecha      = new Date(anioSel, (mesSel ?? 1) - 1, Math.min(primerDia, 28));
             const startOfYear = new Date(fecha.getFullYear(), 0, 1);
             const weekNum    = Math.ceil(((fecha.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
             return {
@@ -589,6 +635,7 @@ export const Dashboard: React.FC = () => {
     ];
 
     const diasDelMes = useMemo(() => {
+        if (mesSel == null) return [];
         const total = new Date(anioSel, mesSel, 0).getDate();
         return Array.from({ length: total }, (_, i) => {
             const d = i + 1;
@@ -598,6 +645,7 @@ export const Dashboard: React.FC = () => {
 
     const labelPeriodo = useMemo(() => {
         if (diaSel) return diaSel;
+        if (mesSel == null) return `Todo ${anioSel}`;
         if (semanaSel !== 'all') return `Sem ${semanaSel} — ${MESES[mesSel - 1]} ${anioSel}`;
         return `${MESES[mesSel - 1]} ${anioSel}`;
     }, [diaSel, semanaSel, mesSel, anioSel]);
@@ -689,7 +737,7 @@ export const Dashboard: React.FC = () => {
                         <label className="text-xs font-medium text-gray-500">Año</label>
                         <select
                             value={anioSel}
-                            onChange={e => { setAnioSel(Number(e.target.value)); setDiaSel(''); }}
+                            onChange={e => { setAnioSel(Number(e.target.value)); setMesSel(null); setSemanaSel('all'); setDiaSel(''); }}
                             className="border border-gray-300 rounded px-2 py-1.5 text-sm"
                         >
                             {/* También el año siguiente (el que se está programando): ahí se ve cómo
@@ -702,10 +750,11 @@ export const Dashboard: React.FC = () => {
                     <div className="flex flex-col gap-1">
                         <label className="text-xs font-medium text-gray-500">Mes</label>
                         <select
-                            value={mesSel}
-                            onChange={e => { setMesSel(Number(e.target.value)); setSemanaSel('all'); setDiaSel(''); }}
+                            value={mesSel ?? ''}
+                            onChange={e => { setMesSel(e.target.value === '' ? null : Number(e.target.value)); setSemanaSel('all'); setDiaSel(''); }}
                             className="border border-gray-300 rounded px-2 py-1.5 text-sm"
                         >
+                            <option value="">— Elige mes —</option>
                             {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                         </select>
                     </div>
@@ -716,8 +765,9 @@ export const Dashboard: React.FC = () => {
                                 <label className="text-xs font-medium text-gray-500">Semana</label>
                                 <select
                                     value={semanaSel}
+                                    disabled={mesSel == null}
                                     onChange={e => { setSemanaSel(e.target.value === 'all' ? 'all' : Number(e.target.value)); setDiaSel(''); }}
-                                    className="border border-gray-300 rounded px-2 py-1.5 text-sm"
+                                    className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
                                 >
                                     <option value="all">Todas</option>
                                     {(semanalData.length > 0
@@ -730,8 +780,9 @@ export const Dashboard: React.FC = () => {
                                 <label className="text-xs font-medium text-gray-500">Día específico</label>
                                 <select
                                     value={diaSel}
+                                    disabled={mesSel == null}
                                     onChange={e => setDiaSel(e.target.value)}
-                                    className="border border-gray-300 rounded px-2 py-1.5 text-sm"
+                                    className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
                                 >
                                     <option value="">— Sin filtro —</option>
                                     {diasDelMes.map(d => (
@@ -777,12 +828,20 @@ export const Dashboard: React.FC = () => {
                             Ausencias por mes — {anioSel}
                             {areaSelId !== 'all' && <span className="ml-2 text-sm font-normal text-gray-400">· {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                         </h2>
-                        <p className="text-xs text-gray-400 mb-4">Turnos ausentes vs turnos disponibles (días hábiles × 3 turnos × manning)</p>
-                        {loadingHist ? (
+                        <p className="text-xs text-gray-400 mb-4">
+                            Turnos ausentes vs turnos disponibles (días hábiles × 3 turnos × manning).
+                            Da clic en un mes para ver sus semanas abajo.
+                        </p>
+                        {loadingAnual ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
                         ) : (
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={anualForChart} margin={{ top:20, right:16, left:0, bottom:0 }}>
+                                <BarChart
+                                    data={anualForChart}
+                                    margin={{ top:20, right:16, left:0, bottom:0 }}
+                                    onClick={st => elegirMesDeGrafica(st?.activeLabel)}
+                                    style={{ cursor: 'pointer' }}
+                                >
                                     <CartesianGrid strokeDasharray="3 3" />
                                     <XAxis dataKey="name" tick={{ fontSize:12 }} />
                                     <YAxis allowDecimals={false} tick={{ fontSize:12 }} />
@@ -811,6 +870,9 @@ export const Dashboard: React.FC = () => {
                         {/* Personal disponible vs ausente */}
                         <div className="bg-white border border-gray-200 rounded-lg p-6">
                             <h2 className="text-base font-semibold text-gray-700 mb-1">Personal — {labelPeriodo}</h2>
+                            {mesSel == null ? (
+                                <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm text-center px-4">Elige un mes para ver el personal disponible y ausente.</div>
+                            ) : (<>
                             <p className="text-xs text-gray-400 mb-2">{totalPersonal} empleados en total</p>
                             {!loadingHoy && (
                                 <div className="flex gap-4 mb-4">
@@ -848,6 +910,7 @@ export const Dashboard: React.FC = () => {
                                     </PieChart>
                                 </ResponsiveContainer>
                             )}
+                            </>)}
                         </div>
 
                         {/* Motivos de ausencia — pie CON % en leyenda */}
@@ -902,11 +965,13 @@ export const Dashboard: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white border border-gray-200 rounded-lg p-6">
                             <h2 className="text-base font-semibold text-gray-700 mb-4">
-                                Ausencias por semana — {MESES[mesSel-1]} {anioSel}
+                                Ausencias por semana — {mesSel != null ? `${MESES[mesSel-1]} ${anioSel}` : anioSel}
                                 {semanaSel !== 'all' && <span className="text-gray-400 text-sm ml-1">(Sem {semanaSel})</span>}
                                 {areaSelId !== 'all' && <span className="ml-2 text-sm font-normal text-gray-400">· {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                             </h2>
-                            {loadingHist ? (
+                            {mesSel == null ? (
+                                <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm text-center px-4">Elige un mes arriba, o da clic en un mes de la gráfica de arriba, para ver sus semanas.</div>
+                            ) : loadingHist ? (
                                 <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
                             ) : semanalForChart.length === 0 ? (
                                 <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Sin datos</div>
@@ -946,7 +1011,9 @@ export const Dashboard: React.FC = () => {
                                     </select>
                                 </div>
                             </div>
-                            {loadingHoy ? (
+                            {mesSel == null ? (
+                                <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm text-center px-4">Elige un mes para ver el detalle por grupo.</div>
+                            ) : loadingHoy ? (
                                 <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
                             ) : (
                                 <div className="overflow-auto max-h-[380px]">
@@ -1064,14 +1131,22 @@ export const Dashboard: React.FC = () => {
                         <p className="text-xs text-gray-400 mb-4">
                             % de horas extra respecto a horas normales (sumatoria mensual por rol)
                             {areaSelId !== 'all' && <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
+                            . Da clic en un mes para ver sus semanas abajo.
                         </p>
                         {loadingTEAnual ? (
-                            <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
+                            <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm text-center px-4">Calculando el año (puede tardar un poco)...</div>
+                        ) : errorTEAnual ? (
+                            <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm text-center px-4">No se pudo calcular. Vuelve a elegir el año para intentar de nuevo.</div>
                         ) : tiempoExtraAnualForChart.length === 0 ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin datos</div>
                         ) : (
                                     <ResponsiveContainer width="100%" height={320}>
-                                        <BarChart data={tiempoExtraAnualForChart} margin={{ top: 36, right: 16, left: 0, bottom: 0 }}>
+                                        <BarChart
+                                            data={tiempoExtraAnualForChart}
+                                            margin={{ top: 36, right: 16, left: 0, bottom: 0 }}
+                                            onClick={st => elegirMesDeGrafica(st?.activeLabel)}
+                                            style={{ cursor: 'pointer' }}
+                                        >
                                             <CartesianGrid strokeDasharray="3 3" />
                                             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                                             <YAxis
@@ -1097,13 +1172,15 @@ export const Dashboard: React.FC = () => {
                     {/* Gráfica semanal: horas normales vs extra */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-1">
-                            Horas normales vs tiempo extra por semana — {MESES[mesSel-1]} {anioSel}
+                            Horas normales vs tiempo extra por semana — {mesSel != null ? `${MESES[mesSel-1]} ${anioSel}` : anioSel}
                         </h2>
                         <p className="text-xs text-gray-400 mb-4">
                             Basado en déficit de manning por día respecto al personal disponible
                             {areaSelId !== 'all' && <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                         </p>
-                        {loadingTE ? (
+                        {mesSel == null ? (
+                            <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm text-center px-4">Elige un mes arriba, o da clic en un mes de la gráfica de arriba, para ver sus semanas.</div>
+                        ) : loadingTE ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
                         ) : tiempoExtraForChart.length === 0 ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin datos</div>
@@ -1139,13 +1216,15 @@ export const Dashboard: React.FC = () => {
                     {/* Gráfica: % tiempo extra por semana */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-1">
-                            % Tiempo extra por semana — {MESES[mesSel-1]} {anioSel}
+                            % Tiempo extra por semana — {mesSel != null ? `${MESES[mesSel-1]} ${anioSel}` : anioSel}
                         </h2>
                         <p className="text-xs text-gray-400 mb-4">
                             Porcentaje de horas extra respecto a horas normales disponibles
                             {areaSelId !== 'all' && <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                         </p>
-                        {loadingTE ? (
+                        {mesSel == null ? (
+                            <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm text-center px-4">Elige un mes arriba, o da clic en un mes de la gráfica de arriba, para ver sus semanas.</div>
+                        ) : loadingTE ? (
                             <div className="flex items-center justify-center h-[260px] text-gray-400 text-sm">Cargando...</div>
                         ) : tiempoExtraForChart.length === 0 ? (
                             <div className="flex items-center justify-center h-[260px] text-gray-400 text-sm">Sin datos</div>
@@ -1173,14 +1252,16 @@ export const Dashboard: React.FC = () => {
                     {/* Resumen tiempo extra por semana — métrica WeeklyRoles (NO mezcla ausencias) */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-1">
-                            Resumen tiempo extra — {MESES[mesSel-1]} {anioSel}
+                            Resumen tiempo extra — {mesSel != null ? `${MESES[mesSel-1]} ${anioSel}` : anioSel}
                         </h2>
                         <p className="text-xs text-gray-400 mb-4">
                             Horas normales = personal en tiempo normal × 8.
                             Horas extra = déficit de manning × 8 en días con turno de trabajo.
                             % = horas extra ÷ horas normales. (Misma fórmula que la vista de Roles Semanales.)
                         </p>
-                        {loadingTE ? (
+                        {mesSel == null ? (
+                            <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm text-center px-4">Elige un mes arriba, o da clic en un mes de la gráfica de arriba, para ver sus semanas.</div>
+                        ) : loadingTE ? (
                             <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
                         ) : tiempoExtraForChart.length === 0 ? (
                             <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Sin datos para el periodo seleccionado</div>

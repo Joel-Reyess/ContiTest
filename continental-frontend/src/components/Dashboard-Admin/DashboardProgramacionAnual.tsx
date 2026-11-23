@@ -23,13 +23,8 @@ import type { DashboardProgramacionAnual as Datos, DiaProgramacionAnual } from "
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const DIAS_SEMANA = ["L", "M", "M", "J", "V", "S", "D"];
 
-// Día solo de paro: los días por la empresa que hay son del paro (sin %).
-const soloParo = (dia: DiaProgramacionAnual): boolean =>
-    (dia.gruposEnParo ?? 0) > 0 && dia.ausentes === 0;
-
 const claseDeCarga = (dia: DiaProgramacionAnual, maximoGlobal: number): string => {
     if (dia.gruposEnRebase.length > 0) return "bg-red-500 text-white";
-    if (soloParo(dia)) return (dia.diasEmpresaEnParo ?? 0) > 0 ? "bg-sky-200 text-sky-900" : "bg-slate-100 text-slate-400";
     if (dia.diasEmpresa === 0) return "bg-slate-50 text-slate-400";
     if (dia.porcentaje >= maximoGlobal) return "bg-amber-400 text-amber-950";
     if (dia.porcentaje >= maximoGlobal * 0.6) return "bg-amber-200 text-amber-900";
@@ -498,18 +493,13 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                                                 `Días de empresa: ${d.diasEmpresa}\n` +
                                                 `Capturados por el operador: ${d.diasCapturados}\n` +
                                                 `Ausentes: ${d.ausentes} de ${d.plantilla} (${d.porcentaje}%)` +
-                                                ((d.gruposEnParo ?? 0) > 0
-                                                    ? `\nEn paro: ${d.gruposEnParo} grupo(s), ${d.diasEmpresaEnParo ?? 0} día(s) por la empresa (sin % de ausencia; no cuentan arriba)`
-                                                    : "") +
                                                 (d.gruposEnRebase.length > 0
                                                     ? `\nRebasan: ${d.gruposEnRebase.join(", ")}`
                                                     : "")
                                             }
                                         >
                                             <span className="font-semibold">{Number(d.fecha.slice(8, 10))}</span>
-                                            <span className="tabular-nums opacity-80">
-                                                {soloParo(d) ? "paro" : `${d.porcentaje}%`}
-                                            </span>
+                                            <span className="tabular-nums opacity-80">{d.porcentaje}%</span>
                                         </div>
                                     ))}
                                 </>
@@ -532,16 +522,10 @@ export const DashboardProgramacionAnual = ({ anio }: Props) => {
                         <span className="flex items-center gap-1">
                             <span className="inline-block size-3 rounded bg-red-500" /> algún grupo pasó su cupo
                         </span>
-                        <span className="flex items-center gap-1">
-                            <span className="inline-block size-3 rounded bg-sky-200" /> paro con días por la empresa (sin % de ausencia)
-                        </span>
                         <span className="w-full">
-                            El número de cada día es el % de gente fuera sumando {areaId ? "el área" : alcance}{" "}
-                            (solo los grupos que ese día trabajan; los que están en paro no cuentan). El cupo de{" "}
-                            {datos.porcentajeMaximoGlobal}% se revisa por grupo, por eso solo el rojo dice que alguien
-                            se pasó. Una persona en un área grande mueve poco este número: para ver un grupo o un
-                            área, usa el filtro de arriba. Pasa el cursor sobre el día para ver cuántos días por la
-                            empresa tiene.
+                            El número de cada día es el % de gente fuera sumando {areaId ? "el área" : alcance}; el
+                            cupo de {datos.porcentajeMaximoGlobal}% se revisa por grupo, por eso solo el rojo dice
+                            que alguien se pasó.
                         </span>
                     </div>
                 </div>
