@@ -692,7 +692,10 @@ export const Dashboard: React.FC = () => {
                             onChange={e => { setAnioSel(Number(e.target.value)); setDiaSel(''); }}
                             className="border border-gray-300 rounded px-2 py-1.5 text-sm"
                         >
-                            {[0,1,2].map(i => { const y = hoy.getFullYear() - i; return <option key={y} value={y}>{y}</option>; })}
+                            {/* También el año siguiente (el que se está programando): ahí se ve cómo
+                                se va moviendo el % de tiempo extra por mes conforme se asignan y
+                                capturan los días. */}
+                            {[-1,0,1,2].map(i => { const y = hoy.getFullYear() - i; return <option key={y} value={y}>{y}</option>; })}
                         </select>
                     </div>
 

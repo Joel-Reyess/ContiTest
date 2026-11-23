@@ -1397,6 +1397,64 @@ namespace tiempo_libre.app.Controllers
             return consolidatedAreas;
         }
 
+        /// <summary>
+        /// Reseteo general de contraseñas de los operadores (nov-2026, pedido del
+        /// cliente): a todos los empleados sindicalizados su contraseña vuelve a ser su
+        /// número de nómina (la misma con la que se dan de alta) y, al entrar, la
+        /// pantalla les pide una nueva. No toca a quien además tiene un rol de
+        /// administración (superusuario, jefe de área, líder de grupo, ingeniería
+        /// industrial, gerente o RH): esas cuentas no son "solo operador".
+        /// Pide la contraseña de quien lo hace, como eliminar un empleado.
+        /// </summary>
+        [HttpPost("resetear-passwords-sindicalizados")]
+        [Authorize(Roles = "SuperUsuario,Super Usuario")]
+        public async Task<IActionResult> ResetearPasswordsSindicalizados([FromBody] DeleteUserRequest request)
+        {
+            var currentUsername = User.Identity?.Name;
+            var currentUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Username == currentUsername);
+            if (currentUser == null)
+                return Unauthorized(new ApiResponse<object>(false, null, "No hay sesión iniciada"));
+            if (!PasswordHasher.VerifyPassword(request.AdminPassword ?? "", currentUser.PasswordSalt, currentUser.PasswordHash))
+                return BadRequest(new ApiResponse<object>(false, null, "Contraseña incorrecta"));
+
+            var sindicalizado = (int)RolEnum.Empleado_Sindicalizado;
+            var administrativos = new[]
+            {
+                (int)RolEnum.Super_Usuario, (int)RolEnum.Jefe_De_Area, (int)RolEnum.Lider_De_Grupo,
+                (int)RolEnum.Ingeniero_Industrial, (int)RolEnum.Gerente_BT, (int)RolEnum.RH
+            };
+
+            var candidatos = await _dbContext.Users
+                .Include(u => u.Roles)
+                .Where(u => u.Nomina.HasValue && u.Roles.Any(r => r.Id == sindicalizado))
+                .ToListAsync();
+            var operadores = candidatos.Where(u => !u.Roles.Any(r => administrativos.Contains(r.Id))).ToList();
+            var omitidos = candidatos.Count - operadores.Count;
+
+            var ahora = DateTime.UtcNow;
+            foreach (var u in operadores)
+            {
+                var nomina = u.Nomina!.Value.ToString();
+                var salt = Guid.NewGuid().ToString();
+                u.PasswordSalt = salt;
+                u.PasswordHash = PasswordHasher.HashPassword(nomina, salt);
+                // Sin inicio de sesión registrado: al entrar se le pide contraseña nueva.
+                u.UltimoInicioSesion = null;
+                u.UpdatedAt = ahora;
+                u.UpdatedBy = currentUser.Username;
+            }
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogWarning(
+                "Reseteo general de contraseñas de operadores por {Usuario}: {Total} reseteadas, {Omitidos} omitidas por tener rol administrativo.",
+                currentUser.Username, operadores.Count, omitidos);
+
+            var mensaje = $"Se resetearon {operadores.Count} contraseñas de operadores: ahora es su número de nómina " +
+                          "y al entrar tendrán que poner una nueva." +
+                          (omitidos > 0 ? $" No se tocaron {omitidos} cuentas que además tienen un rol de administración." : "");
+            return Ok(new ApiResponse<object>(true, new { reseteadas = operadores.Count, omitidas = omitidos }, mensaje));
+        }
+
         // EP: Eliminar empleado sindicalizado (tabla Users + tabla Empleados)
         [HttpPost("delete-sindicalizado/{id}")]
         [RolesAllowedAttribute("SuperUsuario", "Jefe De Area", "JefeDeArea", "IngenieroIndustrial", "Ingeniero Industrial")]

@@ -160,6 +160,21 @@ class EmpleadosService {
             throw error;
         }
     }
+
+    /**
+     * Reseteo general (solo superusuario): la contraseña de todos los operadores
+     * vuelve a ser su nómina y al entrar tienen que poner una nueva.
+     */
+    async resetearPasswordsSindicalizados(adminPassword: string): Promise<{ reseteadas: number; omitidas: number }> {
+        const response: ApiResponse<{ reseteadas: number; omitidas: number }> = await httpClient.post(
+            `/api/User/resetear-passwords-sindicalizados`,
+            { adminPassword }
+        );
+        if (!response.success || !response.data) {
+            throw new Error(response.errorMsg || 'No se pudieron resetear las contraseñas');
+        }
+        return response.data;
+    }
 }
 
 export const empleadosService = new EmpleadosService();

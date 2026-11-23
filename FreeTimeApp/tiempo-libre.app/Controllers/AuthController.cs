@@ -37,11 +37,18 @@ public class AuthController : ControllerBase
 
         // Guardar el último inicio de sesión anterior antes de actualizarlo
         var ultimoInicioSesionAnterior = user.UltimoInicioSesion;
-        
-        // Actualizar último inicio de sesión
-        user.UltimoInicioSesion = DateTime.UtcNow;
-        _db.Users.Update(user);
-        await _db.SaveChangesAsync();
+
+        // Sin inicio de sesión registrado = primera vez o contraseña reseteada por el
+        // superusuario: la pantalla pide una contraseña nueva. Se deja en null hasta
+        // que la cambie (change-password lo registra); si cerraba la pantalla sin
+        // cambiarla, la siguiente vez ya entraba con la contraseña de siempre.
+        var debeCambiarPassword = user.UltimoInicioSesion == null;
+        if (!debeCambiarPassword)
+        {
+            user.UltimoInicioSesion = DateTime.UtcNow;
+            _db.Users.Update(user);
+            await _db.SaveChangesAsync();
+        }
 
         var claims = new List<Claim>
         {
@@ -71,7 +78,8 @@ public class AuthController : ControllerBase
         {
             Token = tokenString,
             Expiration = token.ValidTo,
-            UltimoInicioSesion = ultimoInicioSesionAnterior
+            UltimoInicioSesion = ultimoInicioSesionAnterior,
+            DebeCambiarPassword = debeCambiarPassword
         };
 
         return Ok(new ApiResponse<object>(true, data));
@@ -213,6 +221,10 @@ public class AuthController : ControllerBase
         // Validar nueva contraseña y confirmación
         if (request.NewPassword != request.ConfirmNewPassword)
             return BadRequest(new ApiResponse<string>(false, null, "La nueva contraseña y la confirmación no coinciden."));
+        if (request.NewPassword == request.CurrentPassword)
+            return BadRequest(new ApiResponse<string>(false, null, "La nueva contraseña tiene que ser distinta de la actual."));
+        if (request.NewPassword == user.Username || (user.Nomina.HasValue && request.NewPassword == user.Nomina.Value.ToString()))
+            return BadRequest(new ApiResponse<string>(false, null, "La nueva contraseña no puede ser tu número de nómina."));
 
         // Actualizar contraseña y fecha
         var newSalt = Guid.NewGuid().ToString();
@@ -220,6 +232,8 @@ public class AuthController : ControllerBase
         user.PasswordSalt = newSalt;
         user.PasswordHash = newHash;
         user.UpdatedAt = DateTime.UtcNow;
+        // Con esto termina el cambio obligatorio (primera vez o reseteo general).
+        user.UltimoInicioSesion ??= DateTime.UtcNow;
         _db.Users.Update(user);
         await _db.SaveChangesAsync();
         return Ok(new ApiResponse<string>(true, "Contraseña actualizada correctamente."));

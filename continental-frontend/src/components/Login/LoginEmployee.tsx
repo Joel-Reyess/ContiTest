@@ -48,12 +48,10 @@ export const LoginEmployee = () => {
 
                 // Check if user is still authenticated after password change
                 if (authService.isAuthenticated()) {
-                    // User is still logged in, now validate their turn
-                    showSuccess('Contraseña establecida correctamente. Validando turno...');
+                    // Igual que el inicio de sesión normal: directo a su pantalla.
+                    showSuccess('Contraseña establecida correctamente.');
                     setShowFirstTimeReset(false);
-
-                    // Validate employee turn after successful password reset
-                    await validateEmployeeTurn();
+                    navigate('/empleados');
                 } else {
                     // User needs to login again
                     showSuccess('Contraseña establecida correctamente. Por favor, inicia sesión con tu nueva contraseña.');
@@ -70,6 +68,9 @@ export const LoginEmployee = () => {
     };
 
     const handleBackToLogin = () => {
+        // Si regresa sin poner su contraseña nueva, se cierra la sesión que se abrió
+        // al validar la nómina: no puede entrar sin cambiarla.
+        if (showFirstTimeReset) void authService.logout();
         setShowFirstTimeReset(false);
         setShowForgotPassword(false);
         setEmployeeCredentials({ nomina: '', password: '' });
@@ -433,7 +434,12 @@ const FormLoginEmployee = ({
                 password: employeeCredentials.password,
             });
 
-            console.log('Login OK:', response);
+            // Primera vez o contraseña reseteada por el superusuario: antes de entrar
+            // tiene que poner una contraseña nueva.
+            if (response?.debeCambiarPassword) {
+                setShowFirstTimeReset(true);
+                return;
+            }
 
             // Ignorar completamente validación de turnos
             // Ir directo al home

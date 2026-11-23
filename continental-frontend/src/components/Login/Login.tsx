@@ -124,6 +124,8 @@ export const Login = () => {
   };
 
   const handleBackToLogin = () => {
+    // Sin la contraseña nueva no se queda adentro.
+    if (showFirstTimeReset) void authService.logout();
     setShowFirstTimeReset(false);
     setCredentials({ username: '', password: '' });
     setError('');

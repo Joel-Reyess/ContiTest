@@ -191,6 +191,7 @@ class AuthService {
                 token: loginData.token,
                 expiration: loginData.expiration,
                 ultimoInicioSesion: loginData.ultimoInicioSesion,
+                debeCambiarPassword: loginData.debeCambiarPassword ?? !loginData.ultimoInicioSesion,
                 user: user as User & Record<string, unknown>
             };
         } catch (error: unknown) {
