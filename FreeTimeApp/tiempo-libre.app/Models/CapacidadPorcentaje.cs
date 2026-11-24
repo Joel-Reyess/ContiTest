@@ -42,9 +42,19 @@ namespace tiempo_libre.Models
         [MaxLength(1)]
         public string? Turno { get; set; }
 
-        /// <summary>"Dia", "Semana" (lunes a domingo) o "Mes".</summary>
+        /// <summary>"Dia", "Semana" (lunes a domingo), "Mes" o "Anio" (1 de enero al 31 de diciembre).</summary>
         [Required, MaxLength(10)]
         public string Periodo { get; set; } = "Mes";
+
+        /// <summary>
+        /// Contra qué se mide el porcentaje (nov-2026):
+        /// "Grupo" = cada grupo por separado contra su propia plantilla (lo de siempre);
+        /// "Dia" = solo para un área: todo el personal de los grupos del área que ese
+        /// día trabajan según su rol, sumado. Ej. Bladders, 13 personas en el día entre
+        /// los tres turnos, 8% = 1 persona en el día sin importar el turno.
+        /// </summary>
+        [Required, MaxLength(5)]
+        public string Medicion { get; set; } = "Grupo";
 
         public DateOnly FechaInicio { get; set; }
 
@@ -66,6 +76,11 @@ namespace tiempo_libre.Models
 
         public DateTime? FechaDesactivacion { get; set; }
 
+        /// <summary>Último que la editó (botón Editar de la tabla) y cuándo.</summary>
+        public int? ModificadoPorId { get; set; }
+
+        public DateTime? FechaModificacion { get; set; }
+
         [ForeignKey(nameof(AreaId))]
         public virtual Area? Area { get; set; }
 
@@ -77,5 +92,8 @@ namespace tiempo_libre.Models
 
         [ForeignKey(nameof(DesactivadoPorId))]
         public virtual User? DesactivadoPor { get; set; }
+
+        [ForeignKey(nameof(ModificadoPorId))]
+        public virtual User? ModificadoPor { get; set; }
     }
 }

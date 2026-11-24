@@ -229,7 +229,8 @@ namespace tiempo_libre.Services
                         if (estado == null) continue;
 
                         var conEsteDia = _validadorPorcentaje.EvaluarRegla(
-                            estado.TotalEmpleados, estado.AusenciasActuales, 1, estado.PorcentajeMaximoPermitido);
+                            estado.TotalEmpleados, estado.AusenciasActuales, 1, estado.PorcentajeMaximoPermitido,
+                            estado.MedidoPorDia);
 
                         porcentajePorFecha[fecha] = conEsteDia.PorcentajeResultante;
 

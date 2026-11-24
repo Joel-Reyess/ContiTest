@@ -219,6 +219,7 @@ namespace tiempo_libre.Services
                 // ── Recorrer el año ─────────────────────────────────────────
                 var dias = new List<DiaProgramacionAnualDto>();
                 var rebasesPorGrupo = grupoIds.ToDictionary(id => id, _ => 0);
+                var gruposCargados = grupoIds.ToHashSet();
                 var plantillaTotal = usuarios.Count;
 
                 for (var fecha = inicio; fecha <= fin; fecha = fecha.AddDays(1))
@@ -242,8 +243,26 @@ namespace tiempo_libre.Services
                         if (plantillaGrupo == 0 || ausentesGrupo == 0) continue;
 
                         // Lo autorizado para días por la empresa o para operadores no es rebase.
-                        var maximo = limites.LimiteMayor(grupo.GrupoId, fecha);
-                        var regla = _validador.EvaluarRegla(plantillaGrupo, ausentesGrupo, 0, maximo);
+                        var paraOperador = limites.Detalle(grupo.GrupoId, fecha, ContextoLimite.Operador);
+                        var paraEmpresa = limites.Detalle(grupo.GrupoId, fecha, ContextoLimite.Empresa);
+                        var rige = paraEmpresa.Porcentaje > paraOperador.Porcentaje ? paraEmpresa : paraOperador;
+                        var maximo = rige.Porcentaje;
+                        EvaluacionRegla regla;
+                        if (rige.PorDia)
+                        {
+                            // Capacidad "por día": el rebase es del día completo del área
+                            // (todos los grupos que trabajan ese día), como el candado. Si
+                            // el filtro dejó fuera alguno de esos grupos no se puede saber.
+                            var gruposDia = limites.GruposDelDia(rige.Capacidad!, fecha, grupo.GrupoId);
+                            if (gruposDia.Any(g => !gruposCargados.Contains(g))) continue;
+                            var plantillaDia = gruposDia.Sum(g => plantillaPorGrupo.GetValueOrDefault(g));
+                            var ausentesDia = gruposDia.Sum(g => ausentes.TryGetValue((g, fecha), out var s) ? s.Count : 0);
+                            regla = _validador.EvaluarRegla(plantillaDia, ausentesDia, 0, maximo, true);
+                        }
+                        else
+                        {
+                            regla = _validador.EvaluarRegla(plantillaGrupo, ausentesGrupo, 0, maximo);
+                        }
 
                         if (!regla.Permitido)
                         {

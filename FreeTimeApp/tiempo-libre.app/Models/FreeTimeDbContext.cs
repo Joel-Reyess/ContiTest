@@ -901,6 +901,7 @@ public partial class FreeTimeDbContext : DbContext
             entity.HasOne(e => e.Grupo).WithMany().HasForeignKey(e => e.GrupoId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.CreadoPor).WithMany().HasForeignKey(e => e.CreadoPorId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.DesactivadoPor).WithMany().HasForeignKey(e => e.DesactivadoPorId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.ModificadoPor).WithMany().HasForeignKey(e => e.ModificadoPorId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ExcepcionesPorcentaje>(entity =>

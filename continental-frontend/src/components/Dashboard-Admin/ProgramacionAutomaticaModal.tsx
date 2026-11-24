@@ -71,7 +71,8 @@ export const ProgramacionAutomaticaModal = ({
     if (!isOpen) return;
     capacidadPorcentajeService
       .listar(anio)
-      .then((r) => setPrioridadesCapacidad(r.capacidades.filter((c) => c.activa && c.aplicaA === 'Empresa')))
+      // Las de todo el año no son prioridad (el backend tampoco las usa así).
+      .then((r) => setPrioridadesCapacidad(r.capacidades.filter((c) => c.activa && c.aplicaA === 'Empresa' && c.periodo !== 'Anio' && !c.turno)))
       .catch(() => setPrioridadesCapacidad([]));
   }, [isOpen, anio]);
   // Paros con días por la empresa del año (Reglas de trabajo): a esas unidades se
