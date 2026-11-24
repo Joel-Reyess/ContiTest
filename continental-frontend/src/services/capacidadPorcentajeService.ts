@@ -4,7 +4,15 @@ import type { ApiResponse } from '@/interfaces/Api.interface'
 const BASE = '/api/capacidad-porcentaje'
 
 export type AlcanceCapacidad = 'Planta' | 'Area' | 'Grupo'
-export type PeriodoCapacidad = 'Dia' | 'Semana' | 'Mes'
+export type PeriodoCapacidad = 'Dia' | 'Semana' | 'Mes' | 'Anio'
+/**
+ * Contra qué se mide el %: 'Grupo' = cada grupo contra su plantilla (lo de siempre);
+ * 'Dia' = solo área: todo el personal de los grupos del área que ese día trabajan.
+ */
+export type MedicionCapacidad = 'Grupo' | 'Dia'
+
+export const nombrePeriodoCapacidad = (p: string) =>
+    p === 'Dia' ? 'Día' : p === 'Anio' ? 'Año' : p
 /** A qué días aplica: solo los que asigna la empresa, solo los que programan los operadores, o ambos. */
 export type AplicaCapacidad = 'Ambos' | 'Empresa' | 'Operador'
 /** null o '' = todo el día; '1' | '2' | '3' = solo el grupo que ese día va en ese turno por su rol. */
@@ -24,6 +32,7 @@ export interface CapacidadPorcentaje {
     grupoId?: number | null
     grupo?: string | null
     periodo: PeriodoCapacidad
+    medicion?: MedicionCapacidad
     fechaInicio: string
     fechaFin: string
     porcentaje: number
@@ -33,6 +42,8 @@ export interface CapacidadPorcentaje {
     fechaCreacion: string
     desactivadoPor?: string | null
     fechaDesactivacion?: string | null
+    modificadoPor?: string | null
+    fechaModificacion?: string | null
     descripcion: string
 }
 
@@ -41,7 +52,18 @@ export interface CapacidadesPorcentajeResponse {
     porcentajeGeneral: number
     anioPreparacion?: number | null
     porcentajePreparacion?: number | null
+    /** Falta correr ese script: no se puede guardar por día, por año ni editar. */
+    faltaScript?: string | null
     capacidades: CapacidadPorcentaje[]
+}
+
+/** Vista previa "por día": grupos del área que trabajan ese día y cuántas personas suman. */
+export interface PersonalDelDia {
+    fecha: string
+    dia: string
+    total: number
+    grupos: { grupoId: number; grupo: string; turno: string; personas: number }[]
+    maximoAusentes?: number | null
 }
 
 export interface CrearCapacidadRequest {
@@ -52,6 +74,8 @@ export interface CrearCapacidadRequest {
     areaId?: number
     grupoId?: number
     periodo: PeriodoCapacidad
+    /** Solo área y todo el día; sin valor = por grupo. */
+    medicion?: MedicionCapacidad
     fechaInicio: string
     fechaFin?: string
     porcentaje: number
@@ -83,6 +107,15 @@ export const capacidadPorcentajeService = {
             httpClient.get(`${BASE}?incluirInactivas=${incluirInactivas}${anio ? `&anio=${anio}` : ''}`)
         ),
     crear: (req: CrearCapacidadRequest) => unwrap<number>(httpClient.post(BASE, req)),
+    /** Editar en su lugar (sin desactivar y volver a capturar). */
+    actualizar: (id: number, req: CrearCapacidadRequest) => unwrap<unknown>(httpClient.put(`${BASE}/${id}`, req)),
+    /** Grupos del área que trabajan cada día desde `desde` (yyyy-MM-dd) y cuántas personas suman. */
+    personalDelDia: (areaId: number, desde: string, dias = 7, porcentaje?: number) =>
+        unwrap<PersonalDelDia[]>(
+            httpClient.get(
+                `${BASE}/personal-dia?areaId=${areaId}&desde=${desde}&dias=${dias}${porcentaje ? `&porcentaje=${porcentaje}` : ''}`
+            )
+        ),
     desactivar: (id: number) => unwrap<unknown>(httpClient.post(`${BASE}/${id}/desactivar`, {})),
     reactivar: (id: number) => unwrap<unknown>(httpClient.post(`${BASE}/${id}/reactivar`, {})),
     /** Límite de un grupo día por día (yyyy-MM-dd). */

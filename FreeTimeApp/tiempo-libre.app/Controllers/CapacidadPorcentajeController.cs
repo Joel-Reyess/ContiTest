@@ -58,6 +58,19 @@ namespace tiempo_libre.Controllers
         public Task<IActionResult> Crear([FromBody] CrearCapacidadPorcentajeRequest request) =>
             Ejecutar(() => _service.CrearAsync(request, UsuarioId()), "crear capacidad por periodo");
 
+        /// <summary>Editar en su lugar (botón Editar de la tabla), sin desactivar y volver a capturar.</summary>
+        [HttpPut("{id:int}")]
+        [Authorize(Roles = RolesEdicion)]
+        public Task<IActionResult> Actualizar(int id, [FromBody] CrearCapacidadPorcentajeRequest request) =>
+            Ejecutar(() => _service.ActualizarAsync(id, request, UsuarioId()), "editar capacidad por periodo");
+
+        /// <summary>Vista previa "por día": grupos del área que trabajan cada día y cuántas personas suman.</summary>
+        [HttpGet("personal-dia")]
+        [Authorize(Roles = RolesEdicion)]
+        public Task<IActionResult> PersonalDelDia([FromQuery] int areaId, [FromQuery] DateOnly desde,
+            [FromQuery] int dias = 7, [FromQuery] decimal? porcentaje = null) =>
+            Ejecutar(() => _service.PersonalDelDiaAsync(areaId, desde, dias, porcentaje), "consultar personal por día");
+
         [HttpPost("{id:int}/desactivar")]
         [Authorize(Roles = RolesEdicion)]
         public Task<IActionResult> Desactivar(int id) =>

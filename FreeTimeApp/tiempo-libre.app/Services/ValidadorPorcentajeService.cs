@@ -142,15 +142,6 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
-        /// Porcentaje máximo que aplica a un grupo en una fecha. Lo resuelve
-        /// LimitePorcentajeService (excepción del grupo ese día, capacidad por
-        /// periodo, porcentaje del año), el mismo que usan el calendario, el
-        /// dashboard y los festivos: así la vista y el candado no se contradicen.
-        /// </summary>
-        private Task<decimal> ObtenerPorcentajeMaximoAsync(int grupoId, DateOnly fecha, ContextoLimite contexto) =>
-            _limites.LimiteAsync(grupoId, fecha, contexto);
-
-        /// <summary>
         /// LA regla del porcentaje, sin base de datos, para que el candado (aquí),
         /// el tablero de ausencias y el semáforo del calendario contesten lo mismo
         /// con los mismos números.
@@ -170,30 +161,94 @@ namespace tiempo_libre.Services
         /// El tablero, en cambio, medía ausentes / plantilla del grupo. Por eso la
         /// vista y el candado no se ponían de acuerdo.
         /// </summary>
-        public EvaluacionRegla EvaluarRegla(int totalEmpleados, int ausentesActuales, int ausenciasSolicitadas, decimal porcentajeMaximo)
+        /// <param name="porDia">
+        /// Rige una capacidad "por día": los totales son de todo el personal del área
+        /// que trabaja ese día (solo cambia el texto; la regla es la misma).
+        /// </param>
+        public EvaluacionRegla EvaluarRegla(int totalEmpleados, int ausentesActuales, int ausenciasSolicitadas, decimal porcentajeMaximo,
+            bool porDia = false)
         {
             var minimo = CalcularMinimoEmpleadosParaPorcentaje(porcentajeMaximo);
             var totalAusencias = ausentesActuales + ausenciasSolicitadas;
+            var deQuien = porDia ? " en el día (todo el personal del área que trabaja ese día)" : "";
 
             if (totalEmpleados <= 0)
-                return new EvaluacionRegla(false, 0m, false, minimo, "El grupo no tiene empleados activos");
+                return new EvaluacionRegla(false, 0m, false, minimo,
+                    porDia ? "No hay personal activo en el área ese día" : "El grupo no tiene empleados activos");
 
             if (totalEmpleados < minimo)
             {
                 var permitido = totalEmpleados == 1 || totalAusencias <= 1;
                 var pct = Math.Round((decimal)totalAusencias / totalEmpleados * 100m, 2);
+                var sujeto = porDia ? "Poco personal en el día" : "Grupo pequeño";
                 return new EvaluacionRegla(permitido, pct, true, minimo,
                     permitido
-                        ? $"Grupo pequeño ({totalEmpleados} < {minimo}): se permite máximo 1 ausencia por día"
-                        : $"Grupo pequeño ({totalEmpleados} < {minimo}): ya hay {ausentesActuales} ausente(s) y solo se permite 1 por día");
+                        ? $"{sujeto} ({totalEmpleados} < {minimo}): se permite máximo 1 ausencia por día"
+                        : $"{sujeto} ({totalEmpleados} < {minimo}): ya hay {ausentesActuales} ausente(s) y solo se permite 1 por día");
             }
 
             var porcentaje = Math.Round((decimal)totalAusencias / totalEmpleados * 100m, 2);
             var ok = porcentaje <= porcentajeMaximo;
             return new EvaluacionRegla(ok, porcentaje, false, minimo,
                 ok
-                    ? $"{totalAusencias} de {totalEmpleados} ausentes = {porcentaje:F2}% (máximo {porcentajeMaximo}%)"
-                    : $"{totalAusencias} de {totalEmpleados} ausentes = {porcentaje:F2}% supera el máximo de {porcentajeMaximo}%");
+                    ? $"{totalAusencias} de {totalEmpleados} ausentes{deQuien} = {porcentaje:F2}% (máximo {porcentajeMaximo}%)"
+                    : $"{totalAusencias} de {totalEmpleados} ausentes{deQuien} = {porcentaje:F2}% supera el máximo de {porcentajeMaximo}%");
+        }
+
+        /// <summary>Cuántos pueden faltar con ese personal y ese porcentaje (la misma regla de arriba).</summary>
+        public int MaximoAusentes(int totalEmpleados, decimal porcentajeMaximo)
+        {
+            if (totalEmpleados <= 0) return 0;
+            if (totalEmpleados < CalcularMinimoEmpleadosParaPorcentaje(porcentajeMaximo)) return 1;
+            var max = 0;
+            while (max < totalEmpleados && EvaluarRegla(totalEmpleados, max, 1, porcentajeMaximo).Permitido) max++;
+            return max;
+        }
+
+        /// <summary>
+        /// El porcentaje máximo lo resuelve LimitePorcentajeService (excepción del
+        /// grupo ese día, capacidad por periodo, porcentaje del año), el mismo que
+        /// usan el calendario, el dashboard y los festivos: así la vista y el
+        /// candado no se contradicen.
+        ///
+        /// Contra qué se mide el porcentaje: la plantilla del grupo (lo de siempre) o,
+        /// si lo que rige ese día es una capacidad de área "por día" (nov-2026,
+        /// Bladders), todo el personal de los grupos del área que ese día trabajan
+        /// según su rol, con las ausencias de todos ellos. Así, con 13 personas en el
+        /// día y 8%, entra UNA persona en el día, sea del turno que sea; por grupo
+        /// entraba una por grupo.
+        /// </summary>
+        public async Task<BaseConteo> BaseConteoAsync(int grupoId, DateOnly fecha, ContextoLimite contexto,
+            int? ausentesDelGrupo = null)
+        {
+            var limite = await _limites.DetalleAsync(grupoId, fecha, contexto);
+            if (limite.PorDia)
+            {
+                var grupos = _limites.GruposDelDia(limite.Capacidad!, fecha, grupoId);
+                return await ConteoDelDiaAsync(grupos, fecha, limite.Porcentaje);
+            }
+            var total = await TotalEmpleadosGrupoAsync(grupoId);
+            var ausentes = ausentesDelGrupo ?? await ContarAusentesDelGrupoAsync(grupoId, fecha);
+            return new BaseConteo(total, ausentes, limite.Porcentaje, false, new[] { grupoId });
+        }
+
+        /// <summary>Personal y ausentes de esos grupos ese día, sumados (capacidad "por día").</summary>
+        public async Task<BaseConteo> ConteoDelDiaAsync(IReadOnlyList<int> grupos, DateOnly fecha, decimal porcentajeMaximo)
+        {
+            var total = 0;
+            foreach (var g in grupos) total += await TotalEmpleadosGrupoAsync(g);
+            var ausentes = await ContarAusentesAsync(grupos, fecha);
+            return new BaseConteo(total, ausentes, porcentajeMaximo, true, grupos);
+        }
+
+        private async Task<int> TotalEmpleadosGrupoAsync(int grupoId)
+        {
+            if (!_totalEmpleadosCache.TryGetValue(grupoId, out var total))
+            {
+                total = await _db.Users.CountAsync(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo);
+                _totalEmpleadosCache[grupoId] = total;
+            }
+            return total;
         }
 
         /// <summary>
@@ -245,19 +300,13 @@ namespace tiempo_libre.Services
                     return false;
                 }
 
-                if (!_totalEmpleadosCache.TryGetValue(grupoId, out var totalEmpleados))
-                {
-                    totalEmpleados = await _db.Users
-                        .CountAsync(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo);
-                    _totalEmpleadosCache[grupoId] = totalEmpleados;
-                }
+                // Plantilla y ausentes del grupo o, con una capacidad "por día", de
+                // todo el personal del área que trabaja ese día. Las ausencias que
+                // trae quien llama son del grupo: por día se vuelven a contar.
+                var conteo = await BaseConteoAsync(grupoId, fechaEvaluada, contexto, ausenciasActuales);
+                var porcentajeMaximo = conteo.PorcentajeMaximo;
 
-                var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, fechaEvaluada, contexto);
-
-                // Ausencias ya programadas para el día que se evalúa
-                ausenciasActuales ??= await ContarAusentesDelGrupoAsync(grupoId, fechaEvaluada);
-
-                var regla = EvaluarRegla(totalEmpleados, ausenciasActuales.Value, ausenciasSolicitadas, porcentajeMaximo);
+                var regla = EvaluarRegla(conteo.Total, conteo.Ausentes, ausenciasSolicitadas, porcentajeMaximo, conteo.PorDia);
 
                 // Debug y no Information: esto se evalúa una vez por grupo, día y
                 // empleado. Durante la asignación automática del año llenaba el log
@@ -333,13 +382,12 @@ namespace tiempo_libre.Services
             if (config == null || grupo == null)
                 return null;
 
-            var totalEmpleados = await _db.Users
-                .CountAsync(u => u.GrupoId == grupoId && u.Status == UserStatus.Activo);
-
             var dia = fecha ?? DateOnly.FromDateTime(DateTime.Today);
-            var ausenciasActuales = await ContarAusentesDelGrupoAsync(grupoId, dia);
-            var porcentajeMaximo = await ObtenerPorcentajeMaximoAsync(grupoId, dia, contexto);
-            var estado = EvaluarRegla(totalEmpleados, ausenciasActuales, 0, porcentajeMaximo);
+            // Del grupo, o del día completo del área si rige una capacidad "por día":
+            // TotalEmpleados y AusenciasActuales son entonces los del día.
+            var conteo = await BaseConteoAsync(grupoId, dia, contexto);
+            var porcentajeMaximo = conteo.PorcentajeMaximo;
+            var estado = EvaluarRegla(conteo.Total, conteo.Ausentes, 0, porcentajeMaximo, conteo.PorDia);
 
             var manningAreaEstado = await ObtenerManningAplicableAsync(grupo.AreaId, grupo.Area.Manning, dia);
 
@@ -347,18 +395,25 @@ namespace tiempo_libre.Services
             {
                 GrupoId = grupoId,
                 NombreGrupo = grupo.Rol,
-                TotalEmpleados = totalEmpleados,
-                AusenciasActuales = ausenciasActuales,
+                TotalEmpleados = conteo.Total,
+                AusenciasActuales = conteo.Ausentes,
                 Manning = (int)manningAreaEstado,
                 PorcentajeDeficitActual = estado.PorcentajeResultante,
                 PorcentajeMaximoPermitido = porcentajeMaximo,
                 EsGrupoPequeno = estado.EsGrupoPequeno,
                 MinimoEmpleadosParaPorcentaje = estado.MinimoEmpleados,
-                PuedeAgregarAusencia = await PuedeGrupoTenerAusencias(grupoId, 1, ausenciasActuales, dia, contexto),
-                MensajeEstado = estado.Motivo
+                PuedeAgregarAusencia = await PuedeGrupoTenerAusencias(grupoId, 1, conteo.PorDia ? null : conteo.Ausentes, dia, contexto),
+                MensajeEstado = estado.Motivo,
+                MedidoPorDia = conteo.PorDia
             };
         }
     }
+
+    /// <summary>
+    /// Contra qué se midió: Total y Ausentes son del grupo o, si PorDia, de todos los
+    /// grupos del área que trabajan ese día (Grupos).
+    /// </summary>
+    public sealed record BaseConteo(int Total, int Ausentes, decimal PorcentajeMaximo, bool PorDia, IReadOnlyList<int> Grupos);
 
     /// <summary>Resultado de EvaluarRegla: la misma respuesta para el candado y para las vistas.</summary>
     public sealed record EvaluacionRegla(
@@ -381,5 +436,7 @@ namespace tiempo_libre.Services
         public int MinimoEmpleadosParaPorcentaje { get; set; }
         public bool PuedeAgregarAusencia { get; set; }
         public string MensajeEstado { get; set; }
+        /// <summary>Rige una capacidad "por día": TotalEmpleados y AusenciasActuales son del día (toda el área que trabaja).</summary>
+        public bool MedidoPorDia { get; set; }
     }
 }

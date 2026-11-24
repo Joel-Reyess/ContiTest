@@ -145,6 +145,10 @@ namespace tiempo_libre.Services
                     .GroupBy(g => g.AreaId)
                     .ToDictionary(g => g.Key, g => g.First().Area?.Manning ?? 0);
 
+                // Capacidades "por día": el conteo de todo el personal del área que
+                // trabaja ese día se pide a la base una vez por día y juego de grupos.
+                var conteosDelDia = new Dictionary<(string Grupos, DateOnly Fecha), BaseConteo>();
+
                 // ─── 9. Construir resultados en memoria (sin más queries) ────────────
                 var resultados = new List<AusenciaPorFechaResponse>();
 
@@ -182,7 +186,8 @@ namespace tiempo_libre.Services
                         if (manning <= 0) manning = 1;
 
                         // Porcentaje máximo
-                        var porcentajeMaximo = limites.Limite(grupo.GrupoId, fecha);
+                        var detalleLimite = limites.Detalle(grupo.GrupoId, fecha);
+                        var porcentajeMaximo = detalleLimite.Porcentaje;
 
                         // Ausentes del día (de memoria)
                         // Defensivo: aunque vacacionesBatch ya filtra EstadoVacacion="Activa",
@@ -286,6 +291,23 @@ namespace tiempo_libre.Services
                         // así el tablero y el semáforo del calendario no contradicen a la app.
                         var estadoActual = _validadorPorcentaje.EvaluarRegla(personalTotal, personalNoDisponible, 0, porcentajeMaximo);
                         var conUnoMas = _validadorPorcentaje.EvaluarRegla(personalTotal, personalNoDisponible, 1, porcentajeMaximo);
+
+                        // Capacidad "por día": el semáforo es el del día completo del
+                        // área (el mismo conteo que hace el candado), no el del grupo.
+                        BaseConteo? delDia = null;
+                        if (detalleLimite.PorDia)
+                        {
+                            var gruposDia = limites.GruposDelDia(detalleLimite.Capacidad!, fecha, grupo.GrupoId);
+                            var claveDia = (string.Join(",", gruposDia), fecha);
+                            if (!conteosDelDia.TryGetValue(claveDia, out delDia))
+                            {
+                                delDia = await _validadorPorcentaje.ConteoDelDiaAsync(gruposDia, fecha, porcentajeMaximo);
+                                conteosDelDia[claveDia] = delDia;
+                            }
+                            estadoActual = _validadorPorcentaje.EvaluarRegla(delDia.Total, delDia.Ausentes, 0, porcentajeMaximo, true);
+                            conUnoMas = _validadorPorcentaje.EvaluarRegla(delDia.Total, delDia.Ausentes, 1, porcentajeMaximo, true);
+                            pctAusencia = estadoActual.PorcentajeResultante;
+                        }
                         var excedeLimite = !estadoActual.Permitido;
 
                         ausenciasPorGrupo.Add(new AusenciaPorGrupoDto
@@ -303,6 +325,9 @@ namespace tiempo_libre.Services
                             PorcentajeMaximoPermitido = porcentajeMaximo,
                             ExcedeLimite = excedeLimite,
                             PuedeReservar = conUnoMas.Permitido,
+                            MedidoPorDia = delDia != null,
+                            PersonalDelDia = delDia?.Total,
+                            AusentesDelDia = delDia?.Ausentes,
                             EmpleadosAusentes = todosAusentes,
                             EmpleadosDisponibles = disponibles
                         });
@@ -502,9 +527,24 @@ namespace tiempo_libre.Services
             //    grupo grande = ausentes / plantilla del grupo contra el porcentaje).
             bool excedeLimite = !_validadorPorcentaje.EvaluarRegla(personalTotal, personalNoDisponible, 0, porcentajeMaximo).Permitido;
 
+            // Capacidad "por día": el % y el límite son los del día completo del área
+            // (todo el personal que trabaja ese día), igual que el candado. La
+            // simulación (el empleado que pide) suma uno si todavía no faltaba.
+            var conteo = await _validadorPorcentaje.BaseConteoAsync(grupoId, fecha, contexto);
+            BaseConteo? delDia = conteo.PorDia ? conteo : null;
+            if (delDia != null)
+            {
+                var simulado = empleadoAdicionalId.HasValue && empleadosAusentes.Any(e => e.TipoVacacion == "Simulacion") ? 1 : 0;
+                delDia = delDia with { Ausentes = delDia.Ausentes + simulado };
+                var estadoDia = _validadorPorcentaje.EvaluarRegla(delDia.Total, delDia.Ausentes, 0, porcentajeMaximo, true);
+                excedeLimite = !estadoDia.Permitido;
+                porcentajeAusenciaGrupo = estadoDia.PorcentajeResultante;
+            }
+
             // 9) Puede reservar: usa el validador considerando el estado actual
-            bool puedeReservar = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
-                grupoId, 1, personalNoDisponible, fecha, contexto);
+            bool puedeReservar = delDia != null
+                ? _validadorPorcentaje.EvaluarRegla(delDia.Total, delDia.Ausentes, 1, porcentajeMaximo, true).Permitido
+                : await _validadorPorcentaje.PuedeGrupoTenerAusencias(grupoId, 1, personalNoDisponible, fecha, contexto);
 
             // 10) DTO de salida
             return new AusenciaPorGrupoDto
@@ -527,6 +567,9 @@ namespace tiempo_libre.Services
                 PorcentajeMaximoPermitido = porcentajeMaximo,
                 ExcedeLimite = excedeLimite,
                 PuedeReservar = puedeReservar,
+                MedidoPorDia = delDia != null,
+                PersonalDelDia = delDia?.Total,
+                AusentesDelDia = delDia?.Ausentes,
                 EmpleadosAusentes = empleadosAusentes,
                 EmpleadosDisponibles = empleadosDisponibles
             };

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, format, parseISO, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
-import { ArrowLeft, Gauge, Plus, RotateCcw, XCircle } from "lucide-react";
+import { ArrowLeft, Gauge, Pencil, Plus, RotateCcw, Users, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVacationConfig } from "@/hooks/useVacationConfig";
 import { areasService } from "@/services/areasService";
@@ -12,9 +12,13 @@ import {
     capacidadPorcentajeService,
     type AlcanceCapacidad,
     type AplicaCapacidad,
+    type CapacidadPorcentaje,
     type CapacidadesPorcentajeResponse,
+    type MedicionCapacidad,
     type PeriodoCapacidad,
+    type PersonalDelDia,
     type TurnoCapacidad,
+    nombrePeriodoCapacidad,
     nombreTurnoCapacidad,
 } from "@/services/capacidadPorcentajeService";
 import { ReglasDomingoPanel } from "./ReglasDomingoPanel";
@@ -62,6 +66,20 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
     const [porcentaje, setPorcentaje] = useState<string>("");
     const [motivo, setMotivo] = useState("");
     const [guardando, setGuardando] = useState(false);
+    // Por día (nov-2026): el % contra todo el personal del área que trabaja ese día.
+    const [medicion, setMedicion] = useState<MedicionCapacidad>("Grupo");
+    // Periodo "Año": el año completo.
+    const [anioCapacidad, setAnioCapacidad] = useState<number>(anioElegido);
+    // Editar en su lugar: id de la capacidad que se está editando (null = alta nueva).
+    const [editandoId, setEditandoId] = useState<number | null>(null);
+    // Vista previa "por día": cuántas personas trabajan cada día en el área.
+    const [desdePrevia, setDesdePrevia] = useState<string>("");
+    const [previa, setPrevia] = useState<PersonalDelDia[] | null>(null);
+    const porDia = alcance === "Area" && medicion === "Dia";
+    // El año del formulario sigue al de la lista (la configuración llega después de montar).
+    useEffect(() => {
+        if (editandoId == null) setAnioCapacidad(anioElegido);
+    }, [anioElegido, editandoId]);
 
     // "General": el porcentaje de siempre (y el del año en preparación), aquí
     // mismo para que Ingeniería Industrial no dependa de la configuración del
@@ -135,6 +153,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
     // Lo que se va a guardar, dicho en palabras, antes de guardar.
     const rangoElegido = useMemo(() => {
         try {
+            if (periodo === "Anio") return `todo el año ${anioCapacidad}`;
             if (periodo === "Mes") {
                 const ini = parseISO(`${mes}-01`);
                 return `todo ${format(ini, "MMMM yyyy", { locale: es })}`;
@@ -149,10 +168,81 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
         } catch {
             return "";
         }
-    }, [periodo, mes, fecha, fechaFin]);
+    }, [periodo, mes, fecha, fechaFin, anioCapacidad]);
 
     // El % que rige ese año sin capacidad: lo que el nuevo reemplaza.
-    const anioDelRango = Number((periodo === "Mes" ? mes : fecha).slice(0, 4));
+    const anioDelRango = periodo === "Anio" ? anioCapacidad : Number((periodo === "Mes" ? mes : fecha).slice(0, 4));
+
+    // Primer día del periodo elegido: de ahí arranca la vista previa "por día".
+    const inicioDelPeriodo = useMemo(() => {
+        try {
+            if (periodo === "Anio") return anioCapacidad === new Date().getFullYear() ? hoyIso() : `${anioCapacidad}-01-01`;
+            if (periodo === "Mes") return mes ? `${mes}-01` : "";
+            if (periodo === "Semana") return format(startOfWeek(parseISO(fecha), { weekStartsOn: 1 }), "yyyy-MM-dd");
+            return fecha;
+        } catch {
+            return "";
+        }
+    }, [periodo, anioCapacidad, mes, fecha]);
+    useEffect(() => {
+        setDesdePrevia(inicioDelPeriodo);
+    }, [inicioDelPeriodo]);
+
+    useEffect(() => {
+        if (!porDia || !areaId || !desdePrevia) {
+            setPrevia(null);
+            return;
+        }
+        let vigente = true;
+        const pct = Number(porcentaje);
+        capacidadPorcentajeService
+            .personalDelDia(Number(areaId), desdePrevia, 7, pct > 0 && pct <= 100 ? pct : undefined)
+            .then((r) => vigente && setPrevia(r))
+            .catch(() => vigente && setPrevia(null));
+        return () => {
+            vigente = false;
+        };
+    }, [porDia, areaId, desdePrevia, porcentaje]);
+
+    // Con la gente que más se repite en la semana: desde qué % entran 2 personas en el día.
+    const pistaPorcentaje = useMemo(() => {
+        const totales = (previa ?? []).map((d) => d.total).filter((t) => t > 0);
+        if (totales.length === 0) return null;
+        const conteo = new Map<number, number>();
+        totales.forEach((t) => conteo.set(t, (conteo.get(t) ?? 0) + 1));
+        const comun = [...conteo.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+        // Mismo redondeo que el backend (2 decimales).
+        const desde = (k: number) => Math.round((k / comun) * 10000) / 100;
+        return { personas: comun, para2: desde(2), para3: desde(3) };
+    }, [previa]);
+
+    const limpiarFormulario = () => {
+        setEditandoId(null);
+        setPorcentaje("");
+        setMotivo("");
+    };
+
+    // Botón Editar de la tabla: sube los datos de esa capacidad al formulario.
+    const editar = (c: CapacidadPorcentaje) => {
+        setEditandoId(c.id);
+        setAlcance(c.alcance);
+        setAplicaA(c.aplicaA);
+        setTurno((c.turno ?? "") as TurnoCapacidad);
+        setMedicion(c.medicion === "Dia" ? "Dia" : "Grupo");
+        const areaDelGrupo = c.grupoId ? areas.find((a) => a.grupos?.some((g) => g.grupoId === c.grupoId))?.areaId : undefined;
+        setAreaId(c.areaId ?? areaDelGrupo ?? "");
+        setGrupoId(c.grupoId ?? "");
+        setPeriodo(c.periodo);
+        const ini = c.fechaInicio.slice(0, 10);
+        const fin = c.fechaFin.slice(0, 10);
+        setFecha(ini);
+        setFechaFin(c.periodo === "Dia" && fin !== ini ? fin : "");
+        setMes(ini.slice(0, 7));
+        setAnioCapacidad(Number(ini.slice(0, 4)));
+        setPorcentaje(String(c.porcentaje));
+        setMotivo(c.motivo ?? "");
+        document.getElementById("seccion-capacidad")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
     const baseDelAnio = datos
         ? datos.anioPreparacion === anioDelRango && datos.porcentajePreparacion
             ? datos.porcentajePreparacion
@@ -175,21 +265,25 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
         }
         setGuardando(true);
         try {
-            await capacidadPorcentajeService.crear({
+            const req = {
                 alcance,
                 aplicaA,
-                turno: turno || undefined,
+                turno: porDia ? undefined : turno || undefined,
                 areaId: alcance === "Area" && areaId ? Number(areaId) : undefined,
                 grupoId: alcance === "Grupo" && grupoId ? Number(grupoId) : undefined,
                 periodo,
-                fechaInicio: periodo === "Mes" ? `${mes}-01` : fecha,
+                medicion: porDia ? ("Dia" as const) : undefined,
+                fechaInicio: periodo === "Anio" ? `${anioCapacidad}-01-01` : periodo === "Mes" ? `${mes}-01` : fecha,
                 fechaFin: periodo === "Dia" && fechaFin ? fechaFin : undefined,
                 porcentaje: pct,
                 motivo: motivo.trim() || undefined,
+            };
+            if (editandoId != null) await capacidadPorcentajeService.actualizar(editandoId, req);
+            else await capacidadPorcentajeService.crear(req);
+            toast.success(editandoId != null ? "Cambios guardados" : "Capacidad guardada", {
+                description: `${pct}% ${rangoElegido}${porDia ? ", por día" : ""}`,
             });
-            toast.success("Capacidad guardada", { description: `${pct}% ${rangoElegido}` });
-            setPorcentaje("");
-            setMotivo("");
+            limpiarFormulario();
             await cargar();
         } catch (e) {
             toast.error("No se pudo guardar", { description: (e as Error).message, duration: 10000 });
@@ -224,6 +318,13 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                     captures <strong>reemplaza</strong> al general en esas fechas (no se suma): si el general es 8% y aquí
                     pones 10%, esos días rige 10%. Al terminar el periodo vuelve el general. Se aplica en la captura, la
                     asignación de días por la empresa, la reprogramación, los calendarios y los dashboards.
+                </p>
+                <p className="text-sm text-continental-gray-1 mt-1">
+                    Normalmente el % se mide <strong>por grupo</strong> (cada grupo contra su propia gente). Para un área se
+                    puede medir <strong>por día</strong>: se suma todo el personal de los grupos del área que ese día trabajan
+                    según su rol (los tres turnos; el grupo que descansa no cuenta) y el % se aplica a ese total, sin importar
+                    de qué turno sea quien captura. Ej.: 13 personas en el día con 8% = 1 persona en el día; para 2 se necesita
+                    al menos 15.38%. Con periodo <strong>Año</strong> la regla rige todo el año sin capturarla día por día.
                 </p>
                 {datos && (
                     <div className="mt-3 flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
@@ -278,13 +379,21 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                     </div>
                 )}
                 <p className="text-xs text-continental-gray-1 mt-1">
-                    Si en un mismo día aplican varias, manda la más específica: primero la de día, luego la de semana y luego
-                    la de mes; con el mismo periodo, la de grupo, luego la de área y luego la de planta; y la de un turno
+                    Si en un mismo día aplican varias, manda la más específica: primero la de día, luego la de semana, luego
+                    la de mes y al final la de año (así una de año sirve de base y se puede subir un mes o un día); con el mismo
+                    periodo, la de grupo, luego la de área y luego la de planta; y la de un turno
                     antes que la de todo el día. Una de un turno solo aplica al grupo que ese día va en ese turno según su
                     rol; los demás grupos siguen con su porcentaje. Una excepción de un grupo para un día capturada en el
                     calendario del área manda sobre todas.
                 </p>
             </div>
+
+            {datos?.faltaScript && (
+                <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                    Falta correr <code>{datos.faltaScript}</code> en la base de datos: mientras tanto todas se aplican por grupo y
+                    no se puede guardar por día, por año ni editar.
+                </div>
+            )}
 
             {datos && !datos.tablaExiste && (
                 <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
@@ -296,8 +405,22 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
             {/* Alta */}
             <section id="seccion-capacidad" className="rounded-lg border p-4 space-y-3 scroll-mt-4">
                 <h3 className="font-semibold flex items-center gap-2">
-                    <Plus className="w-4 h-4" /> Nueva capacidad
+                    {editandoId != null ? (
+                        <>
+                            <Pencil className="w-4 h-4" /> Editando capacidad #{editandoId}
+                        </>
+                    ) : (
+                        <>
+                            <Plus className="w-4 h-4" /> Nueva capacidad
+                        </>
+                    )}
                 </h3>
+                {editandoId != null && (
+                    <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-md p-2">
+                        Cambia lo que necesites y da Guardar cambios: se actualiza esa misma capacidad (no hay que desactivarla y
+                        capturarla de nuevo). Queda registrado quién la editó.
+                    </p>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-continental-gray-1">Aplica a</span>
@@ -323,13 +446,18 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                     </label>
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-continental-gray-1">Turno</span>
-                        <select className="h-9 rounded-md border px-2" value={turno} onChange={(e) => setTurno(e.target.value as TurnoCapacidad)}>
+                        <select
+                            className="h-9 rounded-md border px-2 disabled:bg-slate-100"
+                            value={porDia ? "" : turno}
+                            disabled={porDia}
+                            onChange={(e) => setTurno(e.target.value as TurnoCapacidad)}
+                        >
                             <option value="">Todo el día</option>
                             <option value="1">Primer turno</option>
                             <option value="2">Segundo turno</option>
                             <option value="3">Tercer turno</option>
                         </select>
-                        {turno && (
+                        {turno && !porDia && (
                             <span className="text-xs text-blue-700">
                                 Aplica solo al grupo que ese día va en {nombreTurnoCapacidad(turno).toLowerCase()} según su rol; los
                                 demás siguen con su porcentaje.
@@ -356,6 +484,25 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                             </select>
                         </label>
                     )}
+                    {alcance === "Area" && (
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-continental-gray-1">El % se mide</span>
+                            <select
+                                className="h-9 rounded-md border px-2"
+                                value={medicion}
+                                onChange={(e) => setMedicion(e.target.value as MedicionCapacidad)}
+                            >
+                                <option value="Grupo">Por grupo (cada grupo con su gente)</option>
+                                <option value="Dia">Por día (todo el personal del área que trabaja ese día)</option>
+                            </select>
+                            {medicion === "Dia" && (
+                                <span className="text-xs text-blue-700">
+                                    Se suman los grupos del área que ese día trabajan según su rol; el que descansa no cuenta.
+                                    Entra quien capture primero, del turno que sea.
+                                </span>
+                            )}
+                        </label>
+                    )}
                     {alcance === "Grupo" && (
                         <label className="flex flex-col gap-1">
                             <span className="text-xs font-medium text-continental-gray-1">Grupo</span>
@@ -379,12 +526,30 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-continental-gray-1">Periodo</span>
                         <select className="h-9 rounded-md border px-2" value={periodo} onChange={(e) => setPeriodo(e.target.value as PeriodoCapacidad)}>
+                            <option value="Anio">Año (todo el año)</option>
                             <option value="Mes">Mes</option>
                             <option value="Semana">Semana</option>
                             <option value="Dia">Día</option>
                         </select>
                     </label>
-                    {periodo === "Mes" ? (
+                    {periodo === "Anio" ? (
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-continental-gray-1">Año</span>
+                            <select
+                                className="h-9 rounded-md border px-2"
+                                value={anioCapacidad}
+                                onChange={(e) => setAnioCapacidad(Number(e.target.value))}
+                            >
+                                {[...new Set([...(anios.length ? anios : [anioElegido]), anioCapacidad])]
+                                    .sort((a, b) => a - b)
+                                    .map((a) => (
+                                        <option key={a} value={a}>
+                                            {a}
+                                        </option>
+                                    ))}
+                            </select>
+                        </label>
+                    ) : periodo === "Mes" ? (
                         <label className="flex flex-col gap-1">
                             <span className="text-xs font-medium text-continental-gray-1">Mes</span>
                             <input type="month" className="h-9 rounded-md border px-2" value={mes} onChange={(e) => setMes(e.target.value)} />
@@ -423,14 +588,20 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                 </label>
                 <div className="flex flex-wrap items-center gap-3">
                     <Button variant="continental" onClick={guardar} disabled={guardando || (datos ? !datos.tablaExiste : false)}>
-                        {guardando ? "Guardando…" : "Guardar capacidad"}
+                        {guardando ? "Guardando…" : editandoId != null ? "Guardar cambios" : "Guardar capacidad"}
                     </Button>
+                    {editandoId != null && (
+                        <Button variant="outline" onClick={limpiarFormulario} disabled={guardando}>
+                            Cancelar edición
+                        </Button>
+                    )}
                     {porcentaje && rangoElegido && (
                         <span className="text-sm text-continental-gray-1">
                             Se guardará: <strong>{porcentaje}%</strong>
                             {baseDelAnio != null ? ` en lugar del ${baseDelAnio}%` : ""}{" "}
                             {aplicaA === "Empresa" ? "solo para días por la empresa, " : aplicaA === "Operador" ? "solo para días de los operadores, " : ""}
-                            {turno ? `solo ${nombreTurnoCapacidad(turno).toLowerCase()} (el grupo que ese día va en ese turno según su rol), ` : ""}
+                            {turno && !porDia ? `solo ${nombreTurnoCapacidad(turno).toLowerCase()} (el grupo que ese día va en ese turno según su rol), ` : ""}
+                            {porDia ? "medido por día (todo el personal del área que trabaja ese día), " : ""}
                             {rangoElegido},{" "}
                             {alcance === "Planta"
                                 ? "toda la planta"
@@ -441,6 +612,55 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                         </span>
                     )}
                 </div>
+                {porDia && areaId !== "" && (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Users className="w-4 h-4" />
+                            <span className="font-medium">Personal que cuenta por día en {areas.find((a) => a.areaId === areaId)?.nombreGeneral}</span>
+                            <span className="text-xs text-continental-gray-1">desde</span>
+                            <input
+                                type="date"
+                                className="h-8 rounded-md border px-2 text-xs"
+                                value={desdePrevia}
+                                onChange={(e) => e.target.value && setDesdePrevia(e.target.value)}
+                            />
+                        </div>
+                        {!desdePrevia ? (
+                            <p className="text-xs text-continental-gray-1">Elige desde qué día ver.</p>
+                        ) : !previa ? (
+                            <p className="text-xs text-continental-gray-1">Cargando…</p>
+                        ) : (
+                            <>
+                                <table className="text-xs">
+                                    <tbody>
+                                        {previa.map((d) => (
+                                            <tr key={d.fecha}>
+                                                <td className="pr-3 py-0.5 capitalize whitespace-nowrap">{d.dia}</td>
+                                                <td className="pr-3 py-0.5 font-semibold tabular-nums">{d.total} personas</td>
+                                                <td className="pr-3 py-0.5 text-continental-gray-1">
+                                                    {d.grupos.map((g) => `${g.grupo} (T${g.turno}: ${g.personas})`).join(" · ") || "ningún grupo trabaja"}
+                                                </td>
+                                                {d.maximoAusentes != null && (
+                                                    <td className="py-0.5 font-semibold text-blue-800 whitespace-nowrap">
+                                                        con {porcentaje}%: {d.maximoAusentes} {d.maximoAusentes === 1 ? "persona" : "personas"} en el día
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {pistaPorcentaje && (
+                                    <p className="text-xs text-continental-gray-1">
+                                        Con {pistaPorcentaje.personas} personas en el día: menos de {pistaPorcentaje.para2.toFixed(2)}% = 1
+                                        persona; desde {pistaPorcentaje.para2.toFixed(2)}% = 2 personas; desde{" "}
+                                        {pistaPorcentaje.para3.toFixed(2)}% = 3 personas. Los días con menos gente (p. ej. domingos) dejan
+                                        menos.
+                                    </p>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
             </section>
 
             {/* Lista */}
@@ -479,6 +699,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                                     <th className="px-3 py-2 font-medium">Aplica a</th>
                                     <th className="px-3 py-2 font-medium">Días</th>
                                     <th className="px-3 py-2 font-medium">Turno</th>
+                                    <th className="px-3 py-2 font-medium">Se mide</th>
                                     <th className="px-3 py-2 font-medium text-right">%</th>
                                     <th className="px-3 py-2 font-medium">Motivo</th>
                                     <th className="px-3 py-2 font-medium">Registro</th>
@@ -488,7 +709,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                             <tbody>
                                 {datos.capacidades.map((c) => (
                                     <tr key={c.id} className={`border-t align-top ${c.activa ? "" : "text-continental-gray-1 bg-slate-50"}`}>
-                                        <td className="px-3 py-1.5">{c.periodo === "Dia" ? "Día" : c.periodo}</td>
+                                        <td className="px-3 py-1.5">{nombrePeriodoCapacidad(c.periodo)}</td>
                                         <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">
                                             {c.fechaInicio === c.fechaFin
                                                 ? fechaLarga(c.fechaInicio)
@@ -499,10 +720,16 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                                             {c.aplicaA === "Empresa" ? "Por la empresa" : c.aplicaA === "Operador" ? "De los operadores" : "Ambos"}
                                         </td>
                                         <td className="px-3 py-1.5">{nombreTurnoCapacidad(c.turno)}</td>
+                                        <td className="px-3 py-1.5">{c.medicion === "Dia" ? "Por día (toda el área)" : "Por grupo"}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{c.porcentaje}%</td>
                                         <td className="px-3 py-1.5">{c.motivo || "—"}</td>
                                         <td className="px-3 py-1.5 text-xs">
                                             Alta: {c.creadoPor ?? "—"} · {format(new Date(c.fechaCreacion), "dd/MM/yyyy HH:mm")}
+                                            {c.fechaModificacion && (
+                                                <div>
+                                                    Editada: {c.modificadoPor ?? "—"} · {format(new Date(c.fechaModificacion), "dd/MM/yyyy HH:mm")}
+                                                </div>
+                                            )}
                                             {!c.activa && (
                                                 <div>
                                                     Desactivada: {c.desactivadoPor ?? "—"}
@@ -510,7 +737,16 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                                        <td className="px-3 py-1.5 text-right whitespace-nowrap space-x-1">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => editar(c)}
+                                                disabled={!!datos.faltaScript}
+                                                title={datos.faltaScript ? `Falta correr ${datos.faltaScript}` : "Editar esta capacidad"}
+                                            >
+                                                <Pencil className="w-4 h-4 mr-1" /> Editar
+                                            </Button>
                                             {c.activa ? (
                                                 <Button
                                                     size="sm"

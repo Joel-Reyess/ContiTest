@@ -48,6 +48,14 @@ namespace tiempo_libre.DTOs
         public decimal PorcentajeMaximoPermitido { get; set; }
         public bool ExcedeLimite { get; set; }
         public bool PuedeReservar { get; set; } // Indica si una persona más podría tomar este día sin exceder el límite
+        /// <summary>
+        /// true: rige una capacidad "por día" (nov-2026); PorcentajeAusencia,
+        /// ExcedeLimite y PuedeReservar son del DÍA (todo el personal del área que
+        /// trabaja ese día), no solo del grupo.
+        /// </summary>
+        public bool MedidoPorDia { get; set; }
+        public int? PersonalDelDia { get; set; }
+        public int? AusentesDelDia { get; set; }
         public List<EmpleadoAusenteDto> EmpleadosAusentes { get; set; } = new List<EmpleadoAusenteDto>();
         public List<EmpleadoDisponibleDto> EmpleadosDisponibles { get; set; } = new List<EmpleadoDisponibleDto>();
     }
