@@ -42,9 +42,22 @@ namespace tiempo_libre.Models
         [MaxLength(1)]
         public string? Turno { get; set; }
 
-        /// <summary>"Dia", "Semana" (lunes a domingo), "Mes" o "Anio" (1 de enero al 31 de diciembre).</summary>
+        /// <summary>
+        /// "Dia", "Semana" (hasta 7 días; sin fecha final, de lunes a domingo), "Mes"
+        /// o "Anio" (1 de enero al 31 de diciembre; si se repite cada año, FechaFin = SinFin).
+        /// </summary>
         [Required, MaxLength(10)]
         public string Periodo { get; set; } = "Mes";
+
+        /// <summary>
+        /// Fecha final de una capacidad de año que se repite cada año (nov-2026): rige
+        /// desde el 1 de enero de su año y todos los siguientes hasta que se desactive.
+        /// </summary>
+        public static readonly DateOnly SinFin = new(9999, 12, 31);
+
+        /// <summary>Capacidad de año que sigue los años siguientes.</summary>
+        [NotMapped]
+        public bool CadaAnio => Periodo == "Anio" && FechaFin == SinFin;
 
         /// <summary>
         /// Contra qué se mide el porcentaje (nov-2026):

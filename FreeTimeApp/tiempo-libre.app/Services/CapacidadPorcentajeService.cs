@@ -107,11 +107,14 @@ namespace tiempo_libre.Services
             }
 
             foreach (var f in filas)
+            {
+                f.CadaAnio = f.Periodo == "Anio" && f.FechaFin == CapacidadPorcentaje.SinFin;
                 f.Descripcion = LimitePorcentajeService.DescribirCapacidad(new CapacidadPorcentaje
                 {
                     Alcance = f.Alcance, AplicaA = f.AplicaA, Turno = f.Turno, Periodo = f.Periodo, Medicion = f.Medicion,
                     FechaInicio = f.FechaInicio, FechaFin = f.FechaFin
                 });
+            }
             respuesta.Capacidades = filas;
 
             return new ApiResponse<CapacidadesPorcentajeResponse>(true, respuesta, null);
@@ -220,7 +223,8 @@ namespace tiempo_libre.Services
                     break;
             }
 
-            // Fechas según el periodo: la semana es de lunes a domingo, el mes y el año completos.
+            // Fechas según el periodo: la semana de hasta 7 días (sin fecha final, de lunes
+            // a domingo), el mes completo y el año completo o cada año.
             switch (req.Periodo)
             {
                 case "Dia":
@@ -232,13 +236,26 @@ namespace tiempo_libre.Services
                         return "Por día se pueden marcar hasta 31 días seguidos; para más usa semana, mes o año.";
                     break;
                 case "Semana":
-                    var lunes = req.FechaInicio.AddDays(-(((int)req.FechaInicio.DayOfWeek + 6) % 7));
-                    capacidad.FechaInicio = lunes;
-                    capacidad.FechaFin = lunes.AddDays(6);
+                    if (req.FechaFin.HasValue)
+                    {
+                        // Del día que elijan al que elijan (nov-2026: antes solo de lunes a domingo).
+                        capacidad.FechaInicio = req.FechaInicio;
+                        capacidad.FechaFin = req.FechaFin.Value;
+                        if (capacidad.FechaFin < capacidad.FechaInicio)
+                            return "La fecha final no puede ser antes de la inicial.";
+                        if (capacidad.FechaFin.DayNumber - capacidad.FechaInicio.DayNumber > 6)
+                            return "Una semana es de hasta 7 días; para más usa día (hasta 31 días), mes o año.";
+                    }
+                    else
+                    {
+                        var lunes = req.FechaInicio.AddDays(-(((int)req.FechaInicio.DayOfWeek + 6) % 7));
+                        capacidad.FechaInicio = lunes;
+                        capacidad.FechaFin = lunes.AddDays(6);
+                    }
                     break;
                 case "Anio":
                     capacidad.FechaInicio = new DateOnly(req.FechaInicio.Year, 1, 1);
-                    capacidad.FechaFin = new DateOnly(req.FechaInicio.Year, 12, 31);
+                    capacidad.FechaFin = req.CadaAnio ? CapacidadPorcentaje.SinFin : new DateOnly(req.FechaInicio.Year, 12, 31);
                     break;
                 default:
                     capacidad.FechaInicio = new DateOnly(req.FechaInicio.Year, req.FechaInicio.Month, 1);

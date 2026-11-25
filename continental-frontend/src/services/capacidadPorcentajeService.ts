@@ -35,6 +35,8 @@ export interface CapacidadPorcentaje {
     medicion?: MedicionCapacidad
     fechaInicio: string
     fechaFin: string
+    /** De año y se repite cada año (sin fecha final). */
+    cadaAnio?: boolean
     porcentaje: number
     motivo?: string | null
     activa: boolean
@@ -77,7 +79,10 @@ export interface CrearCapacidadRequest {
     /** Solo área y todo el día; sin valor = por grupo. */
     medicion?: MedicionCapacidad
     fechaInicio: string
+    /** Día: último día (hasta 31). Semana: último día (hasta 7); sin ella, de lunes a domingo. */
     fechaFin?: string
+    /** Año: se repite cada año desde el de fechaInicio, sin fecha final. */
+    cadaAnio?: boolean
     porcentaje: number
     motivo?: string
 }
