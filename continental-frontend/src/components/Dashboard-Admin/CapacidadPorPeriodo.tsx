@@ -68,8 +68,9 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
     const [guardando, setGuardando] = useState(false);
     // Por día (nov-2026): el % contra todo el personal del área que trabaja ese día.
     const [medicion, setMedicion] = useState<MedicionCapacidad>("Grupo");
-    // Periodo "Año": el año completo.
+    // Periodo "Año": el año completo; si se repite, también los años siguientes.
     const [anioCapacidad, setAnioCapacidad] = useState<number>(anioElegido);
+    const [cadaAnio, setCadaAnio] = useState(true);
     // Editar en su lugar: id de la capacidad que se está editando (null = alta nueva).
     const [editandoId, setEditandoId] = useState<number | null>(null);
     // Vista previa "por día": cuántas personas trabajan cada día en el área.
@@ -150,17 +151,58 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
 
     const fechaLarga = (iso: string) => format(parseISO(iso.slice(0, 10)), "EEE dd/MM/yyyy", { locale: es });
 
+    // Años para una capacidad de año: no solo el vigente y el de preparación, también
+    // los que siguen (una de "solo ese año" para 2028 se puede dejar lista desde antes).
+    const aniosParaCapacidad = useMemo(() => {
+        const hoy = new Date().getFullYear();
+        const base = [...anios, hoy, anioCapacidad];
+        const desde = Math.min(...base);
+        const hasta = Math.max(...base, hoy + 3);
+        return Array.from({ length: hasta - desde + 1 }, (_, i) => desde + i);
+    }, [anios, anioCapacidad]);
+
+    // Semana: del día que elijan hasta 6 días después (7 en total).
+    const masDias = (iso: string, n: number) => {
+        try {
+            return format(addDays(parseISO(iso), n), "yyyy-MM-dd");
+        } catch {
+            return "";
+        }
+    };
+    const cambiarPeriodo = (p: PeriodoCapacidad) => {
+        setPeriodo(p);
+        if (p === "Semana") {
+            // Arranca en el lunes de la semana del día que ya estaba, de lunes a domingo; luego se ajusta.
+            let lunes = fecha;
+            try {
+                lunes = format(startOfWeek(parseISO(fecha), { weekStartsOn: 1 }), "yyyy-MM-dd");
+            } catch {
+                /* fecha vacía: se queda */
+            }
+            setFecha(lunes);
+            setFechaFin(lunes ? masDias(lunes, 6) : "");
+        } else if (p === "Dia") {
+            setFechaFin("");
+        }
+    };
+
     // Lo que se va a guardar, dicho en palabras, antes de guardar.
     const rangoElegido = useMemo(() => {
         try {
-            if (periodo === "Anio") return `todo el año ${anioCapacidad}`;
+            if (periodo === "Anio")
+                return cadaAnio
+                    ? `cada año desde ${anioCapacidad} (sigue en ${anioCapacidad + 1}, ${anioCapacidad + 2}… hasta que la desactives)`
+                    : `solo el año ${anioCapacidad}`;
             if (periodo === "Mes") {
                 const ini = parseISO(`${mes}-01`);
                 return `todo ${format(ini, "MMMM yyyy", { locale: es })}`;
             }
             if (periodo === "Semana") {
-                const lunes = startOfWeek(parseISO(fecha), { weekStartsOn: 1 });
-                return `semana del lunes ${format(lunes, "dd/MM")} al domingo ${format(addDays(lunes, 6), "dd/MM/yyyy")}`;
+                if (!fechaFin) {
+                    const lunes = startOfWeek(parseISO(fecha), { weekStartsOn: 1 });
+                    return `semana del lunes ${format(lunes, "dd/MM")} al domingo ${format(addDays(lunes, 6), "dd/MM/yyyy")}`;
+                }
+                return `del ${format(parseISO(fecha), "EEE dd/MM", { locale: es })} al ${format(parseISO(fechaFin), "EEE dd/MM/yyyy", { locale: es })}`;
             }
             return fechaFin && fechaFin !== fecha
                 ? `del ${format(parseISO(fecha), "dd/MM")} al ${format(parseISO(fechaFin), "dd/MM/yyyy")}`
@@ -168,7 +210,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
         } catch {
             return "";
         }
-    }, [periodo, mes, fecha, fechaFin, anioCapacidad]);
+    }, [periodo, mes, fecha, fechaFin, anioCapacidad, cadaAnio]);
 
     // El % que rige ese año sin capacidad: lo que el nuevo reemplaza.
     const anioDelRango = periodo === "Anio" ? anioCapacidad : Number((periodo === "Mes" ? mes : fecha).slice(0, 4));
@@ -178,7 +220,6 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
         try {
             if (periodo === "Anio") return anioCapacidad === new Date().getFullYear() ? hoyIso() : `${anioCapacidad}-01-01`;
             if (periodo === "Mes") return mes ? `${mes}-01` : "";
-            if (periodo === "Semana") return format(startOfWeek(parseISO(fecha), { weekStartsOn: 1 }), "yyyy-MM-dd");
             return fecha;
         } catch {
             return "";
@@ -220,6 +261,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
         setEditandoId(null);
         setPorcentaje("");
         setMotivo("");
+        setCadaAnio(true);
     };
 
     // Botón Editar de la tabla: sube los datos de esa capacidad al formulario.
@@ -236,9 +278,10 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
         const ini = c.fechaInicio.slice(0, 10);
         const fin = c.fechaFin.slice(0, 10);
         setFecha(ini);
-        setFechaFin(c.periodo === "Dia" && fin !== ini ? fin : "");
+        setFechaFin(c.periodo === "Semana" || (c.periodo === "Dia" && fin !== ini) ? fin : "");
         setMes(ini.slice(0, 7));
         setAnioCapacidad(Number(ini.slice(0, 4)));
+        setCadaAnio(!!c.cadaAnio);
         setPorcentaje(String(c.porcentaje));
         setMotivo(c.motivo ?? "");
         document.getElementById("seccion-capacidad")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -263,6 +306,14 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
             toast.error("Selecciona el grupo");
             return;
         }
+        if ((periodo === "Dia" || periodo === "Semana") && !fecha) {
+            toast.error(periodo === "Semana" ? "Elige desde qué día" : "Elige el día");
+            return;
+        }
+        if (periodo === "Semana" && fechaFin && (fechaFin < fecha || fechaFin > masDias(fecha, 6))) {
+            toast.error("La semana es de hasta 7 días: elige un Hasta entre el Desde y 6 días después");
+            return;
+        }
         setGuardando(true);
         try {
             const req = {
@@ -274,7 +325,8 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                 periodo,
                 medicion: porDia ? ("Dia" as const) : undefined,
                 fechaInicio: periodo === "Anio" ? `${anioCapacidad}-01-01` : periodo === "Mes" ? `${mes}-01` : fecha,
-                fechaFin: periodo === "Dia" && fechaFin ? fechaFin : undefined,
+                fechaFin: (periodo === "Dia" || periodo === "Semana") && fechaFin ? fechaFin : undefined,
+                cadaAnio: periodo === "Anio" ? cadaAnio : undefined,
                 porcentaje: pct,
                 motivo: motivo.trim() || undefined,
             };
@@ -314,7 +366,7 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                 </h2>
                 <p className="text-sm text-continental-gray-1 mt-1">
                     Con autorización de tiempo extra se puede permitir un porcentaje de ausencia distinto al general durante
-                    un día, una semana (lunes a domingo) o un mes, para toda la planta, un área o un grupo. El % que
+                    un día, una semana (hasta 7 días), un mes o un año, para toda la planta, un área o un grupo. El % que
                     captures <strong>reemplaza</strong> al general en esas fechas (no se suma): si el general es 8% y aquí
                     pones 10%, esos días rige 10%. Al terminar el periodo vuelve el general. Se aplica en la captura, la
                     asignación de días por la empresa, la reprogramación, los calendarios y los dashboards.
@@ -324,7 +376,9 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                     puede medir <strong>por día</strong>: se suma todo el personal de los grupos del área que ese día trabajan
                     según su rol (los tres turnos; el grupo que descansa no cuenta) y el % se aplica a ese total, sin importar
                     de qué turno sea quien captura. Ej.: 13 personas en el día con 8% = 1 persona en el día; para 2 se necesita
-                    al menos 15.38%. Con periodo <strong>Año</strong> la regla rige todo el año sin capturarla día por día.
+                    al menos 15.38%. Con periodo <strong>Año</strong> la regla rige todo el año sin capturarla día por día y,
+                    con "se repite cada año", también los años siguientes (2028, 2029…) hasta que la desactives o la
+                    edites. Con <strong>Semana</strong> eliges de qué día a qué día (hasta 7 días).
                 </p>
                 {datos && (
                     <div className="mt-3 flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
@@ -525,40 +579,71 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-continental-gray-1">Periodo</span>
-                        <select className="h-9 rounded-md border px-2" value={periodo} onChange={(e) => setPeriodo(e.target.value as PeriodoCapacidad)}>
+                        <select className="h-9 rounded-md border px-2" value={periodo} onChange={(e) => cambiarPeriodo(e.target.value as PeriodoCapacidad)}>
                             <option value="Anio">Año (todo el año)</option>
                             <option value="Mes">Mes</option>
-                            <option value="Semana">Semana</option>
+                            <option value="Semana">Semana (de qué día a qué día, hasta 7)</option>
                             <option value="Dia">Día</option>
                         </select>
                     </label>
                     {periodo === "Anio" ? (
                         <label className="flex flex-col gap-1">
-                            <span className="text-xs font-medium text-continental-gray-1">Año</span>
+                            <span className="text-xs font-medium text-continental-gray-1">{cadaAnio ? "Desde el año" : "Año"}</span>
                             <select
                                 className="h-9 rounded-md border px-2"
                                 value={anioCapacidad}
                                 onChange={(e) => setAnioCapacidad(Number(e.target.value))}
                             >
-                                {[...new Set([...(anios.length ? anios : [anioElegido]), anioCapacidad])]
-                                    .sort((a, b) => a - b)
-                                    .map((a) => (
-                                        <option key={a} value={a}>
-                                            {a}
-                                        </option>
-                                    ))}
+                                {aniosParaCapacidad.map((a) => (
+                                    <option key={a} value={a}>
+                                        {a}
+                                    </option>
+                                ))}
                             </select>
+                            <span className="flex items-center gap-2 text-xs">
+                                <input type="checkbox" checked={cadaAnio} onChange={(e) => setCadaAnio(e.target.checked)} />
+                                Se repite cada año (sin fecha de fin)
+                            </span>
+                            <span className="text-xs text-blue-700">
+                                {cadaAnio
+                                    ? `Rige ${anioCapacidad}, ${anioCapacidad + 1}, ${anioCapacidad + 2}… sin volver a capturarla. Se quita con Desactivar.`
+                                    : `Solo del 1 de enero al 31 de diciembre de ${anioCapacidad}.`}
+                            </span>
                         </label>
                     ) : periodo === "Mes" ? (
                         <label className="flex flex-col gap-1">
                             <span className="text-xs font-medium text-continental-gray-1">Mes</span>
                             <input type="month" className="h-9 rounded-md border px-2" value={mes} onChange={(e) => setMes(e.target.value)} />
                         </label>
+                    ) : periodo === "Semana" ? (
+                        <>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-medium text-continental-gray-1">Desde</span>
+                                <input
+                                    type="date"
+                                    className="h-9 rounded-md border px-2"
+                                    value={fecha}
+                                    onChange={(e) => {
+                                        setFecha(e.target.value);
+                                        setFechaFin(e.target.value ? masDias(e.target.value, 6) : "");
+                                    }}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-medium text-continental-gray-1">Hasta (máx. 7 días)</span>
+                                <input
+                                    type="date"
+                                    className="h-9 rounded-md border px-2"
+                                    value={fechaFin}
+                                    min={fecha}
+                                    max={fecha ? masDias(fecha, 6) : undefined}
+                                    onChange={(e) => setFechaFin(e.target.value)}
+                                />
+                            </label>
+                        </>
                     ) : (
                         <label className="flex flex-col gap-1">
-                            <span className="text-xs font-medium text-continental-gray-1">
-                                {periodo === "Semana" ? "Cualquier día de la semana" : "Día"}
-                            </span>
+                            <span className="text-xs font-medium text-continental-gray-1">Día</span>
                             <input type="date" className="h-9 rounded-md border px-2" value={fecha} onChange={(e) => setFecha(e.target.value)} />
                         </label>
                     )}
@@ -709,11 +794,16 @@ export const CapacidadPorPeriodo = ({ onRegresarSecuencia }: CapacidadPorPeriodo
                             <tbody>
                                 {datos.capacidades.map((c) => (
                                     <tr key={c.id} className={`border-t align-top ${c.activa ? "" : "text-continental-gray-1 bg-slate-50"}`}>
-                                        <td className="px-3 py-1.5">{nombrePeriodoCapacidad(c.periodo)}</td>
+                                        <td className="px-3 py-1.5">
+                                            {nombrePeriodoCapacidad(c.periodo)}
+                                            {c.cadaAnio ? " (se repite)" : ""}
+                                        </td>
                                         <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">
-                                            {c.fechaInicio === c.fechaFin
-                                                ? fechaLarga(c.fechaInicio)
-                                                : `${fechaLarga(c.fechaInicio)} – ${fechaLarga(c.fechaFin)}`}
+                                            {c.cadaAnio
+                                                ? `Desde ${fechaLarga(c.fechaInicio)}, cada año (sin fin)`
+                                                : c.fechaInicio === c.fechaFin
+                                                  ? fechaLarga(c.fechaInicio)
+                                                  : `${fechaLarga(c.fechaInicio)} – ${fechaLarga(c.fechaFin)}`}
                                         </td>
                                         <td className="px-3 py-1.5">{alcanceTexto(c)}</td>
                                         <td className="px-3 py-1.5">

@@ -20,6 +20,8 @@ namespace tiempo_libre.DTOs
         public string Medicion { get; set; } = "Grupo";
         public DateOnly FechaInicio { get; set; }
         public DateOnly FechaFin { get; set; }
+        /// <summary>De año y se repite cada año (sin fecha final).</summary>
+        public bool CadaAnio { get; set; }
         public decimal Porcentaje { get; set; }
         public string? Motivo { get; set; }
         public bool Activa { get; set; }
@@ -70,8 +72,14 @@ namespace tiempo_libre.DTOs
         /// <summary>Día (o primer día), cualquier día de la semana, cualquier día del mes o del año.</summary>
         public DateOnly FechaInicio { get; set; }
 
-        /// <summary>Solo para "Dia": último día de un rango corto (hasta 31 días). Si no, igual a FechaInicio.</summary>
+        /// <summary>
+        /// "Dia": último día de un rango corto (hasta 31 días); sin ella, igual a FechaInicio.
+        /// "Semana": último día (hasta 7 días desde FechaInicio); sin ella, de lunes a domingo.
+        /// </summary>
         public DateOnly? FechaFin { get; set; }
+
+        /// <summary>Solo para "Anio": true = se repite cada año desde el de FechaInicio (sin fecha final).</summary>
+        public bool CadaAnio { get; set; }
 
         [Range(0.1, 100)]
         public decimal Porcentaje { get; set; }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -196,30 +196,42 @@ const RequestVacations = () => {
         fetchVacaciones();
     }, [user?.id, anioCaptura]);
 
-    // Cargar datos de disponibilidad por grupo
+    // Cargar datos de disponibilidad por grupo. Se vuelve a pedir cada vez que
+    // regresa al resumen anual: mientras estaba en el calendario del mes, él o
+    // sus compañeros pudieron llenar días, y el resumen se quedaba con los
+    // números de cuando entró a la pantalla.
+    const enResumenAnual = selectedMonth == null;
+    const disponibilidadCargadaRef = useRef("");
     useEffect(() => {
         const fetchDisponibilidad = async () => {
-            if (!user?.grupo?.grupoId || anioCaptura == null) return;
+            if (!user?.grupo?.grupoId || anioCaptura == null || !enResumenAnual) return;
 
-            setLoadingDisponibilidad(true);
+            // Solo la primera carga del año tapa la pantalla; al refrescar se
+            // queda lo que había mientras llega lo nuevo.
+            const clave = `${user.grupo.grupoId}-${anioCaptura}`;
+            const primeraVez = disponibilidadCargadaRef.current !== clave;
+            if (primeraVez) setLoadingDisponibilidad(true);
             try {
                 // El semáforo por mes es del año que se captura, no de "el que
                 // sigue al actual": en enero de 2027, con la captura de 2027 aún
                 // abierta, eso apuntaba a 2028.
                 const resp = await getDisponibilidadVacaciones(anioCaptura, user.grupo.grupoId);
                 setDisponibilidadData(resp);
+                disponibilidadCargadaRef.current = clave;
             } catch (error) {
                 console.error('Error fetching disponibilidad:', error);
-                toast.error('Error al cargar la disponibilidad de vacaciones');
-                // En caso de error, mantener datos por defecto
-                setDisponibilidadData(null);
+                // Si falla un refresco se queda el último resumen bueno.
+                if (primeraVez) {
+                    toast.error('Error al cargar la disponibilidad de vacaciones');
+                    setDisponibilidadData(null);
+                }
             } finally {
-                setLoadingDisponibilidad(false);
+                if (primeraVez) setLoadingDisponibilidad(false);
             }
         };
 
         fetchDisponibilidad();
-    }, [user?.grupo?.grupoId, anioCaptura]);
+    }, [user?.grupo?.grupoId, anioCaptura, enResumenAnual]);
 
     // Se vuelve a preguntar cada minuto: cuando abre su bloque, o capturan los
     // compañeros con más antigüedad, la pantalla se desbloquea sola.

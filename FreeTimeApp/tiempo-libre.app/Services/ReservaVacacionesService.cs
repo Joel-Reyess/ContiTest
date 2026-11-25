@@ -54,10 +54,32 @@ namespace tiempo_libre.Services
 
                 var mesesResumen = new List<DisponibilidadMesResumenDto>();
 
+                // El semáforo de todo el año en una sola pasada (antes era una
+                // consulta completa por cada día del año) y los inhábiles una vez.
+                var inicioAnio = new DateOnly(request.Anio, 1, 1);
+                var finAnio = new DateOnly(request.Anio, 12, 31);
+                var ausenciasAnio = await _ausenciaService.CalcularAusenciasPorFechasAsync(new ConsultaAusenciaRequest
+                {
+                    FechaInicio = inicioAnio,
+                    FechaFin = finAnio,
+                    GrupoId = grupo.GrupoId
+                });
+                var semaforo = ausenciasAnio.Success && ausenciasAnio.Data != null
+                    ? ausenciasAnio.Data.ToDictionary(d => d.Fecha, d => d.AusenciasPorGrupo?.FirstOrDefault())
+                    : new Dictionary<DateOnly, AusenciaPorGrupoDto?>();
+                if (!ausenciasAnio.Success)
+                    _logger.LogWarning("No se pudo calcular el semáforo del año {Anio} del grupo {GrupoId}: {Error}",
+                        request.Anio, grupo.GrupoId, ausenciasAnio.ErrorMsg);
+                var inhabiles = (await _context.DiasInhabiles
+                        .Where(d => d.Fecha >= inicioAnio && d.Fecha <= finAnio)
+                        .Select(d => d.Fecha)
+                        .ToListAsync())
+                    .ToHashSet();
+
                 // Procesar todos los meses del año
                 for (int mes = 1; mes <= 12; mes++)
                 {
-                    var resumenMes = await ProcesarResumenMesAsync(request.Anio, mes, grupo);
+                    var resumenMes = await ProcesarResumenMesAsync(request.Anio, mes, grupo, semaforo, inhabiles);
                     mesesResumen.Add(resumenMes);
                 }
 
@@ -153,8 +175,16 @@ namespace tiempo_libre.Services
 
         #region Métodos privados
 
+        /// <summary>
+        /// Días que le quedan al grupo en el mes. Un día cuenta como disponible solo
+        /// si todavía cabe una persona más: la misma regla con la que el calendario
+        /// del mes pinta "LL" (día lleno) y con la que el candado rechaza la captura.
+        /// Antes contaba los días que aún no rebasaban el %, aunque ya estuvieran
+        /// llenos: enero decía "20 días disponibles" con la mitad del mes en LL.
+        /// </summary>
         private async Task<DisponibilidadMesResumenDto> ProcesarResumenMesAsync(
-            int anio, int mes, Grupo grupo)
+            int anio, int mes, Grupo grupo,
+            IReadOnlyDictionary<DateOnly, AusenciaPorGrupoDto?> semaforo, IReadOnlySet<DateOnly> inhabiles)
         {
             var diasDelMes = DateTime.DaysInMonth(anio, mes);
             int diasDisponibles = 0;
@@ -170,8 +200,9 @@ namespace tiempo_libre.Services
             if (calendarioResponse.Success && calendarioResponse.Data != null)
             {
                 // Extraer días marcados como 'D' (Descanso)
+                // Descanso según su rol, y el domingo no laborable de su unidad (viene como "D").
                 diasDescanso = calendarioResponse.Data.Calendario
-                    .Where(c => c.Turno == "D")
+                    .Where(c => Helpers.TurnosHelper.EsDescanso(c.Turno))
                     .Select(c => DateOnly.FromDateTime(c.Fecha))
                     .ToHashSet();
             }
@@ -181,56 +212,16 @@ namespace tiempo_libre.Services
             {
                 var fecha = new DateOnly(anio, mes, dia);
 
-                // Verificar si es día inhábil
-                var esDiaInhabil = await _context.DiasInhabiles
-                    .AnyAsync(d => d.Fecha == fecha);
-
-                if (esDiaInhabil)
-                    continue;
-
-                // Verificar si es día de descanso según calendario del grupo
-                if (diasDescanso.Contains(fecha))
+                if (inhabiles.Contains(fecha) || diasDescanso.Contains(fecha))
                     continue;
 
                 totalDiasProcesados++;
 
-                try
-                {
-                    // Calcular ausencia para este grupo específico
-                    var request = new ConsultaAusenciaRequest
-                    {
-                        FechaInicio = fecha,
-                        FechaFin = null, // Solo un día
-                        GrupoId = grupo.GrupoId
-                    };
-
-                    var ausenciaResponse = await _ausenciaService.CalcularAusenciasPorFechasAsync(request);
-
-                    if (ausenciaResponse.Success && ausenciaResponse.Data?.Any() == true)
-                    {
-                        var ausenciaDia = ausenciaResponse.Data.First();
-                        var ausenciaGrupo = ausenciaDia.AusenciasPorGrupo?.FirstOrDefault();
-
-                        if (ausenciaGrupo != null && !ausenciaGrupo.ExcedeLimite)
-                        {
-                            diasDisponibles++;
-                        }
-                        else
-                        {
-                            diasNoDisponibles++;
-                        }
-                    }
-                    else
-                    {
-                        diasNoDisponibles++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error al procesar fecha {Fecha} para grupo {GrupoId}",
-                        fecha, grupo.GrupoId);
+                var ausenciaGrupo = semaforo.GetValueOrDefault(fecha);
+                if (ausenciaGrupo != null && !ausenciaGrupo.ExcedeLimite && ausenciaGrupo.PuedeReservar)
+                    diasDisponibles++;
+                else
                     diasNoDisponibles++;
-                }
             }
 
             var porcentajeDisponibilidad = totalDiasProcesados > 0

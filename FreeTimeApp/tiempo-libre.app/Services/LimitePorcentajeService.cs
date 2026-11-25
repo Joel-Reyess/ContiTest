@@ -91,6 +91,7 @@ namespace tiempo_libre.Services
             }
             await CargarAreasAsync(new[] { grupoId });
             await CargarBaseAsync();
+            if (UsaRol) await CargarSemanaSantaAsync(new[] { fecha.Year });
             return Resolver(grupoId, fecha, contexto);
         }
 
@@ -116,6 +117,8 @@ namespace tiempo_libre.Services
             }
             await CargarAreasAsync(ids);
             await CargarBaseAsync();
+            if (UsaRol && desde <= hasta)
+                await CargarSemanaSantaAsync(Enumerable.Range(desde.Year, hasta.Year - desde.Year + 1));
             return new TablaLimites(this);
         }
 
@@ -171,7 +174,7 @@ namespace tiempo_libre.Services
             {
                 "Dia" => c.FechaInicio == c.FechaFin ? $"día {c.FechaInicio:dd/MM/yyyy}" : $"días {c.FechaInicio:dd/MM} al {c.FechaFin:dd/MM/yyyy}",
                 "Semana" => $"semana del {c.FechaInicio:dd/MM} al {c.FechaFin:dd/MM/yyyy}",
-                "Anio" => $"año {c.FechaInicio:yyyy}",
+                "Anio" => c.FechaFin == CapacidadPorcentaje.SinFin ? $"cada año desde {c.FechaInicio:yyyy}" : $"año {c.FechaInicio:yyyy}",
                 _ => $"mes {c.FechaInicio:MM/yyyy}"
             };
             var alcance = c.Alcance switch
@@ -270,6 +273,9 @@ namespace tiempo_libre.Services
             }
         }
 
+        /// <summary>Hay capacidades que dependen del turno que le toca a cada grupo por su rol.</summary>
+        private bool UsaRol => _capacidades != null && _capacidades.Any(c => !string.IsNullOrEmpty(c.Turno) || c.Medicion == "Dia");
+
         private async Task CargarSemanaSantaAsync(IEnumerable<int> anios)
         {
             foreach (var anio in anios.Distinct().Where(a => !_semanaSanta.ContainsKey(a)).ToList())
@@ -351,9 +357,10 @@ namespace tiempo_libre.Services
                 }
 
                 // Las de un turno y las "por día" necesitan el rol de cada grupo ese
-                // día, y el rol se recorre una semana después de Semana Santa.
-                await CargarSemanaSantaAsync(_capacidades.Where(c => !string.IsNullOrEmpty(c.Turno) || c.Medicion == "Dia")
-                    .SelectMany(c => Enumerable.Range(c.FechaInicio.Year, c.FechaFin.Year - c.FechaInicio.Year + 1)));
+                // día, y el rol se recorre una semana después de Semana Santa: esa
+                // fecha se carga por cada año que se consulta (DetalleAsync y
+                // PrecargarAsync), no por los años de cada capacidad, porque la de
+                // año que se repite no tiene fin.
                 // Las "por día" suman todos los grupos de su área.
                 await CargarGruposDeAreasAsync(_capacidades.Where(c => c.Medicion == "Dia" && c.AreaId.HasValue)
                     .Select(c => c.AreaId!.Value));
