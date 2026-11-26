@@ -42,6 +42,11 @@ namespace tiempo_libre.Services
                         .ThenInclude(e => e.Grupo)
                     .Include(v => v.Empleado)
                         .ThenInclude(e => e.Area)
+                    // Solo las vigentes (26-nov-2026). Antes salían también las
+                    // canceladas (la original de una reprogramación, las de bloques
+                    // borrados, las que quitó la sincronización con SAP) y el
+                    // reporte parecía traer días programados que ya no existen.
+                    .Where(v => v.EstadoVacacion == "Activa")
                     .AsQueryable();
 
                 if (year.HasValue)
@@ -151,7 +156,7 @@ namespace tiempo_libre.Services
                         worksheet.Cell(row, 8).Value = vacacion.OrigenAsignacion;
                         worksheet.Cell(row, 9).Value = vacacion.EstadoVacacion;
                         worksheet.Cell(row, 10).Value = vacacion.PeriodoProgramacion;
-                        worksheet.Cell(row, 11).Value = vacacion.FechaProgramacion.ToString("dd/MMyyyy");
+                        worksheet.Cell(row, 11).Value = vacacion.FechaProgramacion.ToString("dd/MM/yyyy");
                         worksheet.Cell(row, 12).Value = vacacion.PuedeSerIntercambiada ? "Sí" : "No";
                         worksheet.Cell(row, 13).Value = vacacion.Observaciones ?? "";
                         worksheet.Cell(row, 14).Value = vacacion.CreatedAt.ToString("dd/MM/yyyy");
@@ -220,7 +225,8 @@ namespace tiempo_libre.Services
                         .ThenInclude(e => e.Grupo)
                     .Include(v => v.Empleado)
                         .ThenInclude(e => e.Area)
-                    .Where(v => v.FechaVacacion >= new DateOnly(year, 1, 1)
+                    .Where(v => v.EstadoVacacion == "Activa"
+                             && v.FechaVacacion >= new DateOnly(year, 1, 1)
                              && v.FechaVacacion <= new DateOnly(year, 12, 31));
 
                 if (areaId.HasValue)
