@@ -9,10 +9,14 @@
 --     dbo.Respaldo_VacacionesAnticipadas_<fecha_hora>, las borra y regresa a
 --     "Asignado" el turno de captura de quien se quedó sin días capturados (para
 --     que pueda capturar en su turno).
---   * Nunca toca los días por la empresa (asignación automática).
+--   * Nunca toca los días por la empresa de la asignación automática. Los días
+--     por la empresa que un jefe / superusuario capturó A MANO (origen
+--     EMPRESA_MANUAL) solo se quitan con @QuitarEmpresaManual = 1.
+--   * Solo toca días activos: lo cancelado ya no cuenta en ningún lado (desde
+--     el 26-nov tampoco sale en el Excel "Vacaciones Programadas por Área").
 --   * No borra un día que tenga una solicitud ligada (reprogramación, festivo,
 --     edición de día empresa, etc.): esos se listan aparte para revisarlos.
--- Orígenes (los mismos del diagnóstico): OPERADOR, MANUAL, SAP_ALTA, SAP_MOVIDA,
+-- Orígenes (los mismos del diagnóstico): OPERADOR, MANUAL, EMPRESA_MANUAL, SAP_ALTA, SAP_MOVIDA,
 -- SAP_RETENIDA, FESTIVO, REPROGRAMACION, VAC_LABORADA, OTRO.
 --
 -- OJO: si estos días ya se subieron a SAP con el "Reporte SAP Vacaciones
@@ -29,6 +33,7 @@ DECLARE @InicioCaptura DATETIME = '2026-11-27 00:00';
 -- Qué orígenes se quitan (1 = sí). Ver el diagnóstico antes de cambiarlos.
 DECLARE @QuitarOperador BIT = 1;   -- capturados por el operador en su pantalla
 DECLARE @QuitarManual BIT = 1;     -- capturados por jefe / superusuario / ingeniero
+DECLARE @QuitarEmpresaManual BIT = 0; -- días por la empresa capturados a mano por jefe / superusuario
 DECLARE @QuitarSap BIT = 0;        -- SAP_ALTA, SAP_MOVIDA, SAP_RETENIDA
 DECLARE @QuitarFestivo BIT = 0;    -- intercambios de festivo trabajado (suelen ser legítimos)
 DECLARE @QuitarOtros BIT = 0;      -- REPROGRAMACION, VAC_LABORADA, OTRO
@@ -40,8 +45,9 @@ DECLARE @Aplicar BIT = 0;
 IF OBJECT_ID('tempdb..#Candidatos') IS NOT NULL DROP TABLE #Candidatos;
 
 SELECT v.Id, v.EmpleadoId, u.Nomina, u.FullName, a.NombreGeneral AS Area, g.Rol AS Grupo,
-       v.FechaVacacion, v.TipoVacacion, v.PeriodoProgramacion, v.CreatedAt, v.CreatedBy, v.Observaciones,
+       v.FechaVacacion, v.TipoVacacion, v.OrigenAsignacion, v.PeriodoProgramacion, v.CreatedAt, v.CreatedBy, v.Observaciones,
        CASE
+           WHEN v.TipoVacacion = 'Automatica' THEN 'EMPRESA_MANUAL'
            WHEN v.Observaciones LIKE 'Alta por sincroniza%SAP retenida%' THEN 'SAP_RETENIDA'
            WHEN v.Observaciones LIKE 'Alta por sincroniza%SAP%' THEN 'SAP_ALTA'
            WHEN v.Observaciones LIKE 'Reprogramada por sincroniza%SAP%' THEN 'SAP_MOVIDA'
@@ -59,7 +65,8 @@ JOIN dbo.Users u ON u.Id = v.EmpleadoId
 LEFT JOIN dbo.Grupos g ON g.GrupoId = u.GrupoId
 LEFT JOIN dbo.Areas a ON a.AreaId = u.AreaId
 WHERE v.EstadoVacacion = 'Activa'
-  AND v.TipoVacacion <> 'Automatica'
+  -- De la empresa, solo lo capturado a mano (lo de la asignación automática nunca).
+  AND (v.TipoVacacion <> 'Automatica' OR v.OrigenAsignacion = 'Manual' OR v.CreatedBy IS NOT NULL)
   AND v.FechaVacacion >= DATEFROMPARTS(@Anio, 1, 1)
   AND v.FechaVacacion <= DATEFROMPARTS(@Anio, 12, 31)
   AND v.CreatedAt < @InicioCaptura
@@ -70,6 +77,7 @@ DELETE FROM #Candidatos
 WHERE NOT (
        (@QuitarOperador = 1 AND Origen = 'OPERADOR')
     OR (@QuitarManual = 1 AND Origen = 'MANUAL')
+    OR (@QuitarEmpresaManual = 1 AND Origen = 'EMPRESA_MANUAL')
     OR (@QuitarSap = 1 AND Origen IN ('SAP_ALTA', 'SAP_MOVIDA', 'SAP_RETENIDA'))
     OR (@QuitarFestivo = 1 AND Origen = 'FESTIVO')
     OR (@QuitarOtros = 1 AND Origen IN ('REPROGRAMACION', 'VAC_LABORADA', 'OTRO')));
@@ -109,7 +117,7 @@ GROUP BY Origen, TipoVacacion
 ORDER BY Origen;
 
 PRINT '=== (2) Detalle de lo que se quitaría ===';
-SELECT Id, Nomina, FullName, Area, Grupo, FechaVacacion, Origen, TipoVacacion, CreatedAt, Observaciones
+SELECT Id, Nomina, FullName, Area, Grupo, FechaVacacion, Origen, TipoVacacion, OrigenAsignacion, CreatedAt, Observaciones
 FROM #Candidatos
 WHERE LigadaA IS NULL
 ORDER BY Area, Grupo, Nomina, FechaVacacion;

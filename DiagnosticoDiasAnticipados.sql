@@ -10,6 +10,8 @@
 -- VacacionesProgramadas, de cualquier tipo. Este script dice de dónde salió
 -- cada día que no es de la empresa (columna Origen):
 --   EMPRESA        asignación automática (días por la empresa): es lo normal.
+--   EMPRESA_MANUAL días por la empresa que un jefe / superusuario capturó a mano
+--                  (el modal de asignación manual trae "Automática" por omisión).
 --   OPERADOR       el operador los capturó en su pantalla de programación anual.
 --   MANUAL         los capturó un jefe / superusuario / ingeniero por él
 --                  (asignación manual; ésta NO revisa festivos).
@@ -34,6 +36,7 @@ SELECT v.Id, v.EmpleadoId, u.Nomina, u.FullName, a.NombreGeneral AS Area, g.Rol 
        v.TipoVacacion, v.OrigenAsignacion, v.PeriodoProgramacion,
        v.CreatedAt, v.CreatedBy, cb.FullName AS CapturadoPor, v.Observaciones,
        CASE
+           WHEN v.TipoVacacion = 'Automatica' AND (v.OrigenAsignacion = 'Manual' OR v.CreatedBy IS NOT NULL) THEN 'EMPRESA_MANUAL'
            WHEN v.TipoVacacion = 'Automatica' THEN 'EMPRESA'
            WHEN v.Observaciones LIKE 'Alta por sincroniza%SAP retenida%' THEN 'SAP_RETENIDA'
            WHEN v.Observaciones LIKE 'Alta por sincroniza%SAP%' THEN 'SAP_ALTA'
@@ -56,6 +59,28 @@ LEFT JOIN dbo.Users cb ON cb.Id = v.CreatedBy
 WHERE v.EstadoVacacion = 'Activa'
   AND v.FechaVacacion >= DATEFROMPARTS(@Anio, 1, 1)
   AND v.FechaVacacion <= DATEFROMPARTS(@Anio, 12, 31);
+
+PRINT '=== (0) ¿Ya se aplicó la limpieza? (tablas de respaldo que deja LimpiarDiasAnticipados.sql con @Aplicar = 1) ===';
+SELECT t.name AS TablaRespaldo, t.create_date AS CreadaEl, SUM(p.rows) AS DiasRespaldados
+FROM sys.tables t
+JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
+WHERE t.name LIKE 'Respaldo[_]VacacionesAnticipadas[_]%'
+GROUP BY t.name, t.create_date
+ORDER BY t.create_date;
+
+PRINT '=== (0b) TODO lo del año en la tabla, también lo cancelado (lo que traía el Excel "Vacaciones Programadas por Área") ===';
+-- Hasta el 26-nov ese Excel no filtraba por estado: salían también las canceladas
+-- (al borrar bloques, reprogramaciones, sincronización con SAP).
+SELECT v.EstadoVacacion, v.TipoVacacion, v.OrigenAsignacion,
+       CASE WHEN v.CreatedBy IS NULL THEN 'No' ELSE 'Sí' END AS CapturadoPorUsuario,
+       COUNT(*) AS Dias, COUNT(DISTINCT v.EmpleadoId) AS Empleados,
+       MIN(v.CreatedAt) AS PrimeroCapturado, MAX(v.CreatedAt) AS UltimoCapturado,
+       MAX(v.Observaciones) AS EjemploObservacion
+FROM dbo.VacacionesProgramadas v
+WHERE v.FechaVacacion >= DATEFROMPARTS(@Anio, 1, 1)
+  AND v.FechaVacacion <= DATEFROMPARTS(@Anio, 12, 31)
+GROUP BY v.EstadoVacacion, v.TipoVacacion, v.OrigenAsignacion, CASE WHEN v.CreatedBy IS NULL THEN 'No' ELSE 'Sí' END
+ORDER BY v.EstadoVacacion, Dias DESC;
 
 PRINT '=== (1) Configuración vigente (periodo y años) ===';
 SELECT TOP 1 Id, PeriodoActual, AnioVigente, AnioProgramacionAnual, CreatedAt, UpdatedAt
@@ -92,7 +117,7 @@ ORDER BY d.Area, d.Grupo, d.Origen;
 
 PRINT '=== (5) Detalle de cada día que no es de la empresa (máx. 3000 filas) ===';
 SELECT TOP 3000 Id, Nomina, FullName, Area, Grupo, FechaVacacion, DiaSemana, Origen, TipoVacacion,
-       PeriodoProgramacion, EsFestivo, Festivo, CreatedAt, CapturadoPor, Observaciones,
+       OrigenAsignacion, PeriodoProgramacion, EsFestivo, Festivo, CreatedAt, CapturadoPor, Observaciones,
        CASE WHEN CreatedAt < @InicioCaptura THEN 'Antes de abrir la captura' ELSE '' END AS Anticipado
 FROM #Dias
 WHERE Origen <> 'EMPRESA'
