@@ -782,6 +782,24 @@ namespace tiempo_libre.Services
 
         private async Task<(bool Permitido, string Motivo)> ValidarTurnoDeCapturaAsync(User empleado, int anio)
         {
+            // Solo se captura el año vigente o el que se está programando. Antes
+            // cualquier año pasaba si el grupo no tenía bloques de ese año.
+            var config = await Helpers.CapturaAnualHelper.ConfiguracionAsync(_context);
+            var anioEnProgramacion = Helpers.CapturaAnualHelper.AnioEnProgramacion(config);
+            if (config != null && anio != config.AnioVigente && anio != anioEnProgramacion)
+                return (false, $"La captura de vacaciones de {anio} no está abierta.");
+
+            // El año que se programa va por bloques: sin bloques de su grupo (o antes
+            // de que empiece el primero) no hay captura. Antes "sin bloques" dejaba
+            // pasar y en productivo aparecieron días de 2027 un día antes de
+            // liberar los bloques (26-nov-2026).
+            if (anio == anioEnProgramacion)
+            {
+                var sinAbrir = await Helpers.CapturaAnualHelper.CapturaSinAbrirAsync(_context, empleado.GrupoId, anio);
+                if (sinAbrir != null)
+                    return (false, $"Todavía no puedes capturar: {sinAbrir}.");
+            }
+
             if (empleado.GrupoId == null)
                 return (true, string.Empty);
 
@@ -789,9 +807,9 @@ namespace tiempo_libre.Services
                 .Where(b => b.AnioGeneracion == anio && b.GrupoId == empleado.GrupoId.Value)
                 .MaxAsync(b => (DateTime?)b.FechaHoraFin);
 
-            // Sin bloques para ese año y grupo no hay turnos que respetar; y si
-            // el último bloque ya cerró, la captura anual terminó y lo que sigue
-            // es reprogramación, que no va por turnos. En los dos casos, pasar.
+            // Año vigente sin bloques: no hay turnos que respetar. Y si el último
+            // bloque ya cerró, la captura anual terminó y lo que sigue es
+            // reprogramación, que no va por turnos. En los dos casos, pasar.
             if (ultimoFin == null || DateTime.Now > ultimoFin.Value)
                 return (true, string.Empty);
 

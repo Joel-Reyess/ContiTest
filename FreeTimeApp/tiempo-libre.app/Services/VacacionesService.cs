@@ -195,6 +195,50 @@ namespace tiempo_libre.Services
                     }
                 }
 
+                // Días de común acuerdo (no los de la empresa): igual que en la
+                // pantalla del operador, ni en festivo ni antes de que abra la
+                // captura del año que se programa (26-nov-2026: en productivo
+                // aparecieron días de 2027 en constancias y reportes, algunos en
+                // festivo, antes de liberar los bloques).
+                var esDeEmpresa = request.TipoVacacion is "Automatica" or "AsignadaAutomaticamente" or "DiaEmpresaReprogramado";
+                if (!esDeEmpresa && request.FechasVacaciones.Count > 0)
+                {
+                    var fechas = request.FechasVacaciones.Distinct().ToList();
+                    var festivos = await _db.DiasInhabiles
+                        .Where(d => fechas.Contains(d.Fecha))
+                        .Select(d => d.Fecha)
+                        .Distinct()
+                        .ToListAsync();
+                    if (festivos.Count > 0)
+                    {
+                        await transaction.RollbackAsync();
+                        return new ApiResponse<AsignacionManualResponse>(false, null,
+                            "Son días inhábiles (festivos): " +
+                            string.Join(", ", festivos.OrderBy(f => f).Select(f => f.ToString("ddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-MX")))) +
+                            ". Quita esas fechas de la selección.");
+                    }
+
+                    var config = await Helpers.CapturaAnualHelper.ConfiguracionAsync(_db);
+                    var anioEnProgramacion = Helpers.CapturaAnualHelper.AnioEnProgramacion(config);
+                    var ultimoAbierto = Math.Max(config?.AnioVigente ?? int.MaxValue, anioEnProgramacion ?? int.MinValue);
+                    foreach (var anio in fechas.Select(f => f.Year).Distinct().OrderBy(a => a))
+                    {
+                        string? motivo = null;
+                        if (config != null && anio > ultimoAbierto)
+                            motivo = $"la captura de {anio} no está abierta";
+                        else if (anio == anioEnProgramacion)
+                            motivo = await Helpers.CapturaAnualHelper.CapturaSinAbrirAsync(_db, empleado.GrupoId, anio);
+                        if (motivo == null) continue;
+
+                        await transaction.RollbackAsync();
+                        _logger.LogWarning("Asignación manual de {Tipo} rechazada antes de abrir la captura: empleado {EmpleadoId}, año {Anio}, usuario {Usuario}: {Motivo}",
+                            request.TipoVacacion, request.EmpleadoId, anio, usuarioAsignaId, motivo);
+                        return new ApiResponse<AsignacionManualResponse>(false, null,
+                            $"No se pueden capturar días de común acuerdo de {anio} para este empleado: {motivo}. " +
+                            "Los días por la empresa sí se pueden asignar.");
+                    }
+                }
+
                 // Tope por antigüedad (tabla del Art. 68). Esta ruta —jefe,
                 // ingeniero y superusuario— no lo revisaba: el único límite estaba
                 // en el modal y se lo saltaban las fechas que llegaban marcadas
