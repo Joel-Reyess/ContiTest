@@ -14,8 +14,11 @@
 --     EMPRESA_MANUAL) solo se quitan con @QuitarEmpresaManual = 1.
 --   * Solo toca días activos: lo cancelado ya no cuenta en ningún lado (desde
 --     el 26-nov tampoco sale en el Excel "Vacaciones Programadas por Área").
---   * No borra un día que tenga una solicitud ligada (reprogramación, festivo,
---     edición de día empresa, etc.): esos se listan aparte para revisarlos.
+--   * No borra un día que tenga una solicitud ligada (reprogramación, edición
+--     de día empresa, etc.): esos se listan aparte para revisarlos.
+--   * Intercambios de festivo trabajado (@QuitarFestivo = 1): quita el día y
+--     deja su solicitud como "Rechazada" y sin día, para que el empleado pueda
+--     volver a pedir el intercambio cuando abra la captura de su grupo.
 -- Orígenes (los mismos del diagnóstico): OPERADOR, MANUAL, EMPRESA_MANUAL, SAP_ALTA, SAP_MOVIDA,
 -- SAP_RETENIDA, FESTIVO, REPROGRAMACION, VAC_LABORADA, OTRO.
 --
@@ -35,7 +38,7 @@ DECLARE @QuitarOperador BIT = 1;   -- capturados por el operador en su pantalla
 DECLARE @QuitarManual BIT = 1;     -- capturados por jefe / superusuario / ingeniero
 DECLARE @QuitarEmpresaManual BIT = 0; -- días por la empresa capturados a mano por jefe / superusuario
 DECLARE @QuitarSap BIT = 0;        -- SAP_ALTA, SAP_MOVIDA, SAP_RETENIDA
-DECLARE @QuitarFestivo BIT = 0;    -- intercambios de festivo trabajado (suelen ser legítimos)
+DECLARE @QuitarFestivo BIT = 0;    -- intercambios de festivo trabajado aprobados antes de abrir la captura
 DECLARE @QuitarOtros BIT = 0;      -- REPROGRAMACION, VAC_LABORADA, OTRO
 -- Opcional: solo estas nóminas, separadas por coma ('' = todas).
 DECLARE @SoloNominas NVARCHAR(MAX) = N'';
@@ -89,8 +92,7 @@ INSERT @Refs VALUES
     ('dbo', 'SolicitudesEdicionDiasEmpresa', 'VacacionOriginalId'),
     ('dbo', 'SolicitudesReprogramacionPostIncapacidad', 'VacacionOriginalId'),
     ('dbo', 'SolicitudesVacacionLaborada', 'VacacionOriginalId'),
-    ('dbo', 'SolicitudesReprogramacionDiaEmpresa', 'VacacionOriginalId'),
-    ('dbo', 'SolicitudesFestivosTrabajados', 'VacacionCreadaId');
+    ('dbo', 'SolicitudesReprogramacionDiaEmpresa', 'VacacionOriginalId');
 -- Más cualquier otra llave foránea que apunte a VacacionesProgramadas.
 INSERT @Refs
 SELECT SCHEMA_NAME(t.schema_id), t.name, c.name
@@ -98,6 +100,8 @@ FROM sys.foreign_key_columns fkc
 JOIN sys.tables t ON t.object_id = fkc.parent_object_id
 JOIN sys.columns c ON c.object_id = fkc.parent_object_id AND c.column_id = fkc.parent_column_id
 WHERE fkc.referenced_object_id = OBJECT_ID('dbo.VacacionesProgramadas')
+  -- La solicitud del intercambio de festivo no estorba: se atiende abajo.
+  AND NOT (t.name = 'SolicitudesFestivosTrabajados' AND c.name = 'VacacionCreadaId')
   AND NOT EXISTS (SELECT 1 FROM @Refs r WHERE r.Esquema = SCHEMA_NAME(t.schema_id) AND r.Tabla = t.name AND r.Columna = c.name);
 
 DECLARE @sql NVARCHAR(MAX) = N'';
@@ -132,7 +136,9 @@ BEGIN TRY
     BEGIN TRANSACTION;
 
     DECLARE @Respaldo SYSNAME = N'Respaldo_VacacionesAnticipadas_' + FORMAT(GETDATE(), 'yyyyMMdd_HHmmss');
-    IF @Aplicar = 1
+    -- Solo si hay algo que respaldar (una segunda corrida no deja tablas vacías).
+    DECLARE @HayQueBorrar BIT = CASE WHEN EXISTS (SELECT 1 FROM #Candidatos WHERE LigadaA IS NULL) THEN 1 ELSE 0 END;
+    IF @Aplicar = 1 AND @HayQueBorrar = 1
     BEGIN
         SET @sql = N'SELECT v.* INTO dbo.' + QUOTENAME(@Respaldo) + N' FROM dbo.VacacionesProgramadas v '
                  + N'WHERE v.Id IN (SELECT Id FROM #Candidatos WHERE LigadaA IS NULL);';
@@ -141,6 +147,22 @@ BEGIN TRY
 
     DECLARE @Afectados TABLE (EmpleadoId INT PRIMARY KEY);
     INSERT @Afectados SELECT DISTINCT EmpleadoId FROM #Candidatos WHERE LigadaA IS NULL;
+
+    -- Intercambios de festivo que se quitan: la solicitud queda "Rechazada" y
+    -- sin día, y el festivo vuelve a estar disponible para pedirlo.
+    DECLARE @Festivos INT = 0;
+    IF OBJECT_ID('dbo.SolicitudesFestivosTrabajados') IS NOT NULL
+    BEGIN
+        UPDATE s
+        SET s.EstadoSolicitud = 'Rechazada', s.VacacionCreadaId = NULL,
+            s.MotivoRechazo = LEFT(ISNULL(s.MotivoRechazo + ' | ', '')
+                + 'Cancelada: el día se dio antes de abrir la captura de ' + CAST(@Anio AS VARCHAR(4))
+                + ' (' + CONVERT(VARCHAR(16), GETDATE(), 120) + '). Se puede volver a solicitar.', 500)
+        FROM dbo.SolicitudesFestivosTrabajados s
+        JOIN #Candidatos c ON c.Id = s.VacacionCreadaId
+        WHERE c.LigadaA IS NULL;
+        SET @Festivos = @@ROWCOUNT;
+    END
 
     DELETE v
     FROM dbo.VacacionesProgramadas v
@@ -166,14 +188,17 @@ BEGIN TRY
     IF @Aplicar = 1
     BEGIN
         COMMIT TRANSACTION;
-        PRINT CONCAT('APLICADO: ', @Borrados, ' días borrados (respaldo en dbo.', @Respaldo, '); ',
-                     @Turnos, ' turnos de captura regresados a Asignado.');
+        PRINT CONCAT('APLICADO: ', @Borrados, ' días borrados (',
+                     CASE WHEN @HayQueBorrar = 1 THEN 'respaldo en dbo.' + @Respaldo ELSE 'no había nada que quitar' END, '); ',
+                     @Turnos, ' turnos de captura regresados a Asignado; ',
+                     @Festivos, ' solicitudes de festivo reabiertas.');
     END
     ELSE
     BEGIN
         ROLLBACK TRANSACTION;
-        PRINT CONCAT('SOLO VISTA PREVIA (no se cambió nada): se borrarían ', @Borrados, ' días y ',
-                     @Turnos, ' turnos de captura regresarían a Asignado. Para aplicarlo pon @Aplicar = 1.');
+        PRINT CONCAT('SOLO VISTA PREVIA (no se cambió nada): se borrarían ', @Borrados, ' días, ',
+                     @Turnos, ' turnos de captura regresarían a Asignado y ', @Festivos,
+                     ' solicitudes de festivo se reabrirían. Para aplicarlo pon @Aplicar = 1.');
     END
 END TRY
 BEGIN CATCH

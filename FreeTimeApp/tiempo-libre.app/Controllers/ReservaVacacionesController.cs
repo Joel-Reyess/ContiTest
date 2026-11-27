@@ -182,6 +182,19 @@ namespace tiempo_libre.Controllers
                     return BadRequest(new ApiResponse<object>(false, null, $"Datos de entrada inválidos: {errors}"));
                 }
 
+                // Cada quien captura solo lo suyo (26-nov-2026). El empleado venía en
+                // el cuerpo y no se comparaba con la sesión: cualquier usuario con
+                // sesión podía capturarle a otro. El jefe y el superusuario no usan
+                // esta ruta (asignación manual).
+                var usuarioSesion = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(usuarioSesion, out var usuarioSesionId) && usuarioSesionId != request.EmpleadoId)
+                {
+                    _logger.LogWarning("Reserva anual rechazada: el usuario {Usuario} intentó capturar para el empleado {EmpleadoId}",
+                        usuarioSesionId, request.EmpleadoId);
+                    return StatusCode(403, new ApiResponse<object>(false, null,
+                        "Solo puedes capturar tus propias vacaciones."));
+                }
+
                 _logger.LogInformation("Procesando reserva anual para empleado {EmpleadoId}, año {Anio}, {CantidadFechas} fechas",
                     request.EmpleadoId, request.AnioVacaciones, request.FechasSeleccionadas.Count);
 
