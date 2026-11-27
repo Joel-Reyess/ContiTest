@@ -227,7 +227,7 @@ namespace tiempo_libre.Services
                         if (config != null && anio > ultimoAbierto)
                             motivo = $"la captura de {anio} no está abierta";
                         else if (anio == anioEnProgramacion)
-                            motivo = await Helpers.CapturaAnualHelper.CapturaSinAbrirAsync(_db, empleado.GrupoId, anio);
+                            motivo = await Helpers.CapturaAnualHelper.CapturaSinAbrirAsync(_db, empleado.Id, empleado.GrupoId, empleado.AreaId, anio);
                         if (motivo == null) continue;
 
                         await transaction.RollbackAsync();

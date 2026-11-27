@@ -128,7 +128,7 @@ namespace tiempo_libre.Services
 
                 // Mismo candado que las vacaciones (26-nov-2026): nada de días del año
                 // que se programa antes de que abra la captura de su grupo.
-                var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(_db, empleado.GrupoId, request.FechaNueva.Year);
+                var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(_db, empleado.Id, empleado.GrupoId, empleado.AreaId, request.FechaNueva.Year);
                 if (sinAbrir != null)
                     return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
                         $"Todavía no se puede intercambiar un festivo por un día de {request.FechaNueva.Year}: {sinAbrir}.");
@@ -341,7 +341,7 @@ namespace tiempo_libre.Services
                     // Una solicitud que quedó pendiente desde antes tampoco crea el
                     // día mientras no abra la captura del grupo para ese año.
                     var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(
-                        _db, solicitud.Empleado?.GrupoId, solicitud.FechaNuevaSolicitada.Year);
+                        _db, solicitud.EmpleadoId, solicitud.Empleado?.GrupoId, solicitud.Empleado?.AreaId, solicitud.FechaNuevaSolicitada.Year);
                     if (sinAbrir != null)
                         return new ApiResponse<AprobarFestivoTrabajadoResponse>(false, null,
                             $"Todavía no se puede aprobar un intercambio de festivo por un día de {solicitud.FechaNuevaSolicitada.Year}: {sinAbrir}.");
@@ -1030,7 +1030,7 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
                 }
 
-                var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(_db, empleado.GrupoId, request.FechaNueva.Year);
+                var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(_db, empleado.Id, empleado.GrupoId, empleado.AreaId, request.FechaNueva.Year);
                 if (sinAbrir != null)
                 {
                     response.EsValido = false;
