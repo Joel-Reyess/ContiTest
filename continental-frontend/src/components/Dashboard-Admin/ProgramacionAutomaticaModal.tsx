@@ -99,6 +99,10 @@ export const ProgramacionAutomaticaModal = ({
       })
       .catch(() => setParosEmpresa([]));
   }, [isOpen, anio]);
+  // Hay áreas con el mismo nombre (dos "Mtto. A"): a esas se les pone el id
+  // para saber cuál se está eligiendo.
+  const etiquetaArea = (a: Area) =>
+    areas.filter((x) => x.nombreGeneral === a.nombreGeneral).length > 1 ? `${a.nombreGeneral} (id ${a.areaId})` : a.nombreGeneral;
   const actualizarVentana = (id: number, cambios: Partial<VentanaForm>) =>
     setVentanas((vs) => vs.map((v) => (v.id === id ? { ...v, ...cambios } : v)));
   const ventanasValidas = ventanas.filter((v) => v.fechaInicio && v.fechaFin && v.fechaFin >= v.fechaInicio && v.areaIds.length > 0);
@@ -191,7 +195,7 @@ export const ProgramacionAutomaticaModal = ({
         }
       }
       const nombresSoloAreas = soloAreas.length > 0
-        ? areas.filter((a) => soloAreas.includes(a.areaId)).map((a) => a.nombreGeneral)
+        ? areas.filter((a) => soloAreas.includes(a.areaId)).map(etiquetaArea)
         : null;
       const response = await AsignacionAutomaticaService.ejecutarAsignacion(
         anio,
@@ -361,13 +365,13 @@ export const ProgramacionAutomaticaModal = ({
                   setSoloAreas((s) => (e.target.checked ? [...s, a.areaId] : s.filter((x) => x !== a.areaId)))
                 }
               />
-              {a.nombreGeneral}
+              {etiquetaArea(a)}
             </label>
           ))}
         </div>
         {soloAreas.length > 0 && (
           <p className="text-xs font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded p-2">
-            Solo: {areas.filter((a) => soloAreas.includes(a.areaId)).map((a) => a.nombreGeneral).join(', ')}
+            Solo: {areas.filter((a) => soloAreas.includes(a.areaId)).map(etiquetaArea).join(', ')}
           </p>
         )}
       </div>
