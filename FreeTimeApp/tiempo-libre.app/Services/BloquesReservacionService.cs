@@ -692,7 +692,9 @@ namespace tiempo_libre.Services
                 var query = _db.BloquesReservacion
                     .Include(b => b.Grupo)
                     .ThenInclude(g => g.Area)
-                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado != "Transferido"))
+                    // Sin bajas: un empleado desactivado ya no tiene turno que mostrar
+                    // (27-nov-2026: seguía saliendo en los bloques y en su Excel).
+                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado != "Transferido" && a.Empleado.Status == tiempo_libre.Models.Enums.UserStatus.Activo))
                     .ThenInclude(a => a.Empleado)
                     .AsQueryable();
 
@@ -815,7 +817,7 @@ namespace tiempo_libre.Services
                 var queryBloques = _db.BloquesReservacion
                     .Include(b => b.Grupo)
                     .Include(b => b.Grupo.Area)
-                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado != "Transferido"))
+                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado != "Transferido" && a.Empleado.Status == tiempo_libre.Models.Enums.UserStatus.Activo))
                     .ThenInclude(a => a.Empleado)
                     .Include(b => b.AprobadoPorUser)
                     .Where(b => b.Estado == "Activo");
@@ -1259,6 +1261,7 @@ namespace tiempo_libre.Services
                     .ThenInclude(b => b.Grupo)
                     .ThenInclude(g => g.Area)
                     .Where(a => a.Estado == "NoRespondio"
+                        && a.Empleado.Status == tiempo_libre.Models.Enums.UserStatus.Activo
                         && a.Bloque.AnioGeneracion == anioObjetivo);
 
                 // Aplicar filtros
