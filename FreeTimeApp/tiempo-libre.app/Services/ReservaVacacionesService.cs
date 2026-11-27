@@ -792,27 +792,20 @@ namespace tiempo_libre.Services
             // El año que se programa va por bloques: sin bloques de su grupo (o antes
             // de que empiece el primero) no hay captura. Antes "sin bloques" dejaba
             // pasar y en productivo aparecieron días de 2027 un día antes de
-            // liberar los bloques (26-nov-2026).
+            // liberar los bloques (26-nov-2026). Si su grupo no tiene bloques
+            // (regla nueva), abre con su turno de antes, su área o la planta.
             if (anio == anioEnProgramacion)
             {
-                var sinAbrir = await Helpers.CapturaAnualHelper.CapturaSinAbrirAsync(_context, empleado.GrupoId, anio);
+                var sinAbrir = await Helpers.CapturaAnualHelper.CapturaSinAbrirAsync(
+                    _context, empleado.Id, empleado.GrupoId, empleado.AreaId, anio);
                 if (sinAbrir != null)
                     return (false, $"Todavía no puedes capturar: {sinAbrir}.");
             }
 
-            if (empleado.GrupoId == null)
-                return (true, string.Empty);
-
-            var ultimoFin = await _context.BloquesReservacion
-                .Where(b => b.AnioGeneracion == anio && b.GrupoId == empleado.GrupoId.Value)
-                .MaxAsync(b => (DateTime?)b.FechaHoraFin);
-
-            // Año vigente sin bloques: no hay turnos que respetar. Y si el último
-            // bloque ya cerró, la captura anual terminó y lo que sigue es
-            // reprogramación, que no va por turnos. En los dos casos, pasar.
-            if (ultimoFin == null || DateTime.Now > ultimoFin.Value)
-                return (true, string.Empty);
-
+            // Su turno, aunque el bloque sea de otro grupo: a quien SAP pasó a una
+            // regla nueva después de generar los bloques se le respeta el que
+            // tenía (27-nov-2026: antes se buscaban solo los bloques de su grupo
+            // actual, que es nuevo y no tiene).
             var asignacion = await _context.AsignacionesBloque
                 .Include(a => a.Bloque)
                 .Where(a => a.EmpleadoId == empleado.Id
@@ -820,6 +813,21 @@ namespace tiempo_libre.Services
                             && a.Bloque.AnioGeneracion == anio)
                 .OrderByDescending(a => a.Id)
                 .FirstOrDefaultAsync();
+
+            var grupoDeTurnos = asignacion?.Bloque.GrupoId ?? empleado.GrupoId;
+            if (grupoDeTurnos == null)
+                return (true, string.Empty);
+
+            var ultimoFin = await _context.BloquesReservacion
+                .Where(b => b.AnioGeneracion == anio && b.GrupoId == grupoDeTurnos.Value)
+                .MaxAsync(b => (DateTime?)b.FechaHoraFin);
+
+            // Sin bloques (año vigente, o grupo de regla nueva cuya captura ya
+            // abrió por su área): no hay turnos que respetar. Y si el último
+            // bloque ya cerró, la captura anual terminó y lo que sigue es
+            // reprogramación, que no va por turnos. En los dos casos, pasar.
+            if (ultimoFin == null || DateTime.Now > ultimoFin.Value)
+                return (true, string.Empty);
 
             if (asignacion == null)
                 return (false, $"No tienes un turno asignado para la programación de {anio}. Pide a tu jefe de área que te asigne uno.");

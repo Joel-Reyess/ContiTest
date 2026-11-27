@@ -7,9 +7,12 @@
 --
 -- Se quita (con respaldo) solo lo que se capturó ANTES de tiempo:
 --   * OPERADOR (lo capturó en su pantalla): antes de que empezara su primer
---     bloque de 2027, o su grupo no tiene bloques de 2027.
+--     bloque de 2027.
 --   * MANUAL (Anual capturado por jefe / superusuario / ingeniero): antes de que
---     empezara el primer bloque de 2027 de su grupo, o el grupo no tiene bloques.
+--     empezara el primer bloque de 2027 de su grupo.
+--   Si su grupo no tiene bloques (regla nueva creada después de generarlos),
+--   igual que el sistema: cuenta el grupo del bloque donde tiene su turno, si
+--   no su área y si no la planta (27-nov: antes eso se borraba siempre).
 --   * TODO lo capturado antes de @InicioProgramacion (hora de México), sin
 --     importar lo que digan los bloques: antes de esa hora no debe haber nada.
 -- No toca días por la empresa, intercambios de festivo, SAP ni reprogramaciones.
@@ -49,6 +52,17 @@ SELECT v.Id, v.EmpleadoId, u.Nomina, u.FullName, a.NombreGeneral AS Area, g.Rol 
        (SELECT MIN(b.FechaHoraInicio) FROM dbo.AsignacionesBloque ab
           JOIN dbo.BloquesReservacion b ON b.Id = ab.BloqueId
          WHERE ab.EmpleadoId = v.EmpleadoId AND b.AnioGeneracion = @Anio AND b.Estado <> 'Cancelado') AS AbreSuTurno,
+       (SELECT MIN(b2.FechaHoraInicio) FROM dbo.BloquesReservacion b2
+         WHERE b2.AnioGeneracion = @Anio AND b2.Estado <> 'Cancelado'
+           AND b2.GrupoId IN (SELECT b.GrupoId FROM dbo.AsignacionesBloque ab
+                                JOIN dbo.BloquesReservacion b ON b.Id = ab.BloqueId
+                               WHERE ab.EmpleadoId = v.EmpleadoId AND ab.Estado <> 'Transferido'
+                                 AND b.AnioGeneracion = @Anio AND b.Estado <> 'Cancelado')) AS AbreGrupoDeSuTurno,
+       (SELECT MIN(b.FechaHoraInicio) FROM dbo.BloquesReservacion b
+          JOIN dbo.Grupos gb ON gb.GrupoId = b.GrupoId
+         WHERE gb.AreaId = COALESCE(u.AreaId, g.AreaId) AND b.AnioGeneracion = @Anio AND b.Estado <> 'Cancelado') AS AbreArea,
+       (SELECT MIN(b.FechaHoraInicio) FROM dbo.BloquesReservacion b
+         WHERE b.AnioGeneracion = @Anio AND b.Estado <> 'Cancelado') AS AbrePlanta,
        CAST(NULL AS DATETIME2) AS PodiaDesde,
        CAST(NULL AS NVARCHAR(200)) AS LigadaA
 INTO #Capturas
@@ -65,9 +79,11 @@ WHERE v.EstadoVacacion = 'Activa'
   AND (@SoloNominas = N'' OR N',' + REPLACE(@SoloNominas, N' ', N'') + N',' LIKE N'%,' + CAST(u.Nomina AS NVARCHAR(20)) + N',%');
 
 -- Operador: desde su propio turno (o el primero del grupo si no tiene uno).
--- Jefe / superusuario: desde que abre el grupo.
+-- Jefe / superusuario: desde que abre el grupo de su turno, o su grupo.
+-- Grupo sin bloques (regla nueva): desde que abre su área, o la planta.
 UPDATE #Capturas
-SET PodiaDesde = CASE WHEN Origen = 'OPERADOR' THEN COALESCE(AbreSuTurno, AbreGrupo) ELSE AbreGrupo END;
+SET PodiaDesde = CASE WHEN Origen = 'OPERADOR' THEN COALESCE(AbreSuTurno, AbreGrupo, AbreArea, AbrePlanta)
+                      ELSE COALESCE(AbreGrupoDeSuTurno, AbreGrupo, AbreArea, AbrePlanta) END;
 
 -- Días con una solicitud ligada: no se borran (quedan para revisarlos a mano).
 DECLARE @Refs TABLE (Esquema SYSNAME, Tabla SYSNAME, Columna SYSNAME);
@@ -118,7 +134,7 @@ PRINT '=== (2) Detalle de lo que se quita (por empleado) ===';
 SELECT Nomina, FullName, Area, Grupo, Origen, ISNULL(CapturadoPor, '(el operador)') AS CapturadoPor,
        COUNT(*) AS Dias, MIN(CapturadoHoraMexico) AS CapturadoEl, MIN(PodiaDesde) AS PodiaCapturarDesde,
        CASE WHEN MIN(CapturadoHoraMexico) < @InicioProgramacion THEN 'Antes de que empezara la programación'
-            WHEN MIN(PodiaDesde) IS NULL THEN 'Su grupo no tiene bloques de ' + CAST(@Anio AS VARCHAR(4))
+            WHEN MIN(PodiaDesde) IS NULL THEN 'No hay bloques de ' + CAST(@Anio AS VARCHAR(4))
             ELSE 'Antes de su turno' END AS Motivo
 FROM #Quitar
 GROUP BY Nomina, FullName, Area, Grupo, Origen, CapturadoPor

@@ -18,6 +18,13 @@ namespace tiempo_libre.Helpers
     /// acuerdo del año que se programa solo cuando ya existen los bloques de su
     /// grupo y ya empezó el primero. Los días por la empresa no cambian: se
     /// asignan antes, por diseño.
+    ///
+    /// 27-nov-2026: a los operadores que SAP pasó a una regla nueva no se les
+    /// podía capturar nada. La regla nueva crea grupos sin bloques de 2027 (se
+    /// generaron antes) y el candado los frenaba con "todavía no se liberan los
+    /// bloques del grupo". Ahora la captura abre, en este orden, con: el grupo
+    /// del bloque donde el empleado tiene su turno (aunque ya no sea su grupo),
+    /// su grupo, su área y, si su área tampoco tiene bloques, la planta.
     /// </summary>
     public static class CapturaAnualHelper
     {
@@ -47,18 +54,56 @@ namespace tiempo_libre.Helpers
         }
 
         /// <summary>
-        /// null si la captura del año ya abrió para el grupo; si no, por qué no
+        /// Cuándo abre la captura del año para el empleado y de quién se toma
+        /// ("del grupo", "del área", "de la planta"). Inicio null = el año no
+        /// tiene ningún bloque.
+        /// </summary>
+        public static async Task<(DateTime? Inicio, string De)> AbreCapturaAsync(
+            FreeTimeDbContext db, int empleadoId, int? grupoId, int? areaId, int anio)
+        {
+            // 1. El grupo del bloque donde tiene su turno: a quien SAP movió de
+            //    regla después de generar los bloques se le respeta el que tenía.
+            var grupoDeSuTurno = await db.AsignacionesBloque
+                .Where(a => a.EmpleadoId == empleadoId && a.Estado != "Transferido"
+                            && a.Bloque.AnioGeneracion == anio && a.Bloque.Estado != "Cancelado")
+                .OrderByDescending(a => a.Id)
+                .Select(a => (int?)a.Bloque.GrupoId)
+                .FirstOrDefaultAsync();
+
+            // 2. Su grupo.
+            foreach (var g in new[] { grupoDeSuTurno, grupoId }.Where(g => g != null).Distinct())
+            {
+                var (hayBloques, inicio) = await PrimerBloqueAsync(db, g!.Value, anio);
+                if (hayBloques) return (inicio, "del grupo");
+            }
+
+            // 3. Su área: un grupo de regla nueva no tiene bloques del año.
+            areaId ??= grupoId == null ? null
+                : await db.Grupos.Where(g => g.GrupoId == grupoId).Select(g => (int?)g.AreaId).FirstOrDefaultAsync();
+            var bloquesDelAnio = db.BloquesReservacion.Where(b => b.AnioGeneracion == anio && b.Estado != "Cancelado");
+            if (areaId != null)
+            {
+                var abreArea = await bloquesDelAnio.Where(b => b.Grupo.AreaId == areaId)
+                    .MinAsync(b => (DateTime?)b.FechaHoraInicio);
+                if (abreArea != null) return (abreArea, "del área");
+            }
+
+            // 4. La planta.
+            return (await bloquesDelAnio.MinAsync(b => (DateTime?)b.FechaHoraInicio), "de la planta");
+        }
+
+        /// <summary>
+        /// null si la captura del año ya abrió para el empleado; si no, por qué no
         /// (sin la palabra "tu": cada pantalla lo completa).
         /// </summary>
-        public static async Task<string?> CapturaSinAbrirAsync(FreeTimeDbContext db, int? grupoId, int anio)
+        public static async Task<string?> CapturaSinAbrirAsync(
+            FreeTimeDbContext db, int empleadoId, int? grupoId, int? areaId, int anio)
         {
-            if (grupoId == null)
-                return $"sin grupo asignado no hay turno de captura para {anio}";
-            var (hayBloques, inicio) = await PrimerBloqueAsync(db, grupoId.Value, anio);
-            if (!hayBloques)
-                return $"todavía no se liberan los bloques (turnos de captura) de {anio} del grupo";
-            if (DateTime.Now < inicio!.Value)
-                return $"la captura de {anio} del grupo abre el {inicio.Value:dd/MM/yyyy} a las {inicio.Value:HH:mm}";
+            var (inicio, de) = await AbreCapturaAsync(db, empleadoId, grupoId, areaId, anio);
+            if (inicio == null)
+                return $"todavía no se liberan los bloques (turnos de captura) de {anio}";
+            if (DateTime.Now < inicio.Value)
+                return $"la captura de {anio} {de} abre el {inicio.Value:dd/MM/yyyy} a las {inicio.Value:HH:mm}";
             return null;
         }
 
@@ -67,18 +112,18 @@ namespace tiempo_libre.Helpers
         /// no, por qué no. Para lo que no pasa por la captura del operador ni por
         /// la asignación manual: el intercambio de festivo trabajado. Un año
         /// posterior al vigente y al que se programa no está abierto; el que se
-        /// programa, hasta que abra la captura del grupo. Sin grupo no hay bloques
-        /// que esperar.
+        /// programa, hasta que abra la captura del empleado (CapturaSinAbrirAsync).
         /// </summary>
-        public static async Task<string?> AnioSinAbrirAsync(FreeTimeDbContext db, int? grupoId, int anio)
+        public static async Task<string?> AnioSinAbrirAsync(
+            FreeTimeDbContext db, int empleadoId, int? grupoId, int? areaId, int anio)
         {
             var config = await ConfiguracionAsync(db);
             if (config == null) return null;
             var enProgramacion = AnioEnProgramacion(config);
             if (anio > Math.Max(config.AnioVigente, enProgramacion ?? int.MinValue))
                 return $"la programación de {anio} no está abierta";
-            if (anio == enProgramacion && grupoId != null)
-                return await CapturaSinAbrirAsync(db, grupoId, anio);
+            if (anio == enProgramacion)
+                return await CapturaSinAbrirAsync(db, empleadoId, grupoId, areaId, anio);
             return null;
         }
     }
