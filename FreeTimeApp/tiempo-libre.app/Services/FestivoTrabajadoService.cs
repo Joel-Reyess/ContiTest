@@ -126,13 +126,6 @@ namespace tiempo_libre.Services
                     return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
                         "No se puede programar una vacación en un día inhábil o festivo");
 
-                // Mismo candado que las vacaciones (26-nov-2026): nada de días del año
-                // que se programa antes de que abra la captura de su grupo.
-                var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(_db, empleado.GrupoId, request.FechaNueva.Year);
-                if (sinAbrir != null)
-                    return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
-                        $"Todavía no se puede intercambiar un festivo por un día de {request.FechaNueva.Year}: {sinAbrir}.");
-
                 // Domingo (o sábado) no laborable por la regla de su unidad organizativa.
                 var motivoNoLaborable = await CalendarioLaboralService.MotivoParaEmpleadoAsync(_db, request.EmpleadoId, request.FechaNueva);
                 if (motivoNoLaborable != null)
@@ -338,14 +331,6 @@ namespace tiempo_libre.Services
                 bool vacacionCreada = false;
                 if (request.Aprobada)
                 {
-                    // Una solicitud que quedó pendiente desde antes tampoco crea el
-                    // día mientras no abra la captura del grupo para ese año.
-                    var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(
-                        _db, solicitud.Empleado?.GrupoId, solicitud.FechaNuevaSolicitada.Year);
-                    if (sinAbrir != null)
-                        return new ApiResponse<AprobarFestivoTrabajadoResponse>(false, null,
-                            $"Todavía no se puede aprobar un intercambio de festivo por un día de {solicitud.FechaNuevaSolicitada.Year}: {sinAbrir}.");
-
                     // Verificar nuevamente que no haya conflictos
                     var conflicto = await _db.VacacionesProgramadas
                         .AnyAsync(v => v.EmpleadoId == solicitud.EmpleadoId &&
@@ -1027,14 +1012,6 @@ namespace tiempo_libre.Services
                 {
                     response.EsValido = false;
                     response.MotivoInvalidez = "La fecha solicitada es un día inhábil o festivo";
-                    return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
-                }
-
-                var sinAbrir = await Helpers.CapturaAnualHelper.AnioSinAbrirAsync(_db, empleado.GrupoId, request.FechaNueva.Year);
-                if (sinAbrir != null)
-                {
-                    response.EsValido = false;
-                    response.MotivoInvalidez = $"Todavía no se puede intercambiar un festivo por un día de {request.FechaNueva.Year}: {sinAbrir}.";
                     return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
                 }
 

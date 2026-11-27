@@ -61,25 +61,5 @@ namespace tiempo_libre.Helpers
                 return $"la captura de {anio} del grupo abre el {inicio.Value:dd/MM/yyyy} a las {inicio.Value:HH:mm}";
             return null;
         }
-
-        /// <summary>
-        /// null si ya se puede dar un día (que no es de la empresa) en ese año; si
-        /// no, por qué no. Para lo que no pasa por la captura del operador ni por
-        /// la asignación manual: el intercambio de festivo trabajado. Un año
-        /// posterior al vigente y al que se programa no está abierto; el que se
-        /// programa, hasta que abra la captura del grupo. Sin grupo no hay bloques
-        /// que esperar.
-        /// </summary>
-        public static async Task<string?> AnioSinAbrirAsync(FreeTimeDbContext db, int? grupoId, int anio)
-        {
-            var config = await ConfiguracionAsync(db);
-            if (config == null) return null;
-            var enProgramacion = AnioEnProgramacion(config);
-            if (anio > Math.Max(config.AnioVigente, enProgramacion ?? int.MinValue))
-                return $"la programación de {anio} no está abierta";
-            if (anio == enProgramacion && grupoId != null)
-                return await CapturaSinAbrirAsync(db, grupoId, anio);
-            return null;
-        }
     }
 }
