@@ -372,7 +372,7 @@ namespace tiempo_libre.Services
                 // La fecha es obligatoria aquí: sin ella el validador contestaba lo
                 // mismo para los 365 días del año que se está programando (la foto de
                 // hoy), y la asignación de días por empresa se quedaba sin semanas.
-                var puedeAusentarse = await _validadorPorcentaje.PuedeGrupoTenerAusencias(
+                var (puedeAusentarse, motivoRechazo) = await _validadorPorcentaje.EvaluarAusenciasAsync(
                     empleado.GrupoId.Value, 1, null, request.Fecha, contexto);
 
                 // Obtener el estado detallado del grupo para información adicional
@@ -389,7 +389,11 @@ namespace tiempo_libre.Services
                     PorcentajeAusenciaActual = ausenciaActual.PorcentajeAusencia,
                     PorcentajeAusenciaConEmpleado = ausenciaConEmpleado.PorcentajeAusencia,
                     PorcentajeMaximoPermitido = estadoGrupo?.PorcentajeMaximoPermitido ?? PORCENTAJE_AUSENCIA_MAXIMO_DEFAULT,
-                    Motivo = estadoGrupo?.MensajeEstado ?? (puedeAusentarse ? "Día disponible" : "Excede el límite permitido"),
+                    // Rechazado: el motivo real (grupo o manning del área), no el
+                    // estado del grupo, que puede estar libre.
+                    Motivo = puedeAusentarse
+                        ? estadoGrupo?.MensajeEstado ?? "Día disponible"
+                        : motivoRechazo ?? estadoGrupo?.MensajeEstado ?? "Excede el límite permitido",
                     DetalleGrupo = ausenciaConEmpleado
                 };
 
