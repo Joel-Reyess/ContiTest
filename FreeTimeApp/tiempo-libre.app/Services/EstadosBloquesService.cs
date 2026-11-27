@@ -41,6 +41,41 @@ namespace tiempo_libre.Services
                     .Where(b => b.Estado == "Aprobado" || b.Estado == "Activo")
                     .ToListAsync();
 
+                // 1b. Quien ya tiene días de común acuerdo del año del bloque (por
+                // ejemplo, se los capturó su jefe con la asignación manual) ya
+                // capturó: su turno no debe seguir "Pendiente" ni detener a los
+                // compañeros con menos antigüedad. La captura del operador y la
+                // manual ya lo marcan al guardar; esto corrige los turnos que
+                // quedaron pendientes antes de eso (27-nov-2026).
+                var turnosPendientes = bloquesParaRevisar
+                    .SelectMany(b => b.AsignacionesBloque
+                        .Where(a => a.Estado == "Asignado" || a.Estado == "Saltado" || a.Estado == "NoRespondio")
+                        .Select(a => new { Turno = a, Anio = b.AnioGeneracion }))
+                    .ToList();
+                if (turnosPendientes.Count > 0)
+                {
+                    var idsPendientes = turnosPendientes.Select(t => t.Turno.EmpleadoId).Distinct().ToList();
+                    var aniosPendientes = turnosPendientes.Select(t => t.Anio).Distinct().ToList();
+                    var yaCapturaron = (await _context.VacacionesProgramadas
+                            .Where(v => idsPendientes.Contains(v.EmpleadoId)
+                                        && v.TipoVacacion == "Anual"
+                                        && v.EstadoVacacion == "Activa"
+                                        && aniosPendientes.Contains(v.FechaVacacion.Year))
+                            .Select(v => new { v.EmpleadoId, Anio = v.FechaVacacion.Year })
+                            .Distinct()
+                            .ToListAsync())
+                        .Select(v => (v.EmpleadoId, v.Anio))
+                        .ToHashSet();
+                    foreach (var t in turnosPendientes.Where(t => yaCapturaron.Contains((t.Turno.EmpleadoId, t.Anio))))
+                    {
+                        t.Turno.Estado = "Reservado";
+                        t.Turno.FechaCompletado = fechaActual;
+                        asignacionesActualizadas++;
+                        _logger.LogInformation("Turno {AsignacionId} del empleado {EmpleadoId} marcado como capturado: ya tiene días de {Anio}",
+                            t.Turno.Id, t.Turno.EmpleadoId, t.Anio);
+                    }
+                }
+
                 foreach (var bloque in bloquesParaRevisar)
                 {
 

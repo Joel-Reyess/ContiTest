@@ -337,6 +337,31 @@ namespace tiempo_libre.Services
 
                 await _db.SaveChangesAsync();
 
+                // Días de común acuerdo capturados por el jefe: su turno de captura
+                // de ese año queda como "ya capturó", igual que cuando captura el
+                // operador. Antes seguía "Pendiente" en los bloques aunque ya tuviera
+                // sus días (27-nov-2026).
+                if (request.TipoVacacion == "Anual" && request.EstadoVacacion == "Activa")
+                {
+                    foreach (var anioCapturado in request.FechasVacaciones.Select(f => f.Year).Distinct())
+                    {
+                        var turno = await _db.AsignacionesBloque
+                            .Where(a => a.EmpleadoId == request.EmpleadoId
+                                        && a.Estado != "Transferido"
+                                        && a.Bloque.AnioGeneracion == anioCapturado
+                                        && a.Bloque.Estado != "Cancelado")
+                            .OrderByDescending(a => a.Id)
+                            .FirstOrDefaultAsync();
+                        if (turno == null || turno.Estado is "Reservado" or "Completado") continue;
+                        turno.Estado = "Reservado";
+                        turno.FechaCompletado = DateTime.UtcNow;
+                        var nota = $"Capturado por asignación manual ({DateTime.Now:dd/MM/yyyy HH:mm})";
+                        turno.Observaciones = string.IsNullOrWhiteSpace(turno.Observaciones) ? nota : $"{turno.Observaciones} | {nota}";
+                        if (turno.Observaciones.Length > 500) turno.Observaciones = turno.Observaciones[..500];
+                    }
+                    await _db.SaveChangesAsync();
+                }
+
                 if (diasConRebase.Count > 0)
                 {
                     advertencias.Add(

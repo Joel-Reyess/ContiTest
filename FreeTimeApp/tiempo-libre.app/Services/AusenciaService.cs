@@ -149,6 +149,80 @@ namespace tiempo_libre.Services
                 // trabaja ese día se pide a la base una vez por día y juego de grupos.
                 var conteosDelDia = new Dictionary<(string Grupos, DateOnly Fecha), BaseConteo>();
 
+                // ─── 8b. Candado de manning del ÁREA (27-nov-2026) ───────────────────
+                // Al guardar hay dos candados: la regla del grupo y el manning del área
+                // contra los disponibles de TODA el área (ValidadorPorcentajeService).
+                // El semáforo solo aplicaba el primero: en Herramental (5 personas,
+                // manning 4) un día con un compañero de OTRO grupo ausente se veía
+                // libre en el calendario del operador y al guardar se rechazaba. Aquí
+                // se cuentan los ausentes de toda el área, en memoria, para que el
+                // día salga lleno ("LL") igual que lo rechaza el candado.
+                var areasConManning = areaIds
+                    .Where(a => areaManningBase.GetValueOrDefault(a) > 0 ||
+                                excepcionesManning.Any(e => e.AreaId == a && e.GrupoId == null && e.ManningRequeridoExcepcion > 0))
+                    .ToList();
+                var totalPorArea = new Dictionary<int, int>();
+                var ausentesPorAreaDia = new Dictionary<(int AreaId, DateOnly Fecha), HashSet<int>>();
+                if (areasConManning.Count > 0)
+                {
+                    var gruposDeAreas = await _db.Grupos
+                        .Where(g => areasConManning.Contains(g.AreaId))
+                        .Select(g => new { g.GrupoId, g.AreaId })
+                        .ToListAsync();
+                    var areaDeGrupo = gruposDeAreas.ToDictionary(g => g.GrupoId, g => g.AreaId);
+                    var idsGruposDeAreas = areaDeGrupo.Keys.ToList();
+                    var usuariosDeAreas = await _db.Users
+                        .Where(u => u.GrupoId != null && idsGruposDeAreas.Contains(u.GrupoId.Value) &&
+                                    u.Status == Models.Enums.UserStatus.Activo)
+                        .Select(u => new { u.Id, GrupoId = u.GrupoId!.Value, u.Nomina })
+                        .ToListAsync();
+                    var areaDeUsuario = usuariosDeAreas.ToDictionary(u => u.Id, u => areaDeGrupo[u.GrupoId]);
+                    foreach (var porArea in usuariosDeAreas.GroupBy(u => areaDeGrupo[u.GrupoId]))
+                        totalPorArea[porArea.Key] = porArea.Count();
+
+                    void MarcarAusente(int empleadoId, DateOnly dia)
+                    {
+                        if (!areaDeUsuario.TryGetValue(empleadoId, out var areaId)) return;
+                        if (!ausentesPorAreaDia.TryGetValue((areaId, dia), out var ausentes))
+                            ausentesPorAreaDia[(areaId, dia)] = ausentes = new HashSet<int>();
+                        ausentes.Add(empleadoId);
+                    }
+
+                    var idsUsuariosDeAreas = usuariosDeAreas.Select(u => u.Id).ToList();
+                    var vacacionesDeAreas = await _db.VacacionesProgramadas
+                        .Where(v => idsUsuariosDeAreas.Contains(v.EmpleadoId) &&
+                                    v.FechaVacacion >= fechaMin && v.FechaVacacion <= fechaMax &&
+                                    v.EstadoVacacion == "Activa")
+                        .Select(v => new { v.EmpleadoId, v.FechaVacacion })
+                        .ToListAsync();
+                    foreach (var v in vacacionesDeAreas) MarcarAusente(v.EmpleadoId, v.FechaVacacion);
+
+                    var usuarioPorNomina = usuariosDeAreas.Where(u => u.Nomina.HasValue)
+                        .GroupBy(u => u.Nomina!.Value).ToDictionary(g => g.Key, g => g.First().Id);
+                    var nominasDeAreas = usuarioPorNomina.Keys.ToList();
+                    var permisosDeAreas = await _db.PermisosEIncapacidadesSAP
+                        .Where(p => nominasDeAreas.Contains(p.Nomina) &&
+                                    p.Desde <= fechaMax && p.Hasta >= fechaMin &&
+                                    (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                        .Select(p => new { p.Nomina, p.Desde, p.Hasta, p.ClAbPre })
+                        .ToListAsync();
+                    foreach (var p in permisosDeAreas)
+                        for (var d = p.Desde < fechaMin ? fechaMin : p.Desde; d <= (p.Hasta > fechaMax ? fechaMax : p.Hasta); d = d.AddDays(1))
+                        {
+                            // Retenido por pasarse de la antigüedad: no es ausencia.
+                            if (p.ClAbPre == 1100 && retenidosSap.Contains((p.Nomina, d))) continue;
+                            MarcarAusente(usuarioPorNomina[p.Nomina], d);
+                        }
+
+                    var festivosDeAreas = await _db.SolicitudesFestivosTrabajados
+                        .Where(f => idsUsuariosDeAreas.Contains(f.EmpleadoId) &&
+                                    f.FechaNuevaSolicitada >= fechaMin && f.FechaNuevaSolicitada <= fechaMax &&
+                                    f.EstadoSolicitud == "Aprobada")
+                        .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada })
+                        .ToListAsync();
+                    foreach (var f in festivosDeAreas) MarcarAusente(f.EmpleadoId, f.FechaNuevaSolicitada);
+                }
+
                 // ─── 9. Construir resultados en memoria (sin más queries) ────────────
                 var resultados = new List<AusenciaPorFechaResponse>();
 
@@ -310,6 +384,23 @@ namespace tiempo_libre.Services
                         }
                         var excedeLimite = !estadoActual.Permitido;
 
+                        // Segundo candado: el manning del área (ver 8b). Misma cuenta
+                        // que ValidadorPorcentajeService.EvaluarAusenciasAsync.
+                        var puedeUnoMas = conUnoMas.Permitido;
+                        if (puedeUnoMas && totalPorArea.TryGetValue(grupo.AreaId, out var totalArea))
+                        {
+                            var excepcionArea = excepcionesManning.FirstOrDefault(e => e.AreaId == grupo.AreaId && e.GrupoId == null &&
+                                                                                       e.Anio == fecha.Year && e.Mes == fecha.Month);
+                            decimal manningArea = excepcionArea?.ManningRequeridoExcepcion ?? areaManningBase.GetValueOrDefault(grupo.AreaId);
+                            if (manningArea > 0)
+                            {
+                                var ausentesArea = ausentesPorAreaDia.TryGetValue((grupo.AreaId, fecha), out var enElArea) ? enElArea.Count : 0;
+                                var disponiblesArea = totalArea - ausentesArea - 1;
+                                if ((manningArea - disponiblesArea) / manningArea * 100m > porcentajeMaximo)
+                                    puedeUnoMas = false;
+                            }
+                        }
+
                         ausenciasPorGrupo.Add(new AusenciaPorGrupoDto
                         {
                             GrupoId = grupo.GrupoId,
@@ -324,7 +415,7 @@ namespace tiempo_libre.Services
                             PorcentajeAusencia = pctAusencia,
                             PorcentajeMaximoPermitido = porcentajeMaximo,
                             ExcedeLimite = excedeLimite,
-                            PuedeReservar = conUnoMas.Permitido,
+                            PuedeReservar = puedeUnoMas,
                             MedidoPorDia = delDia != null,
                             PersonalDelDia = delDia?.Total,
                             AusentesDelDia = delDia?.Ausentes,
