@@ -115,6 +115,8 @@ export interface AsignacionAutomaticaRequest {
     semanasExcluidas?: number[];
     /** Fechas de arranque/paro donde se "cargan" días por la empresa, solo para las áreas elegidas. */
     ventanasPreferentes?: VentanaAsignacion[];
+    /** Solo estos grupos (vacío = toda la planta). Solo completa lo que le falte a cada quien. */
+    grupoIds?: number[];
 }
 
 export interface VentanaAsignacion {
