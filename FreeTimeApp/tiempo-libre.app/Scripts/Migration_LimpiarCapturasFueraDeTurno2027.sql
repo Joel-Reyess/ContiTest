@@ -10,6 +10,8 @@
 --     bloque de 2027, o su grupo no tiene bloques de 2027.
 --   * MANUAL (Anual capturado por jefe / superusuario / ingeniero): antes de que
 --     empezara el primer bloque de 2027 de su grupo, o el grupo no tiene bloques.
+--   * TODO lo capturado antes de @InicioProgramacion (hora de México), sin
+--     importar lo que digan los bloques: antes de esa hora no debe haber nada.
 -- No toca días por la empresa, intercambios de festivo, SAP ni reprogramaciones.
 -- No borra un día con una solicitud ligada (se lista aparte).
 -- A quien se queda sin días capturados le regresa el turno a "Asignado".
@@ -26,6 +28,9 @@ SET XACT_ABORT ON;
 
 DECLARE @Anio INT = 2027;
 DECLARE @HorasUTC INT = -6;        -- hora de México respecto a UTC
+-- Hora (de México) en que empieza la programación anual. Lo capturado antes se
+-- quita siempre. AJUSTAR si la hora real es otra. NULL = solo por turnos.
+DECLARE @InicioProgramacion DATETIME2 = '2026-11-27 09:00';
 -- Opcional: solo estas nóminas, separadas por coma ('' = todas).
 DECLARE @SoloNominas NVARCHAR(MAX) = N'';
 -- 0 = solo mostrar (no cambia nada). 1 = respaldar y borrar.
@@ -93,7 +98,8 @@ IF OBJECT_ID('tempdb..#Quitar') IS NOT NULL DROP TABLE #Quitar;
 SELECT * INTO #Quitar
 FROM #Capturas
 WHERE LigadaA IS NULL
-  AND (PodiaDesde IS NULL OR CapturadoHoraMexico < PodiaDesde);
+  AND (PodiaDesde IS NULL OR CapturadoHoraMexico < PodiaDesde
+       OR (@InicioProgramacion IS NOT NULL AND CapturadoHoraMexico < @InicioProgramacion));
 
 PRINT '=== (1) Resumen: fuera de turno (se quitan) vs en su turno (legítimos, NO se tocan) ===';
 SELECT CASE WHEN q.Id IS NOT NULL THEN '1. FUERA DE TURNO: se quita'
@@ -111,7 +117,9 @@ ORDER BY 1, 2;
 PRINT '=== (2) Detalle de lo que se quita (por empleado) ===';
 SELECT Nomina, FullName, Area, Grupo, Origen, ISNULL(CapturadoPor, '(el operador)') AS CapturadoPor,
        COUNT(*) AS Dias, MIN(CapturadoHoraMexico) AS CapturadoEl, MIN(PodiaDesde) AS PodiaCapturarDesde,
-       CASE WHEN MIN(PodiaDesde) IS NULL THEN 'Su grupo no tiene bloques de ' + CAST(@Anio AS VARCHAR(4)) ELSE 'Antes de su turno' END AS Motivo
+       CASE WHEN MIN(CapturadoHoraMexico) < @InicioProgramacion THEN 'Antes de que empezara la programación'
+            WHEN MIN(PodiaDesde) IS NULL THEN 'Su grupo no tiene bloques de ' + CAST(@Anio AS VARCHAR(4))
+            ELSE 'Antes de su turno' END AS Motivo
 FROM #Quitar
 GROUP BY Nomina, FullName, Area, Grupo, Origen, CapturadoPor
 ORDER BY Area, Grupo, Nomina;
@@ -119,7 +127,8 @@ ORDER BY Area, Grupo, Nomina;
 PRINT '=== (3) Con solicitud ligada: no se tocan (revisar a mano) ===';
 SELECT Id, Nomina, FullName, FechaVacacion, Origen, CapturadoHoraMexico, PodiaDesde, LigadaA
 FROM #Capturas
-WHERE LigadaA IS NOT NULL AND (PodiaDesde IS NULL OR CapturadoHoraMexico < PodiaDesde)
+WHERE LigadaA IS NOT NULL AND (PodiaDesde IS NULL OR CapturadoHoraMexico < PodiaDesde
+                              OR (@InicioProgramacion IS NOT NULL AND CapturadoHoraMexico < @InicioProgramacion))
 ORDER BY Nomina, FechaVacacion;
 
 BEGIN TRY
