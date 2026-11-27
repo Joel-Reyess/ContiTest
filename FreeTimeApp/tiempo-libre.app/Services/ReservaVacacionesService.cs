@@ -843,7 +843,9 @@ namespace tiempo_libre.Services
 
             var companeros = await _context.AsignacionesBloque
                 .Include(a => a.Empleado)
-                .Where(a => a.BloqueId == bloque.Id && a.Estado != "Transferido")
+                // Sin bajas: un compañero desactivado no detiene la fila.
+                .Where(a => a.BloqueId == bloque.Id && a.Estado != "Transferido"
+                            && (a.EmpleadoId == empleado.Id || a.Empleado.Status == tiempo_libre.Models.Enums.UserStatus.Activo))
                 .ToListAsync();
 
             var ordenados = companeros

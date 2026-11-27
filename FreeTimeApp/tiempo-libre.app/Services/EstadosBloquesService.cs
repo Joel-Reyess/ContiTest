@@ -36,7 +36,8 @@ namespace tiempo_libre.Services
 
                 // 1. Obtener bloques que podrían necesitar actualización (tanto Aprobado como Activo)
                 var bloquesParaRevisar = await _context.BloquesReservacion
-                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado != "Transferido"))
+                    // Sin bajas: un empleado desactivado no detiene el bloque ni pasa a la cola.
+                    .Include(b => b.AsignacionesBloque.Where(a => a.Estado != "Transferido" && a.Empleado.Status == tiempo_libre.Models.Enums.UserStatus.Activo))
                     .Include(b => b.Grupo)
                     .Where(b => b.Estado == "Aprobado" || b.Estado == "Activo")
                     .ToListAsync();
