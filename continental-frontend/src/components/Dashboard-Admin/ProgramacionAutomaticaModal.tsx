@@ -56,6 +56,12 @@ export const ProgramacionAutomaticaModal = ({
   // para las áreas elegidas en cada una (requerimiento de planeación 2027).
   type VentanaForm = { id: number; nombre: string; fechaInicio: string; fechaFin: string; areaIds: number[]; porcentaje: string };
   const [ventanas, setVentanas] = useState<VentanaForm[]>([]);
+  // Correr solo para algunas áreas (27-nov-2026: Herramental se quedó sin días
+  // por la empresa y no había cómo completarlos sin volver a correr la planta).
+  // Vacío = toda la planta. Solo se completa lo que le falte a cada empleado.
+  const [soloAreas, setSoloAreas] = useState<number[]>([]);
+  // Áreas de la corrida que se muestra en resultados (null = toda la planta).
+  const [corridaSoloAreas, setCorridaSoloAreas] = useState<string[] | null>(null);
   const [areas, setAreas] = useState<Area[]>([]);
   useEffect(() => {
     if (!isOpen || areas.length > 0) return;
@@ -161,6 +167,8 @@ export const ProgramacionAutomaticaModal = ({
     setAnio(anioPorDefecto);
     setMesesExcluidos([]);
     setVentanas([]);
+    setSoloAreas([]);
+    setCorridaSoloAreas(null);
     setResultados(null);
     onClose();
   };
@@ -171,6 +179,20 @@ export const ProgramacionAutomaticaModal = ({
       setStep('processing');
       
       const semanasExcluidas = obtenerSemanasExcluidas();
+      // Solo algunas áreas: se mandan los grupos de esas áreas.
+      let grupoIds: number[] | undefined;
+      if (soloAreas.length > 0) {
+        const grupos = await areasService.getGroups();
+        grupoIds = grupos.filter((g) => soloAreas.includes(g.areaId)).map((g) => g.grupoId);
+        if (grupoIds.length === 0) {
+          onNotification('error', 'Sin grupos', 'Las áreas elegidas no tienen grupos. No se asignó nada.');
+          setStep('confirmation');
+          return;
+        }
+      }
+      const nombresSoloAreas = soloAreas.length > 0
+        ? areas.filter((a) => soloAreas.includes(a.areaId)).map((a) => a.nombreGeneral)
+        : null;
       const response = await AsignacionAutomaticaService.ejecutarAsignacion(
         anio,
         semanasExcluidas,
@@ -180,8 +202,10 @@ export const ProgramacionAutomaticaModal = ({
           fechaFin: v.fechaFin,
           areaIds: v.areaIds,
           porcentaje: v.porcentaje.trim() ? Number(v.porcentaje) : undefined,
-        }))
+        })),
+        grupoIds
       );
+      setCorridaSoloAreas(nombresSoloAreas);
       setResultados(response);
       setStep('results');
       
@@ -305,11 +329,47 @@ export const ProgramacionAutomaticaModal = ({
                   conserva: vuelve a ejecutarlo y continúa donde se quedó.
                 </li>
                 <li>No cierre la pestaña o el navegador durante el proceso</li>
-                <li>Se procesarán todos los empleados automáticamente</li>
+                <li>
+                  {soloAreas.length > 0
+                    ? 'Solo se procesan los empleados de las áreas elegidas abajo; las demás no se tocan'
+                    : 'Se procesarán todos los empleados automáticamente'}
+                </li>
+                <li>A quien ya tiene sus días por la empresa no se le cambia nada: solo se completa lo que falte</li>
               </ul>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Solo algunas áreas */}
+      <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+        <Label className="text-sm font-medium text-continental-gray-1">
+          Solo para estas áreas (opcional)
+        </Label>
+        <p className="text-xs text-gray-500">
+          Si no eliges ninguna, se procesa toda la planta. Si eliges, solo se asignan los días por la empresa que les
+          falten a los empleados de esas áreas (por ejemplo, un área que se quedó sin días). A las demás áreas no se
+          les toca nada.
+        </p>
+        <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto">
+          {areas.map((a) => (
+            <label key={a.areaId} className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={soloAreas.includes(a.areaId)}
+                onChange={(e) =>
+                  setSoloAreas((s) => (e.target.checked ? [...s, a.areaId] : s.filter((x) => x !== a.areaId)))
+                }
+              />
+              {a.nombreGeneral}
+            </label>
+          ))}
+        </div>
+        {soloAreas.length > 0 && (
+          <p className="text-xs font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded p-2">
+            Solo: {areas.filter((a) => soloAreas.includes(a.areaId)).map((a) => a.nombreGeneral).join(', ')}
+          </p>
+        )}
       </div>
 
       {/* Seleccionar meses excluidos de la programación */}
@@ -524,7 +584,9 @@ export const ProgramacionAutomaticaModal = ({
           className="px-6"
           disabled={!Number.isFinite(anio)}
         >
-          {anioDistinto ? `Confirmar programación ${anio}` : 'Confirmar Programación'}
+          {soloAreas.length > 0
+            ? `Confirmar solo ${soloAreas.length} área${soloAreas.length === 1 ? '' : 's'}`
+            : anioDistinto ? `Confirmar programación ${anio}` : 'Confirmar Programación'}
         </Button>
       </div>
     </div>
@@ -640,7 +702,15 @@ export const ProgramacionAutomaticaModal = ({
           </div>
         )}
 
+        {corridaSoloAreas && (
+          <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded p-2">
+            Se corrió solo para: {corridaSoloAreas.join(', ')}. Aquí no hay "Revertir": revertir borra los días por la
+            empresa de toda la planta.
+          </p>
+        )}
+
         <div className="flex justify-end gap-3">
+          {!corridaSoloAreas && (
           <Button
             onClick={handleRevertir}
             variant="outline"
@@ -659,6 +729,7 @@ export const ProgramacionAutomaticaModal = ({
               </>
             )}
           </Button>
+          )}
           <Button
             onClick={handleAceptar}
             variant="continental"
