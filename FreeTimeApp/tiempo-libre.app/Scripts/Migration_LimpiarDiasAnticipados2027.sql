@@ -4,9 +4,10 @@
 --
 -- VERSIÓN LISTA PARA APLICAR (@Aplicar = 1): al correrla BORRA. Conectado a la
 -- base de PRODUCTIVO. Es la misma lógica de LimpiarDiasAnticipados.sql (raíz
--- del repo), que trae @Aplicar = 0 para ver antes qué se quitaría. Aquí además
--- @QuitarFestivo = 1: también quita los intercambios de festivo trabajado dados
--- para 2027 antes de abrir la captura (para dejarlos, ponerlo en 0).
+-- del repo), que trae @Aplicar = 0 para ver antes qué se quitaría.
+-- @QuitarFestivo se queda en 0: los intercambios de festivo trabajado hacia
+-- 2027 aprobados por el jefe (p. ej. el del 02/02/2026 aprobado en abril) son
+-- legítimos; el plazo es de un año y un mes desde el festivo.
 -- Volver a correrla no hace daño: solo quita lo que todavía encuentre.
 -- Al final debe decir "APLICADO: N días borrados (respaldo en dbo.Respaldo_...)".
 -- Este script:
@@ -44,7 +45,7 @@ DECLARE @QuitarOperador BIT = 1;   -- capturados por el operador en su pantalla
 DECLARE @QuitarManual BIT = 1;     -- capturados por jefe / superusuario / ingeniero
 DECLARE @QuitarEmpresaManual BIT = 0; -- días por la empresa capturados a mano por jefe / superusuario
 DECLARE @QuitarSap BIT = 0;        -- SAP_ALTA, SAP_MOVIDA, SAP_RETENIDA
-DECLARE @QuitarFestivo BIT = 1;    -- intercambios de festivo trabajado aprobados antes de abrir la captura
+DECLARE @QuitarFestivo BIT = 0;    -- intercambios de festivo trabajado aprobados antes de abrir la captura
 DECLARE @QuitarOtros BIT = 0;      -- REPROGRAMACION, VAC_LABORADA, OTRO
 -- Opcional: solo estas nóminas, separadas por coma ('' = todas).
 DECLARE @SoloNominas NVARCHAR(MAX) = N'';
