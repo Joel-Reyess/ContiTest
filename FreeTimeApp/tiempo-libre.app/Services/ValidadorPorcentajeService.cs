@@ -266,6 +266,22 @@ namespace tiempo_libre.Services
             int? ausenciasActuales = null,
             DateOnly? fecha = null,
             ContextoLimite contexto = ContextoLimite.Operador)
+            => (await EvaluarAusenciasAsync(grupoId, ausenciasSolicitadas, ausenciasActuales, fecha, contexto)).Permitido;
+
+        /// <summary>
+        /// Lo mismo que PuedeGrupoTenerAusencias, pero dice POR QUÉ no. Hay dos
+        /// candados (el del grupo y el del manning del área) y el mensaje que veía
+        /// el operador era siempre el estado del grupo: con el grupo libre y el
+        /// área frenada por manning salía "Grupo pequeño: se permite máximo 1
+        /// ausencia por día", que no explica nada (27-nov-2026, Herramental y
+        /// Mtto. A).
+        /// </summary>
+        public async Task<(bool Permitido, string? Motivo)> EvaluarAusenciasAsync(
+            int grupoId,
+            int ausenciasSolicitadas = 1,
+            int? ausenciasActuales = null,
+            DateOnly? fecha = null,
+            ContextoLimite contexto = ContextoLimite.Operador)
         {
             try
             {
@@ -283,7 +299,7 @@ namespace tiempo_libre.Services
                 if (config == null)
                 {
                     _logger.LogWarning("No existe configuración de vacaciones");
-                    return false;
+                    return (false, "No existe configuración de vacaciones");
                 }
 
                 if (!_gruposCache.TryGetValue(grupoId, out var grupo))
@@ -297,7 +313,7 @@ namespace tiempo_libre.Services
                 if (grupo == null)
                 {
                     _logger.LogError("Grupo {GrupoId} no encontrado", grupoId);
-                    return false;
+                    return (false, "Grupo no encontrado");
                 }
 
                 // Plantilla y ausentes del grupo o, con una capacidad "por día", de
@@ -315,7 +331,7 @@ namespace tiempo_libre.Services
                     grupoId, fechaEvaluada, regla.Motivo, regla.Permitido);
 
                 if (!regla.Permitido)
-                    return false;
+                    return (false, regla.Motivo);
 
                 // Segundo candado, ahora sí con el manning: el personal requerido del
                 // ÁREA se compara contra los disponibles de TODA el área (todos sus
@@ -333,16 +349,21 @@ namespace tiempo_libre.Services
                         _logger.LogDebug(
                             "Manning Área {AreaId} {Fecha}: requeridos {Manning}, quedarían {Disponibles} de {Total} → déficit {Deficit:F2}% > {Maximo}%",
                             grupo.AreaId, fechaEvaluada, manningArea, disponiblesArea, totalArea, deficit, porcentajeMaximo);
-                        return false;
+                        var yaAusentes = ausentesArea == 0
+                            ? "aunque nadie más falte ese día"
+                            : $"ese día ya hay {ausentesArea} ausente(s) en el área";
+                        return (false,
+                            $"Manning del área {grupo.Area.NombreGeneral}: se requieren {manningArea:0.#} personas trabajando " +
+                            $"y quedarían {disponiblesArea} de {totalArea} ({yaAusentes})");
                     }
                 }
 
-                return true;
+                return (true, null);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al validar ausencias para grupo {GrupoId}", grupoId);
-                return false;
+                return (false, "No se pudo validar el día");
             }
         }
 
